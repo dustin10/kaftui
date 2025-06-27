@@ -1,3 +1,5 @@
+use crate::app::App;
+
 use crossterm::style::Color;
 use ratatui::{
     buffer::Buffer,
@@ -5,8 +7,6 @@ use ratatui::{
     style::Stylize,
     widgets::{Block, BorderType, Paragraph, Widget},
 };
-
-use crate::app::App;
 
 impl Widget for &App {
     /// Renders the user interface widgets.
@@ -17,17 +17,11 @@ impl Widget for &App {
     // - https://github.com/ratatui/ratatui/tree/master/examples
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = Block::bordered()
-            .title("event-driven-async-generated")
+            .title("kaftui")
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Rounded);
 
-        let text = format!(
-            "This is a tui template.\n\
-                Press `Esc`, `Ctrl-C` or `q` to stop running.\n\
-                Press left and right to increment and decrement the counter respectively.\n\
-                Counter: {}",
-            self.counter
-        );
+        let text = "Press `Esc`, `Ctrl-C` or `q` to stop running.";
 
         let paragraph = Paragraph::new(text)
             .block(block)

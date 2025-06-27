@@ -9,8 +9,6 @@ use ratatui::{
 pub struct App {
     /// Is the application running?
     pub running: bool,
-    /// Counter.
-    pub counter: u8,
     /// Event handler.
     pub events: EventHandler,
 }
@@ -19,7 +17,6 @@ impl Default for App {
     fn default() -> Self {
         Self {
             running: true,
-            counter: 0,
             events: EventHandler::new(),
         }
     }
@@ -42,8 +39,6 @@ impl App {
                     _ => {}
                 },
                 Event::App(app_event) => match app_event {
-                    AppEvent::NextTab => self.inc_counter(),
-                    AppEvent::PrevTab => self.dec_counter(),
                     AppEvent::Quit => self.quit(),
                 },
             }
@@ -58,8 +53,6 @@ impl App {
             KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
                 self.events.send(AppEvent::Quit)
             }
-            KeyCode::Right => self.events.send(AppEvent::NextTab),
-            KeyCode::Left => self.events.send(AppEvent::PrevTab),
             // Other handlers you could add here.
             _ => {}
         }
@@ -75,13 +68,5 @@ impl App {
     /// Set running to false to quit the application.
     pub fn quit(&mut self) {
         self.running = false;
-    }
-
-    pub fn inc_counter(&mut self) {
-        self.counter = self.counter.saturating_add(1);
-    }
-
-    pub fn dec_counter(&mut self) {
-        self.counter = self.counter.saturating_sub(1);
     }
 }
