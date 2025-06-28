@@ -4,20 +4,36 @@ mod ui;
 
 use crate::app::App;
 
+use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
+
+/// The [`Args`] struct is a contains the resolved values for the command line arguments supported
+/// by the application.
+#[derive(Debug, Parser)]
+#[command()]
+struct Args {
+    /// Flag indicating that application logs should be output to a file.
+    #[arg(long)]
+    enable_logs: bool,
+}
 
 /// Main entry point for the application.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    init_env();
+    let args = Args::parse();
+
+    init_env(args.enable_logs);
+
     run_app().await
 }
 
 /// Initializes the environment that the application will run in.
-fn init_env() {
-    // TODO: before release disable log output by default and make it opt in - for now always output it
+fn init_env(enable_logs: bool) {
     let dot_env_result = dotenvy::dotenv();
+    if !enable_logs {
+        return;
+    }
 
     let remove_result = std::fs::remove_file("output.log");
 
