@@ -1,5 +1,6 @@
 use crate::event::{AppEvent, Event, EventBus};
 
+use crossterm::event::MouseEvent;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     DefaultTerminal,
@@ -27,7 +28,9 @@ impl Default for State {
 
 #[derive(Debug)]
 pub struct App {
+    /// Contains the current state of the application.
     pub state: State,
+    /// Emits events to be handled by the application.
     pub event_bus: EventBus,
 }
 
@@ -46,7 +49,10 @@ impl App {
             match self.event_bus.next().await? {
                 Event::Tick => self.tick(),
                 Event::Crossterm(event) => match event {
-                    crossterm::event::Event::Key(key_event) => self.handle_key_events(key_event)?,
+                    crossterm::event::Event::Mouse(mouse_event) => {
+                        self.on_mouse_event(mouse_event)?
+                    }
+                    crossterm::event::Event::Key(key_event) => self.on_key_event(key_event)?,
                     _ => {}
                 },
                 Event::App(app_event) => match app_event {
@@ -57,8 +63,12 @@ impl App {
 
         Ok(())
     }
-    /// Handles the key events and updates the state of [`App`].
-    pub fn handle_key_events(&mut self, key_event: KeyEvent) -> anyhow::Result<()> {
+    /// Handles mouse events emitted by the [`EventBus`].
+    fn on_mouse_event(&mut self, _mouse_event: MouseEvent) -> anyhow::Result<()> {
+        Ok(())
+    }
+    /// Handles key events emitted by the [`EventBus`].
+    fn on_key_event(&mut self, key_event: KeyEvent) -> anyhow::Result<()> {
         match key_event.code {
             KeyCode::Esc | KeyCode::Char('q') => self.event_bus.send(AppEvent::Quit),
             KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
@@ -70,12 +80,9 @@ impl App {
         Ok(())
     }
     /// Handles the tick event of the terminal.
-    ///
-    /// The tick event is where you can update the state of your application with any logic that
-    /// needs to be updated at a fixed frame rate. E.g. polling a server, updating an animation.
-    pub fn tick(&self) {}
-    /// Set running to false to quit the application.
-    pub fn quit(&mut self) {
+    fn tick(&self) {}
+    /// Quits the application.
+    fn quit(&mut self) {
         self.state.running = false;
     }
 }

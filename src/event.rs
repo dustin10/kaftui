@@ -3,54 +3,49 @@ use ratatui::crossterm::event::Event as CrosstermEvent;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-/// The frequency at which tick events are emitted.
+/// Frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
 
-/// Representation of all possible events.
+/// Enumeration of events which can be sent on the [`EventBus`].
 #[derive(Clone, Debug)]
 pub enum Event {
-    /// An event that is emitted on a regular schedule.
-    ///
-    /// Use this event to run any code which has to run outside of being a direct response to a user
-    /// event. e.g. polling exernal systems, updating animations, or rendering the UI based on a
-    /// fixed frame rate.
+    /// An event that is emitted on a regular schedule. This event is used to run any code which has to run
+    /// outside of being a direct response to a user event. e.g. polling exernal systems, updating animations,
+    /// or rendering the UI based on a fixed frame rate.
     Tick,
-    /// Crossterm events.
-    ///
-    /// These events are emitted by the terminal.
+    /// Crossterm events. These events are emitted by the terminal backend.
     Crossterm(CrosstermEvent),
-    /// Application events.
-    ///
-    /// Use this event to emit custom events that are specific to your application.
+    /// Application events. These are events emitted related to the application domain.
     App(AppEvent),
 }
 
-/// Application events.
-///
-/// You can extend this enum with your own custom events.
+/// Enumeration of events which can be produced by the application.
 #[derive(Clone, Debug)]
 pub enum AppEvent {
     /// Quit the application.
     Quit,
 }
 
-/// Terminal event handler.
+/// The bus over which [`Event`]s are published and consumed.
 #[derive(Debug)]
 pub struct EventBus {
-    /// Event sender channel.
+    /// Event channel sender.
     sender: mpsc::UnboundedSender<Event>,
-    /// Event receiver channel.
+    /// Event channel receiver.
     receiver: mpsc::UnboundedReceiver<Event>,
 }
 
 impl EventBus {
-    /// Constructs a new instance of [`EventPump`] and spawns a new thread to handle events.
+    /// Constructs a new instance of [`EventBus`] and spawns a new thread to handle events.
     pub fn new() -> Self {
         Self::default()
     }
+    /// Starts the the background thread that will emit the backend terminal events as well as the
+    /// tick event.
     pub fn start(&self) {
-        let actor = EventTask::new(self.sender.clone());
-        tokio::spawn(async { actor.run().await });
+        let task = EventTask::new(self.sender.clone());
+
+        tokio::spawn(async { task.run().await });
     }
     /// Receives an event from the sender.
     ///
@@ -65,20 +60,18 @@ impl EventBus {
         self.receiver
             .recv()
             .await
-            .ok_or(anyhow::anyhow!("Failed to receive event"))
+            .ok_or(anyhow::anyhow!("failed to receive event"))
     }
-    /// Queue an app event to be sent to the event receiver.
-    ///
-    /// This is useful for sending events to the event handler which will be processed by the next
-    /// iteration of the application's event loop.
+    /// Publishes an application event to on the bus for processing.
     pub fn send(&mut self, app_event: AppEvent) {
-        // Ignore the result as the reciever cannot be dropped while this struct still has a
-        // reference to it
-        let _ = self.sender.send(Event::App(app_event));
+        if let Err(e) = self.sender.send(Event::App(app_event)) {
+            tracing::error!("error sending event: {}", e);
+        }
     }
 }
 
 impl Default for EventBus {
+    /// Creates a new instance of [`EventBus`] initialized to the default state.
     fn default() -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
 
@@ -86,24 +79,26 @@ impl Default for EventBus {
     }
 }
 
-/// A thread that handles reading crossterm events and emitting tick events on a regular schedule.
+/// A task which is executed in a background thread that handles reading Crossterm events and emitting tick
+/// events on a regular schedule.
 struct EventTask {
-    /// Event sender channel.
+    /// Event channel sender.
     sender: mpsc::UnboundedSender<Event>,
 }
 
 impl EventTask {
-    /// Constructs a new instance of [`EventThread`].
+    /// Constructs a new instance of [`EventTask`].
     fn new(sender: mpsc::UnboundedSender<Event>) -> Self {
         Self { sender }
     }
-    /// Runs the event thread.
-    ///
-    /// This function emits tick events at a fixed rate and polls for crossterm events in between.
+    /// Runs the task. The task emits tick events at a fixed rate and polls for crossterm events
+    /// in between. The task will exit when the sender for the event channel is closed.
     async fn run(self) -> anyhow::Result<()> {
         let tick_rate = Duration::from_secs_f64(1.0 / TICK_FPS);
-        let mut reader = crossterm::event::EventStream::new();
         let mut tick = tokio::time::interval(tick_rate);
+
+        let mut reader = crossterm::event::EventStream::new();
+
         loop {
             let tick_delay = tick.tick();
 
@@ -117,17 +112,18 @@ impl EventTask {
               _ = tick_delay => {
                 self.send(Event::Tick);
               }
-              Some(Ok(evt)) = crossterm_event => {
-                self.send(Event::Crossterm(evt));
+              Some(Ok(e)) = crossterm_event => {
+                self.send(Event::Crossterm(e));
               }
             };
         }
+
         Ok(())
     }
-    /// Sends an event to the receiver.
+    /// Publishes an event to the bus for processing.
     fn send(&self, event: Event) {
-        // Ignores the result because shutting down the app drops the receiver, which causes the send
-        // operation to fail. This is expected behavior and should not panic.
-        let _ = self.sender.send(event);
+        if let Err(e) = self.sender.send(event) {
+            tracing::error!("error sending event: {}", e);
+        }
     }
 }
