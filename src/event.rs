@@ -36,22 +36,22 @@ pub enum AppEvent {
 
 /// Terminal event handler.
 #[derive(Debug)]
-pub struct EventHandler {
+pub struct EventBus {
     /// Event sender channel.
     sender: mpsc::UnboundedSender<Event>,
     /// Event receiver channel.
     receiver: mpsc::UnboundedReceiver<Event>,
 }
 
-impl EventHandler {
-    /// Constructs a new instance of [`EventHandler`] and spawns a new thread to handle events.
+impl EventBus {
+    /// Constructs a new instance of [`EventPump`] and spawns a new thread to handle events.
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let actor = EventTask::new(sender.clone());
-        tokio::spawn(async { actor.run().await });
-        Self { sender, receiver }
+        Self::default()
     }
-
+    pub fn start(&self) {
+        let actor = EventTask::new(self.sender.clone());
+        tokio::spawn(async { actor.run().await });
+    }
     /// Receives an event from the sender.
     ///
     /// This function blocks until an event is received.
@@ -67,7 +67,6 @@ impl EventHandler {
             .await
             .ok_or(anyhow::anyhow!("Failed to receive event"))
     }
-
     /// Queue an app event to be sent to the event receiver.
     ///
     /// This is useful for sending events to the event handler which will be processed by the next
@@ -76,6 +75,14 @@ impl EventHandler {
         // Ignore the result as the reciever cannot be dropped while this struct still has a
         // reference to it
         let _ = self.sender.send(Event::App(app_event));
+    }
+}
+
+impl Default for EventBus {
+    fn default() -> Self {
+        let (sender, receiver) = mpsc::unbounded_channel();
+
+        Self { sender, receiver }
     }
 }
 
@@ -90,7 +97,6 @@ impl EventTask {
     fn new(sender: mpsc::UnboundedSender<Event>) -> Self {
         Self { sender }
     }
-
     /// Runs the event thread.
     ///
     /// This function emits tick events at a fixed rate and polls for crossterm events in between.
@@ -100,9 +106,12 @@ impl EventTask {
         let mut tick = tokio::time::interval(tick_rate);
         loop {
             let tick_delay = tick.tick();
+
             let crossterm_event = reader.next().fuse();
+
             tokio::select! {
               _ = self.sender.closed() => {
+                tracing::info!("exiting event loop because sender was closed");
                 break;
               }
               _ = tick_delay => {
@@ -115,7 +124,6 @@ impl EventTask {
         }
         Ok(())
     }
-
     /// Sends an event to the receiver.
     fn send(&self, event: Event) {
         // Ignores the result because shutting down the app drops the receiver, which causes the send
