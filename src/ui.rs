@@ -3,53 +3,60 @@ use crate::app::App;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
-    widgets::{Block, BorderType, List, ListItem, Paragraph, Widget},
+    style::Stylize,
+    widgets::{Block, BorderType, List, ListItem, Paragraph, Row, Table, Widget},
 };
 
 impl Widget for &App {
-    /// Renders the widgets that make up the application based on the application state.
+    /// Renders the widgets that make up the application based on the current application state.
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let record = self.state.record.clone().unwrap_or_default();
+
         let slices = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Fill(1), Constraint::Fill(3)])
-            .margin(1)
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Fill(1),
+                Constraint::Fill(3),
+            ])
             .split(area);
 
         let info_block = Block::bordered()
-            .title("Info")
+            .title(" Info ".cyan())
             .border_type(BorderType::Rounded);
 
-        let info = Paragraph::new("").block(info_block);
+        let info_items = vec![
+            ListItem::new(format!("Topic:     {}", record.topic)),
+            ListItem::new(format!("Partition: {}", record.partition)),
+        ];
 
-        info.render(slices[0], buf);
+        let info_list = List::new(info_items).block(info_block);
 
-        let record = self.state.record.clone().unwrap_or_default();
-
-        let record_slices = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Fill(1), Constraint::Fill(3)])
-            .split(slices[1]);
+        info_list.render(slices[0], buf);
 
         let headers_block = Block::bordered()
-            .title("Headers")
+            .title(format!(" Headers ({}) ", record.headers.len()).cyan())
             .border_type(BorderType::Rounded);
 
-        let header_items: Vec<ListItem> = record
+        let header_rows: Vec<Row> = record
             .headers
             .into_iter()
-            .map(|(k, v)| ListItem::new(format!("{k} -> {v}")))
+            .map(|(k, v)| Row::new([k, v]))
             .collect();
 
-        let headers_list = List::new(header_items).block(headers_block);
+        let headers_table = Table::new(header_rows, [Constraint::Min(1), Constraint::Fill(3)])
+            .column_spacing(1)
+            .header(Row::new(["Key".bold(), "Value".bold()]))
+            .block(headers_block);
 
-        headers_list.render(record_slices[0], buf);
+        headers_table.render(slices[1], buf);
 
         let value_block = Block::bordered()
-            .title("Value")
+            .title(" Value ".cyan())
             .border_type(BorderType::Rounded);
 
         let value_paragraph = Paragraph::new(record.value).block(value_block);
 
-        value_paragraph.render(record_slices[1], buf);
+        value_paragraph.render(slices[2], buf);
     }
 }
