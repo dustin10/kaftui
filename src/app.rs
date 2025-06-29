@@ -5,11 +5,19 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     DefaultTerminal,
 };
+use std::collections::HashMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct Record {
+    pub headers: HashMap<String, String>,
+    pub value: String,
+}
 
 #[derive(Debug)]
 pub struct State {
     /// Flag indicating the application is running.
     pub running: bool,
+    pub record: Option<Record>,
 }
 
 impl State {
@@ -22,7 +30,10 @@ impl State {
 impl Default for State {
     /// Creates a new instance of [`State`] initialized to the default state.
     fn default() -> Self {
-        Self { running: true }
+        Self {
+            running: true,
+            record: None,
+        }
     }
 }
 
@@ -42,6 +53,17 @@ impl App {
     /// Run the main loop of the application.
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> anyhow::Result<()> {
         self.event_bus.start();
+
+        let mut headers = HashMap::new();
+        headers.insert(String::from("foo"), String::from("bar"));
+        headers.insert(String::from("biz"), String::from("baz"));
+
+        let record = Record {
+            headers,
+            value: String::from("{\n    \"foo\":\"bar\",\n    \"biz\":\"baz\"\n}"),
+        };
+
+        self.state.record = Some(record);
 
         while self.state.running {
             terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;

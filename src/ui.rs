@@ -3,7 +3,7 @@ use crate::app::App;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
-    widgets::{Block, BorderType, Paragraph, Widget},
+    widgets::{Block, BorderType, List, ListItem, Paragraph, Widget},
 };
 
 impl Widget for &App {
@@ -23,6 +23,8 @@ impl Widget for &App {
 
         info.render(slices[0], buf);
 
+        let record = self.state.record.clone().unwrap_or_default();
+
         let record_slices = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Fill(1), Constraint::Fill(3)])
@@ -32,17 +34,22 @@ impl Widget for &App {
             .title("Headers")
             .border_type(BorderType::Rounded);
 
-        let headers = Paragraph::new("").block(headers_block);
+        let header_items: Vec<ListItem> = record
+            .headers
+            .into_iter()
+            .map(|(k, v)| ListItem::new(format!("{k} -> {v}")))
+            .collect();
 
-        headers.render(record_slices[0], buf);
+        let headers_list = List::new(header_items).block(headers_block);
+
+        headers_list.render(record_slices[0], buf);
 
         let value_block = Block::bordered()
             .title("Value")
             .border_type(BorderType::Rounded);
 
-        let value =
-            Paragraph::new("{\n    \"foo\":\"bar\",\n    \"biz\":\"baz\"\n}").block(value_block);
+        let value_paragraph = Paragraph::new(record.value).block(value_block);
 
-        value.render(record_slices[1], buf);
+        value_paragraph.render(record_slices[1], buf);
     }
 }
