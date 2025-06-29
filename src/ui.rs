@@ -3,7 +3,7 @@ use crate::app::App;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
-    style::Stylize,
+    style::{Color, Stylize},
     widgets::{Block, BorderType, List, ListItem, Paragraph, Row, Table, Widget},
 };
 
@@ -22,7 +22,8 @@ impl Widget for &App {
             .split(area);
 
         let info_block = Block::bordered()
-            .title(" Info ".cyan())
+            .title(" Info ")
+            .border_style(Color::Cyan)
             .border_type(BorderType::Rounded);
 
         let info_items = vec![
@@ -35,7 +36,8 @@ impl Widget for &App {
         info_list.render(slices[0], buf);
 
         let headers_block = Block::bordered()
-            .title(format!(" Headers ({}) ", record.headers.len()).cyan())
+            .title(format!(" Headers ({}) ", record.headers.len()))
+            .border_style(Color::Cyan)
             .border_type(BorderType::Rounded);
 
         let header_rows: Vec<Row> = record
@@ -53,6 +55,7 @@ impl Widget for &App {
 
         let value_block = Block::bordered()
             .title(" Value ".cyan())
+            .border_style(Color::Cyan)
             .border_type(BorderType::Rounded);
 
         let value_paragraph = Paragraph::new(record.value).block(value_block);

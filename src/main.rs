@@ -1,5 +1,6 @@
 mod app;
 mod event;
+mod kafka;
 mod ui;
 
 use crate::app::App;
