@@ -4,7 +4,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Stylize},
-    widgets::{Block, BorderType, List, ListItem, Paragraph, Row, Table, Widget},
+    widgets::{Block, List, ListItem, Paragraph, Row, Table, Widget},
 };
 
 impl Widget for &App {
@@ -21,10 +21,7 @@ impl Widget for &App {
             ])
             .split(area);
 
-        let info_block = Block::bordered()
-            .title(" Info ")
-            .border_style(Color::Cyan)
-            .border_type(BorderType::Rounded);
+        let info_block = Block::bordered().title(" Info ").border_style(Color::Cyan);
 
         let info_items = vec![
             ListItem::new(format!("Topic:     {}", record.topic)),
@@ -37,8 +34,7 @@ impl Widget for &App {
 
         let headers_block = Block::bordered()
             .title(format!(" Headers ({}) ", record.headers.len()))
-            .border_style(Color::Cyan)
-            .border_type(BorderType::Rounded);
+            .border_style(Color::Cyan);
 
         let header_rows: Vec<Row> = record
             .headers
@@ -55,8 +51,7 @@ impl Widget for &App {
 
         let value_block = Block::bordered()
             .title(" Value ".cyan())
-            .border_style(Color::Cyan)
-            .border_type(BorderType::Rounded);
+            .border_style(Color::Cyan);
 
         let value_paragraph = Paragraph::new(record.value).block(value_block);
 
