@@ -110,12 +110,14 @@ pub struct Consumer {
 }
 
 impl Consumer {
+    /// Creates a new [`Consumer`] with the specified dependencies.
     pub fn new(consumer_config: ConsumerConfig, event_bus: Arc<Mutex<EventBus>>) -> Self {
         Self {
             consumer_config,
             event_bus,
         }
     }
+    /// Starts the consumption of messages from the specified topic.
     pub async fn start(&self, topic: String) -> anyhow::Result<()> {
         let task = ConsumerTask::new(self.consumer_config.clone(), Arc::clone(&self.event_bus))?;
 
@@ -166,12 +168,17 @@ impl From<&BorrowedMessage<'_>> for Record {
     }
 }
 
+/// A task which is executed in a background thread that handles consuming messages from a Kafka
+/// topic.
 struct ConsumerTask {
+    /// Raw Kafka consumer.
     consumer: StreamConsumer<ConsumeContext>,
+    /// Bus that Kafka-related application events are published to.
     event_bus: Arc<Mutex<EventBus>>,
 }
 
 impl ConsumerTask {
+    /// Creates a new [`ConsumerTask`] with the specified dependencies.
     fn new(
         consumer_config: ConsumerConfig,
         event_bus: Arc<Mutex<EventBus>>,
@@ -198,6 +205,7 @@ impl ConsumerTask {
             event_bus,
         })
     }
+    /// Runs the task by subscribing to the specified topic and then consuming messages from it.
     async fn run(&self, topic: String) -> anyhow::Result<()> {
         let topics = vec![topic.as_str()];
 
