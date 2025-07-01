@@ -52,9 +52,7 @@ impl App {
     pub fn new() -> anyhow::Result<Self> {
         let event_bus = Arc::new(Mutex::new(EventBus::new()));
 
-        let consumer_config = ConsumerConfig::new();
-        let consumer = Consumer::new(consumer_config, Arc::clone(&event_bus))
-            .context("create kafka consumer")?;
+        let consumer = Consumer::new(ConsumerConfig::new(), Arc::clone(&event_bus));
 
         Ok(Self {
             state: State::default(),
@@ -67,6 +65,11 @@ impl App {
         let event_bus_guard = self.event_bus.lock().await;
         event_bus_guard.start();
         std::mem::drop(event_bus_guard);
+
+        self.consumer
+            .start(String::from("kaftui"))
+            .await
+            .context("start Kafka consumer")?;
 
         while self.state.running {
             terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;

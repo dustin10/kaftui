@@ -77,7 +77,7 @@ impl ConsumerContext for ConsumeContext {
 }
 
 /// Contains the data used to initialize and configure the Kafka consumer.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ConsumerConfig {
     /// Kafka server hosts.
     pub bootstrap_servers: String,
@@ -103,57 +103,25 @@ impl Default for ConsumerConfig {
 }
 
 pub struct Consumer {
-    /// Underlying Kafka consumer.
-    consumer: StreamConsumer<ConsumeContext>,
+    /// Configuration for the underlying Kafka consumer.
+    consumer_config: ConsumerConfig,
     /// Bus that Kafka-related application events are published to.
     event_bus: Arc<Mutex<EventBus>>,
 }
 
 impl Consumer {
-    pub fn new(config: ConsumerConfig, event_bus: Arc<Mutex<EventBus>>) -> anyhow::Result<Self> {
-        let group_id = config
-            .group_id
-            .unwrap_or_else(|| String::from("kaftui-consumer"));
-
-        let mut client_config = ClientConfig::new();
-        client_config.set("group.id", group_id);
-        client_config.set("bootstrap.servers", config.bootstrap_servers);
-        client_config.set("statistics.interval.ms", "60000");
-        client_config.set("auto.offset.reset", "latest");
-        client_config.set("enable.auto.commit", "false");
-
-        // TODO
-        client_config.set_log_level(rdkafka::config::RDKafkaLogLevel::Debug);
-
-        let consumer: StreamConsumer<ConsumeContext> =
-            client_config.create_with_context(ConsumeContext)?;
-
-        Ok(Self {
-            consumer,
+    pub fn new(consumer_config: ConsumerConfig, event_bus: Arc<Mutex<EventBus>>) -> Self {
+        Self {
+            consumer_config,
             event_bus,
-        })
+        }
     }
-    pub async fn start(&self, topic: &str) -> anyhow::Result<()> {
-        let topics = vec![topic];
+    pub async fn start(&self, topic: String) -> anyhow::Result<()> {
+        let task = ConsumerTask::new(self.consumer_config.clone(), Arc::clone(&self.event_bus))?;
 
-        self.consumer
-            .subscribe(&topics)
-            .context(format!("subscribe to Kafka topic: {}", topic))?;
+        tokio::spawn(async move { task.run(topic).await });
 
-        let stream_procesor = self.consumer.stream().try_for_each(|msg| async move {
-            let record: Record = (&msg).into();
-
-            let mut event_bus = self.event_bus.lock().await;
-            event_bus.send(AppEvent::RecordReceived(record));
-
-            if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
-                tracing::error!("error committing message: {}", err);
-            }
-
-            Ok(())
-        });
-
-        stream_procesor.await.context("process Kafka record stream")
+        Ok(())
     }
 }
 
@@ -199,14 +167,58 @@ impl From<&BorrowedMessage<'_>> for Record {
 }
 
 struct ConsumerTask {
+    consumer: StreamConsumer<ConsumeContext>,
     event_bus: Arc<Mutex<EventBus>>,
 }
 
 impl ConsumerTask {
-    fn new(event_bus: Arc<Mutex<EventBus>>) -> Self {
-        Self { event_bus }
+    fn new(
+        consumer_config: ConsumerConfig,
+        event_bus: Arc<Mutex<EventBus>>,
+    ) -> anyhow::Result<Self> {
+        let group_id = consumer_config
+            .group_id
+            .unwrap_or_else(|| String::from("kaftui-consumer"));
+
+        let mut client_config = ClientConfig::new();
+        client_config.set("group.id", group_id);
+        client_config.set("bootstrap.servers", consumer_config.bootstrap_servers);
+        client_config.set("statistics.interval.ms", "60000");
+        client_config.set("auto.offset.reset", "latest");
+        client_config.set("enable.auto.commit", "false");
+
+        // TODO
+        client_config.set_log_level(rdkafka::config::RDKafkaLogLevel::Debug);
+
+        let consumer: StreamConsumer<ConsumeContext> =
+            client_config.create_with_context(ConsumeContext)?;
+
+        Ok(Self {
+            consumer,
+            event_bus,
+        })
     }
-    async fn run(self) -> anyhow::Result<()> {
-        todo!()
+    async fn run(&self, topic: String) -> anyhow::Result<()> {
+        let topics = vec![topic.as_str()];
+
+        self.consumer
+            .subscribe(&topics)
+            .context(format!("subscribe to Kafka topic: {}", topic))?;
+
+        let stream_procesor = self.consumer.stream().try_for_each(|msg| async move {
+            let record: Record = (&msg).into();
+
+            let mut event_bus_guard = self.event_bus.lock().await;
+            event_bus_guard.send(AppEvent::RecordReceived(record));
+            std::mem::drop(event_bus_guard);
+
+            if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
+                tracing::error!("error committing message: {}", err);
+            }
+
+            Ok(())
+        });
+
+        stream_procesor.await.context("process Kafka record stream")
     }
 }
