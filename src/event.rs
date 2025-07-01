@@ -1,3 +1,4 @@
+use crate::kafka::Record;
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
 use std::time::Duration;
@@ -22,8 +23,10 @@ pub enum Event {
 /// Enumeration of events which can be produced by the application.
 #[derive(Clone, Debug)]
 pub enum AppEvent {
-    /// Quit the application.
+    /// Fires when the user requests to quit the application.
     Quit,
+    /// Fires when a new [`Record`] is received from a Kafka topic.
+    RecordReceived(Record),
 }
 
 /// The bus over which [`Event`]s are published and consumed.

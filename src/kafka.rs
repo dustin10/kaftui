@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use crate::event::{AppEvent, EventBus};
 
 use anyhow::Context;
 use futures::TryStreamExt;
@@ -8,8 +8,11 @@ use rdkafka::{
         StreamConsumer,
     },
     error::KafkaResult,
-    ClientConfig, ClientContext, TopicPartitionList,
+    message::{BorrowedMessage, Headers},
+    ClientConfig, ClientContext, Message, TopicPartitionList,
 };
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 /// Contains the data in the record consumed from a Kafka topic.
 #[derive(Clone, Debug, Default)]
@@ -17,7 +20,7 @@ pub struct Record {
     /// Name of the topic that the record was consumed from.
     pub topic: String,
     /// Partition number the record was assigned in the topic.
-    pub partition: u16,
+    pub partition: i32,
     /// Contains any headers from the Kafka record.
     pub headers: HashMap<String, String>,
     /// Value of the Kafka record.
@@ -76,18 +79,38 @@ impl ConsumerContext for ConsumeContext {
 /// Contains the data used to initialize and configure the Kafka consumer.
 #[derive(Debug)]
 pub struct ConsumerConfig {
-    /// Kafka broker host.
+    /// Kafka server hosts.
     pub bootstrap_servers: String,
-    /// Name of the consumer group used when reading a topic.
+    /// Id of the group used when consuming a topic.
     pub group_id: Option<String>,
 }
 
+impl ConsumerConfig {
+    /// Creates a new default instance of [`ConsumerConfig`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for ConsumerConfig {
+    /// Creates a new instance of [`ConsumerConfig`] initialized to default values.
+    fn default() -> Self {
+        Self {
+            bootstrap_servers: String::from("localhost:29092"),
+            group_id: None,
+        }
+    }
+}
+
 pub struct Consumer {
+    /// Underlying Kafka consumer.
     consumer: StreamConsumer<ConsumeContext>,
+    /// Bus that Kafka-related application events are published to.
+    event_bus: Arc<Mutex<EventBus>>,
 }
 
 impl Consumer {
-    pub fn with_config(config: ConsumerConfig) -> anyhow::Result<Self> {
+    pub fn new(config: ConsumerConfig, event_bus: Arc<Mutex<EventBus>>) -> anyhow::Result<Self> {
         let group_id = config
             .group_id
             .unwrap_or_else(|| String::from("kaftui-consumer"));
@@ -105,17 +128,24 @@ impl Consumer {
         let consumer: StreamConsumer<ConsumeContext> =
             client_config.create_with_context(ConsumeContext)?;
 
-        // TODO
-        let topics = vec!["kaftui-test"];
-
-        consumer
-            .subscribe(&topics)
-            .context(format!("subscribe to Kafka topic(s): {:?}", topics))?;
-
-        Ok(Self { consumer })
+        Ok(Self {
+            consumer,
+            event_bus,
+        })
     }
-    pub async fn run(&self) -> anyhow::Result<()> {
+    pub async fn start(&self, topic: &str) -> anyhow::Result<()> {
+        let topics = vec![topic];
+
+        self.consumer
+            .subscribe(&topics)
+            .context(format!("subscribe to Kafka topic: {}", topic))?;
+
         let stream_procesor = self.consumer.stream().try_for_each(|msg| async move {
+            let record: Record = (&msg).into();
+
+            let mut event_bus = self.event_bus.lock().await;
+            event_bus.send(AppEvent::RecordReceived(record));
+
             if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
                 tracing::error!("error committing message: {}", err);
             }
@@ -124,5 +154,59 @@ impl Consumer {
         });
 
         stream_procesor.await.context("process Kafka record stream")
+    }
+}
+
+impl From<&BorrowedMessage<'_>> for Record {
+    /// Converts from a reference to a [`BorrowedMessage`] to a [`Record`].
+    fn from(msg: &BorrowedMessage<'_>) -> Self {
+        let headers: HashMap<String, String> = match msg.headers() {
+            Some(hs) => {
+                let mut headers = HashMap::new();
+                for h in hs.iter() {
+                    let value = match std::str::from_utf8(h.value.unwrap()) {
+                        Ok(s) => String::from(s),
+                        Err(e) => {
+                            tracing::warn!("invalid UTF8 header value: {}", e);
+                            String::from("")
+                        }
+                    };
+
+                    headers.insert(String::from(h.key), value);
+                }
+
+                headers
+            }
+            None => HashMap::new(),
+        };
+
+        let value = match msg.payload_view::<str>() {
+            Some(Ok(data)) => String::from(data),
+            Some(Err(e)) => {
+                tracing::error!("invalid string value in message: {}", e);
+                String::from("")
+            }
+            None => String::from(""),
+        };
+
+        Self {
+            partition: msg.partition(),
+            topic: String::from(msg.topic()),
+            headers,
+            value,
+        }
+    }
+}
+
+struct ConsumerTask {
+    event_bus: Arc<Mutex<EventBus>>,
+}
+
+impl ConsumerTask {
+    fn new(event_bus: Arc<Mutex<EventBus>>) -> Self {
+        Self { event_bus }
+    }
+    async fn run(self) -> anyhow::Result<()> {
+        todo!()
     }
 }

@@ -80,7 +80,7 @@ fn init_env(enable_logs: bool) {
 /// Runs the application.
 async fn run_app() -> anyhow::Result<()> {
     let terminal = ratatui::init();
-    let result = App::new().run(terminal).await;
+    let result = App::new()?.run(terminal).await;
     ratatui::restore();
     result
 }
