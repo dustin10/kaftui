@@ -53,7 +53,17 @@ impl Widget for &App {
             .title(" Value ".cyan())
             .border_style(Color::Cyan);
 
-        let value_paragraph = Paragraph::new(record.value).block(value_block);
+        let json = match serde_json::from_str(&record.value)
+            .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
+        {
+            Ok(json) => json,
+            Err(e) => {
+                tracing::error!("failed to format JSON: {}", e);
+                record.value
+            }
+        };
+
+        let value_paragraph = Paragraph::new(json).block(value_block);
 
         value_paragraph.render(slices[2], buf);
     }

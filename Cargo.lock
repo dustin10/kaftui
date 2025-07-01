@@ -527,6 +527,8 @@ dependencies = [
  "futures",
  "ratatui",
  "rdkafka",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-appender",
