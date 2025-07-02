@@ -38,6 +38,12 @@ impl Default for State {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Screen {
+    ListTopics,
+    ViewTopic,
+}
+
 pub struct App {
     /// Contains the current state of the application.
     pub state: State,
@@ -45,6 +51,8 @@ pub struct App {
     pub event_bus: Arc<Mutex<EventBus>>,
     /// Consumer used to read records from a Kafka topic.
     pub consumer: Consumer,
+    /// Holds the [`Screen`] the user is currently viewing.
+    pub screen: Screen,
 }
 
 impl App {
@@ -58,6 +66,7 @@ impl App {
             state: State::default(),
             event_bus,
             consumer,
+            screen: Screen::ViewTopic,
         })
     }
     /// Run the main loop of the application.
