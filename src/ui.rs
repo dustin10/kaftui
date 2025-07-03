@@ -29,11 +29,17 @@ fn render_consume_topic(state: &State, area: Rect, buf: &mut Buffer) {
         ])
         .split(area);
 
-    let info_block = Block::bordered().title(" Topic ").border_style(Color::Cyan);
+    let info_block = Block::bordered().title(" Info ").border_style(Color::Cyan);
 
     let info_items = vec![
-        ListItem::new(format!("Topic:     {}", record.topic)),
-        ListItem::new(format!("Partition: {}", record.partition)),
+        ListItem::new(format!("Topic:         {}", record.topic)),
+        ListItem::new(format!("Partition:     {}", record.partition)),
+        ListItem::new(format!(
+            "Partition Key: {}",
+            record
+                .partition_key
+                .unwrap_or_else(|| String::from("<n/a>"))
+        )),
     ];
 
     let info_list = List::new(info_items).block(info_block);

@@ -124,6 +124,8 @@ impl App {
             }
         }
 
+        tracing::debug!("application stopped");
+
         Ok(())
     }
     /// Handles mouse events emitted by the [`EventBus`].
@@ -141,12 +143,14 @@ impl App {
     }
     /// Handles the record recieved event emitted by the [`EventBus`].
     fn on_record_received(&mut self, record: Record) {
+        tracing::debug!("Kafka record received");
         self.state.record = Some(record);
     }
     /// Handles the tick event of the terminal.
     fn tick(&self) {}
     /// Quits the application.
     fn quit(&mut self) {
+        tracing::debug!("quit application request received");
         self.state.running = false;
     }
 }

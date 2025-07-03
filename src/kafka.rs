@@ -22,6 +22,8 @@ pub struct Record {
     pub topic: String,
     /// Partition number the record was assigned in the topic.
     pub partition: i32,
+    /// Partition key for the record if one was set.
+    pub partition_key: Option<String>,
     /// Contains any headers from the Kafka record.
     pub headers: HashMap<String, String>,
     /// Value of the Kafka record.
@@ -131,6 +133,11 @@ impl Consumer {
 impl From<&BorrowedMessage<'_>> for Record {
     /// Converts from a reference to a [`BorrowedMessage`] to a [`Record`].
     fn from(msg: &BorrowedMessage<'_>) -> Self {
+        let partition_key = msg
+            .key()
+            .and_then(|k| std::str::from_utf8(k).ok())
+            .map(ToString::to_string);
+
         let headers: HashMap<String, String> = match msg.headers() {
             Some(hs) => {
                 let mut headers = HashMap::new();
@@ -163,6 +170,7 @@ impl From<&BorrowedMessage<'_>> for Record {
         Self {
             partition: msg.partition(),
             topic: String::from(msg.topic()),
+            partition_key,
             headers,
             value,
         }
