@@ -24,6 +24,11 @@ struct Args {
     /// Optional. Id of the group that the application will use when consuming messages from the Kafka topic.
     #[arg(short, long)]
     group_id: Option<String>,
+    /// Optional. JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
+    /// from the Kafka topic that the end user may not be interested in. A message will only be
+    /// presented to the user if it matches the filter.
+    #[arg(short, long)]
+    filter: Option<String>,
     /// Optional. Flag indicating that application logs should be output to a file.
     #[arg(long)]
     enable_logs: bool,
@@ -40,6 +45,7 @@ impl From<Args> for AppConfig {
                     .group_id
                     .unwrap_or_else(|| String::from("kaftui-consumer")),
             )
+            .filter(value.filter)
             .build()
             .expect("valid app config")
     }

@@ -12,11 +12,13 @@ use rdkafka::{
     message::{BorrowedMessage, Headers},
     ClientConfig, ClientContext, Message, TopicPartitionList,
 };
+use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 /// Contains the data in the record consumed from a Kafka topic.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Record {
     /// Name of the topic that the record was consumed from.
     pub topic: String,
@@ -121,10 +123,10 @@ impl Consumer {
         }
     }
     /// Starts the consumption of messages from the specified topic.
-    pub async fn start(&self, topic: String) -> anyhow::Result<()> {
+    pub async fn start(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
         let task = ConsumerTask::new(self.consumer_config.clone(), Arc::clone(&self.event_bus))?;
 
-        tokio::spawn(async move { task.run(topic).await });
+        tokio::spawn(async move { task.run(topic, filter).await });
 
         Ok(())
     }
@@ -211,25 +213,42 @@ impl ConsumerTask {
         })
     }
     /// Runs the task by subscribing to the specified topic and then consuming messages from it.
-    async fn run(&self, topic: String) -> anyhow::Result<()> {
+    async fn run(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
         let topics = vec![topic.as_str()];
 
         self.consumer
             .subscribe(&topics)
             .context(format!("subscribe to Kafka topic: {}", topic))?;
 
-        let stream_procesor = self.consumer.stream().try_for_each(|msg| async move {
-            let record: Record = (&msg).into();
+        let stream_procesor = self.consumer.stream().try_for_each(|msg| {
+            let filter = filter.clone();
 
-            let mut event_bus_guard = self.event_bus.lock().await;
-            event_bus_guard.send(AppEvent::RecordReceived(record));
-            std::mem::drop(event_bus_guard);
+            async move {
+                let record = (&msg).into();
 
-            if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
-                tracing::error!("error committing message: {}", err);
+                if let Some(f) = filter {
+                    // TODO: cleanup error handling
+                    let json_value = serde_json::to_value(&record).unwrap();
+
+                    // TODO: cleanup error handling
+                    let json_path = serde_json_path::JsonPath::parse(&f).unwrap();
+
+                    if json_path.query(&json_value).is_empty() {
+                        tracing::debug!("ignoring Kafka message based on filter");
+                        return Ok(());
+                    }
+                }
+
+                let mut event_bus_guard = self.event_bus.lock().await;
+                event_bus_guard.send(AppEvent::RecordReceived(record));
+                std::mem::drop(event_bus_guard);
+
+                if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
+                    tracing::error!("error committing message: {}", err);
+                }
+
+                Ok(())
             }
-
-            Ok(())
         });
 
         stream_procesor.await.context("process Kafka record stream")

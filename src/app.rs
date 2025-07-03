@@ -55,6 +55,10 @@ pub struct AppConfig {
     topic: String,
     /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
     group_id: String,
+    /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
+    /// from the Kafka topic that the end user may not be interested in. A message will only be
+    /// presented to the user if it matches the filter.
+    filter: Option<String>,
 }
 
 impl AppConfig {
@@ -106,7 +110,7 @@ impl App {
         std::mem::drop(event_bus_guard);
 
         self.consumer
-            .start(self.config.topic.clone())
+            .start(self.config.topic.clone(), self.config.filter.clone())
             .await
             .context("start Kafka consumer")?;
 
