@@ -32,13 +32,16 @@ struct Args {
 impl From<Args> for AppConfig {
     /// Consumes and converts an instance of [`Args`] to one of [`AppConfig`].
     fn from(value: Args) -> Self {
-        Self {
-            bootstrap_servers: value.bootstrap_servers,
-            topic: value.topic,
-            group_id: value
-                .group_id
-                .unwrap_or_else(|| String::from("kaftui-consumer")),
-        }
+        Self::builder()
+            .bootstrap_servers(value.bootstrap_servers)
+            .topic(value.topic)
+            .group_id(
+                value
+                    .group_id
+                    .unwrap_or_else(|| String::from("kaftui-consumer")),
+            )
+            .build()
+            .expect("valid app config")
     }
 }
 

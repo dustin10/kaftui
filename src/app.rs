@@ -5,6 +5,7 @@ use crate::{
 
 use anyhow::Context;
 use crossterm::event::MouseEvent;
+use derive_builder::Builder;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     DefaultTerminal,
@@ -46,16 +47,24 @@ pub enum Screen {
 }
 
 /// Configuration values which drive the behavior of the application.
-#[derive(Debug)]
+#[derive(Builder, Debug)]
 pub struct AppConfig {
     /// Kafka bootstrap servers host value that the application will connect to.
-    pub bootstrap_servers: String,
+    bootstrap_servers: String,
     /// Name of the Kafka topic to consume messages from.
-    pub topic: String,
+    topic: String,
     /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
-    pub group_id: String,
+    group_id: String,
 }
 
+impl AppConfig {
+    /// Creates a new default [`AppConfigBuilder`].
+    pub fn builder() -> AppConfigBuilder {
+        AppConfigBuilder::default()
+    }
+}
+
+/// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
     config: AppConfig,
