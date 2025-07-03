@@ -67,17 +67,21 @@ fn render_consume_topic(state: &State, area: Rect, buf: &mut Buffer) {
         .title(" Value ".cyan())
         .border_style(Color::Cyan);
 
-    let json = match serde_json::from_str(&record.value)
-        .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
-    {
-        Ok(json) => json,
-        Err(e) => {
-            tracing::error!("failed to format JSON: {}", e);
-            record.value
+    let value = if record.value.is_empty() {
+        String::from("")
+    } else {
+        match serde_json::from_str(&record.value)
+            .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
+        {
+            Ok(json) => json,
+            Err(e) => {
+                tracing::warn!("invalid JSON value: {}", e);
+                record.value
+            }
         }
     };
 
-    let value_paragraph = Paragraph::new(json).block(value_block);
+    let value_paragraph = Paragraph::new(value).block(value_block);
 
     value_paragraph.render(slices[2], buf);
 }
