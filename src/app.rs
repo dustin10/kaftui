@@ -38,35 +38,56 @@ impl Default for State {
     }
 }
 
+/// Enumeration of the various screens that the application can display to the end user.
 #[derive(Debug, PartialEq)]
 pub enum Screen {
-    ListTopics,
-    ViewTopic,
+    /// Active when the user is viewing messages being consumed from a Kafka topic.
+    ConsumeTopic,
+}
+
+/// Configuration values which drive the behavior of the application.
+#[derive(Debug)]
+pub struct AppConfig {
+    /// Kafka bootstrap servers host value that the application will connect to.
+    pub bootstrap_servers: String,
+    /// Name of the Kafka topic to consume messages from.
+    pub topic: String,
+    /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
+    pub group_id: String,
 }
 
 pub struct App {
+    /// Configuration for the application.
+    config: AppConfig,
     /// Contains the current state of the application.
     pub state: State,
     /// Emits events to be handled by the application.
-    pub event_bus: Arc<Mutex<EventBus>>,
+    event_bus: Arc<Mutex<EventBus>>,
     /// Consumer used to read records from a Kafka topic.
-    pub consumer: Consumer,
+    consumer: Consumer,
     /// Holds the [`Screen`] the user is currently viewing.
     pub screen: Screen,
 }
 
 impl App {
     /// Creates a new default [`App`].
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(config: AppConfig) -> anyhow::Result<Self> {
         let event_bus = Arc::new(Mutex::new(EventBus::new()));
 
-        let consumer = Consumer::new(ConsumerConfig::new(), Arc::clone(&event_bus));
+        let consumer_config = ConsumerConfig::builder()
+            .bootstrap_servers(config.bootstrap_servers.clone())
+            .group_id(config.group_id.clone())
+            .build()
+            .expect("valid consumer configuration");
+
+        let consumer = Consumer::new(consumer_config, Arc::clone(&event_bus));
 
         Ok(Self {
+            config,
             state: State::default(),
             event_bus,
             consumer,
-            screen: Screen::ViewTopic,
+            screen: Screen::ConsumeTopic,
         })
     }
     /// Run the main loop of the application.
@@ -76,7 +97,7 @@ impl App {
         std::mem::drop(event_bus_guard);
 
         self.consumer
-            .start(String::from("kaftui"))
+            .start(self.config.topic.clone())
             .await
             .context("start Kafka consumer")?;
 

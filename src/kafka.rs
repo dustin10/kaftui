@@ -1,6 +1,7 @@
 use crate::event::{AppEvent, EventBus};
 
 use anyhow::Context;
+use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
     consumer::{
@@ -77,18 +78,18 @@ impl ConsumerContext for ConsumeContext {
 }
 
 /// Contains the data used to initialize and configure the Kafka consumer.
-#[derive(Clone, Debug)]
+#[derive(Builder, Clone, Debug)]
 pub struct ConsumerConfig {
     /// Kafka server hosts.
-    pub bootstrap_servers: String,
+    bootstrap_servers: String,
     /// Id of the group used when consuming a topic.
-    pub group_id: Option<String>,
+    group_id: String,
 }
 
 impl ConsumerConfig {
     /// Creates a new default instance of [`ConsumerConfig`].
-    pub fn new() -> Self {
-        Self::default()
+    pub fn builder() -> ConsumerConfigBuilder {
+        ConsumerConfigBuilder::default()
     }
 }
 
@@ -97,7 +98,7 @@ impl Default for ConsumerConfig {
     fn default() -> Self {
         Self {
             bootstrap_servers: String::from("localhost:29092"),
-            group_id: None,
+            group_id: String::from("kaftui-consumer"),
         }
     }
 }
@@ -183,12 +184,8 @@ impl ConsumerTask {
         consumer_config: ConsumerConfig,
         event_bus: Arc<Mutex<EventBus>>,
     ) -> anyhow::Result<Self> {
-        let group_id = consumer_config
-            .group_id
-            .unwrap_or_else(|| String::from("kaftui-consumer"));
-
         let mut client_config = ClientConfig::new();
-        client_config.set("group.id", group_id);
+        client_config.set("group.id", consumer_config.group_id);
         client_config.set("bootstrap.servers", consumer_config.bootstrap_servers);
         client_config.set("statistics.interval.ms", "60000");
         client_config.set("auto.offset.reset", "latest");

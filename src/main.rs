@@ -5,6 +5,7 @@ mod ui;
 
 use crate::app::App;
 
+use app::AppConfig;
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -14,9 +15,31 @@ use tracing_subscriber::EnvFilter;
 #[derive(Debug, Parser)]
 #[command()]
 struct Args {
-    /// Flag indicating that application logs should be output to a file.
+    /// Kafka bootstrap servers host value that the application will connect to.
+    #[arg(long)]
+    bootstrap_servers: String,
+    /// Name of the topic to consume messages from.
+    #[arg(long)]
+    topic: String,
+    /// Optional. Id of the group that the application will use when consuming messages from the Kafka topic.
+    #[arg(long)]
+    group_id: Option<String>,
+    /// Optional. Flag indicating that application logs should be output to a file.
     #[arg(long)]
     enable_logs: bool,
+}
+
+impl From<Args> for AppConfig {
+    /// Consumes and converts an instance of [`Args`] to one of [`AppConfig`].
+    fn from(value: Args) -> Self {
+        Self {
+            bootstrap_servers: value.bootstrap_servers,
+            topic: value.topic,
+            group_id: value
+                .group_id
+                .unwrap_or_else(|| String::from("kaftui-consumer")),
+        }
+    }
 }
 
 /// Main entry point for the application.
@@ -26,12 +49,13 @@ async fn main() -> anyhow::Result<()> {
 
     init_env(args.enable_logs);
 
-    run_app().await
+    run_app(args).await
 }
 
 /// Initializes the environment that the application will run in.
 fn init_env(enable_logs: bool) {
     let dot_env_result = dotenvy::dotenv();
+
     if !enable_logs {
         return;
     }
@@ -78,9 +102,12 @@ fn init_env(enable_logs: bool) {
 }
 
 /// Runs the application.
-async fn run_app() -> anyhow::Result<()> {
+async fn run_app(args: Args) -> anyhow::Result<()> {
     let terminal = ratatui::init();
-    let result = App::new()?.run(terminal).await;
+
+    let result = App::new(args.into())?.run(terminal).await;
+
     ratatui::restore();
+
     result
 }

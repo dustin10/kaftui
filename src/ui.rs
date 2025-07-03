@@ -11,25 +11,13 @@ impl Widget for &App {
     /// Renders the widgets that make up the application based on the current application state.
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.screen {
-            Screen::ViewTopic => render_view_topic(&self.state, area, buf),
-            Screen::ListTopics => render_list_topics(area, buf),
+            Screen::ConsumeTopic => render_consume_topic(&self.state, area, buf),
         }
     }
 }
 
-/// Renders the UI to the terminal for the [`Screen::ListTopics`] screen.
-fn render_list_topics(area: Rect, buf: &mut Buffer) {
-    let todo_block = Block::bordered()
-        .title(" Topics ")
-        .border_style(Color::Cyan);
-
-    let todo_text = Paragraph::new("TODO").block(todo_block);
-
-    todo_text.render(area, buf);
-}
-
-/// Renders the UI to the terminal for the [`Screen::ViewTopic`] screen.
-fn render_view_topic(state: &State, area: Rect, buf: &mut Buffer) {
+/// Renders the UI to the terminal for the [`Screen::ConsumeTopic`] screen.
+fn render_consume_topic(state: &State, area: Rect, buf: &mut Buffer) {
     let record = state.record.clone().unwrap_or_default();
 
     let slices = Layout::default()
@@ -41,7 +29,7 @@ fn render_view_topic(state: &State, area: Rect, buf: &mut Buffer) {
         ])
         .split(area);
 
-    let info_block = Block::bordered().title(" Info ").border_style(Color::Cyan);
+    let info_block = Block::bordered().title(" Topic ").border_style(Color::Cyan);
 
     let info_items = vec![
         ListItem::new(format!("Topic:     {}", record.topic)),
