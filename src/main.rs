@@ -16,13 +16,13 @@ use tracing_subscriber::EnvFilter;
 #[command()]
 struct Args {
     /// Kafka bootstrap servers host value that the application will connect to.
-    #[arg(long)]
+    #[arg(short, long)]
     bootstrap_servers: String,
     /// Name of the topic to consume messages from.
-    #[arg(long)]
+    #[arg(short, long)]
     topic: String,
     /// Optional. Id of the group that the application will use when consuming messages from the Kafka topic.
-    #[arg(long)]
+    #[arg(short, long)]
     group_id: Option<String>,
     /// Optional. Flag indicating that application logs should be output to a file.
     #[arg(long)]
