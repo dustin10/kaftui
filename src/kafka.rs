@@ -227,11 +227,11 @@ impl ConsumerTask {
                 let record = (&msg).into();
 
                 if let Some(f) = filter {
-                    // TODO: cleanup error handling
-                    let json_value = serde_json::to_value(&record).unwrap();
+                    let json_value =
+                        serde_json::to_value(&record).expect("Record serializes to JSON");
 
-                    // TODO: cleanup error handling
-                    let json_path = serde_json_path::JsonPath::parse(&f).unwrap();
+                    let json_path =
+                        serde_json_path::JsonPath::parse(&f).expect("valid JSONPath expression");
 
                     if json_path.query(&json_value).is_empty() {
                         tracing::debug!("ignoring Kafka message based on filter");
