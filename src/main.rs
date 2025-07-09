@@ -5,7 +5,7 @@ mod ui;
 
 use crate::app::App;
 
-use app::AppConfig;
+use app::Config;
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -34,8 +34,8 @@ struct Args {
     enable_logs: bool,
 }
 
-impl From<Args> for AppConfig {
-    /// Consumes and converts an instance of [`Args`] to one of [`AppConfig`].
+impl From<Args> for Config {
+    /// Consumes and converts an instance of [`Args`] to one of [`Config`].
     fn from(value: Args) -> Self {
         Self::builder()
             .bootstrap_servers(value.bootstrap_servers)

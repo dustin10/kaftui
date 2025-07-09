@@ -48,7 +48,7 @@ pub enum Screen {
 
 /// Configuration values which drive the behavior of the application.
 #[derive(Builder, Debug)]
-pub struct AppConfig {
+pub struct Config {
     /// Kafka bootstrap servers host value that the application will connect to.
     bootstrap_servers: String,
     /// Name of the Kafka topic to consume messages from.
@@ -61,17 +61,17 @@ pub struct AppConfig {
     filter: Option<String>,
 }
 
-impl AppConfig {
-    /// Creates a new default [`AppConfigBuilder`].
-    pub fn builder() -> AppConfigBuilder {
-        AppConfigBuilder::default()
+impl Config {
+    /// Creates a new default [`ConfigBuilder`].
+    pub fn builder() -> ConfigBuilder {
+        ConfigBuilder::default()
     }
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
-    config: AppConfig,
+    config: Config,
     /// Contains the current state of the application.
     pub state: State,
     /// Emits events to be handled by the application.
@@ -83,8 +83,8 @@ pub struct App {
 }
 
 impl App {
-    /// Creates a new default [`App`].
-    pub fn new(config: AppConfig) -> anyhow::Result<Self> {
+    /// Creates a new [`App`] configured by the specified [`Config`].
+    pub fn new(config: Config) -> anyhow::Result<Self> {
         let event_bus = Arc::new(Mutex::new(EventBus::new()));
 
         let consumer_config = ConsumerConfig::builder()
