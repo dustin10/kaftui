@@ -4,45 +4,48 @@ use crate::{
 };
 
 use ratatui::{
-    buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Stylize},
-    widgets::{Block, List, ListItem, Paragraph, Row, Table, Widget},
+    widgets::{Block, List, ListItem, Paragraph, Row, Table},
+    Frame,
 };
 
 /// Value displayed for the partition key field when one is not present in the Kafka record.
 const EMPTY_PARTITION_KEY: &str = "<empty>";
 
-impl Widget for &App {
-    /// Renders the widgets that make up the application based on the current application state.
-    fn render(self, area: Rect, buf: &mut Buffer) {
+impl App {
+    /// Draws the UI for the application to the given [`Frame`] based on the current screen the
+    /// user is viewing.
+    pub fn draw(&mut self, frame: &mut Frame) {
         match self.screen {
-            Screen::ConsumeTopic => render_consume_topic(&self.state, area, buf),
+            Screen::ConsumeTopic => render_consume_topic(&mut self.state, frame),
         }
     }
 }
 
 /// Renders the UI to the terminal for the [`Screen::ConsumeTopic`] screen.
-fn render_consume_topic(state: &State, area: Rect, buf: &mut Buffer) {
+fn render_consume_topic(state: &mut State, frame: &mut Frame) {
+    let full_screen = frame.area();
+
     let containers = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
+        .split(full_screen);
 
-    let left_side = containers[0];
-    let right_side = containers[1];
+    let left_panel = containers[0];
+    let right_panel = containers[1];
 
-    render_record_list(state, left_side, buf);
+    render_record_list(state, frame, left_panel);
 
     if let Some(record) = state.selected.as_ref() {
-        render_record_details(record.clone(), right_side, buf);
+        render_record_details(record.clone(), frame, right_panel);
     } else {
-        render_record_empty(right_side, buf);
+        render_record_empty(frame, right_panel);
     }
 }
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
-fn render_record_list(state: &State, area: Rect, buf: &mut Buffer) {
+fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
     let record_list_block = Block::bordered()
         .title(" Records ")
         .border_style(Color::Cyan);
@@ -76,11 +79,11 @@ fn render_record_list(state: &State, area: Rect, buf: &mut Buffer) {
     ]))
     .block(record_list_block);
 
-    records_table.render(area, buf);
+    frame.render_stateful_widget(records_table, area, &mut state.record_list_state);
 }
 
 /// Renders the record details panel when there is an active [`Record`] set.
-fn render_record_details(record: Record, area: Rect, buf: &mut Buffer) {
+fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
     let layout_slices = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -110,7 +113,7 @@ fn render_record_details(record: Record, area: Rect, buf: &mut Buffer) {
 
     let info_list = List::new(info_items).block(info_block);
 
-    info_list.render(info_slice, buf);
+    frame.render_widget(info_list, info_slice);
 
     let headers_block = Block::bordered()
         .title(format!(" Headers ({}) ", record.headers.len()))
@@ -127,7 +130,7 @@ fn render_record_details(record: Record, area: Rect, buf: &mut Buffer) {
         .header(Row::new(["Key".bold(), "Value".bold()]))
         .block(headers_block);
 
-    headers_table.render(headers_slice, buf);
+    frame.render_widget(headers_table, headers_slice);
 
     let value_block = Block::bordered()
         .title(" Value ".cyan())
@@ -141,7 +144,7 @@ fn render_record_details(record: Record, area: Rect, buf: &mut Buffer) {
         {
             Ok(json) => json,
             Err(e) => {
-                tracing::warn!("invalid JSON value: {}", e);
+                tracing::error!("invalid JSON value: {}", e);
                 record.value
             }
         }
@@ -149,11 +152,11 @@ fn render_record_details(record: Record, area: Rect, buf: &mut Buffer) {
 
     let value_paragraph = Paragraph::new(value).block(value_block);
 
-    value_paragraph.render(value_slice, buf);
+    frame.render_widget(value_paragraph, value_slice);
 }
 
 /// Renders the record details panel when no active [`Record`] set.
-fn render_record_empty(area: Rect, buf: &mut Buffer) {
+fn render_record_empty(frame: &mut Frame, area: Rect) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -165,5 +168,5 @@ fn render_record_empty(area: Rect, buf: &mut Buffer) {
         .block(Block::default())
         .centered();
 
-    empty_text.render(text_area, buf);
+    frame.render_widget(empty_text, text_area);
 }

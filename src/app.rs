@@ -9,10 +9,18 @@ use crossterm::event::MouseEvent;
 use derive_builder::Builder;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
+    widgets::TableState,
     DefaultTerminal,
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// Default group id for the Kafka consumer.
+pub const DEFAULT_CONSUMER_GROUP_ID: &str = "kaftui-consumer";
+
+/// Default maximum number of records consumed from the Kafka toic to hold in memory at any given
+/// time.
+pub const DEFAULT_MAX_RECORDS: usize = 256;
 
 /// Manages the global appliation state.
 #[derive(Debug)]
@@ -23,6 +31,9 @@ pub struct State {
     pub selected: Option<Record>,
     /// Collection of the [`Record`]s that have been consumed from the Kafka topic.
     pub records: BoundedVecDeque<Record>,
+    /// [`TableState`] for the table that the records consumed from the Kafka topic are rendered
+    /// to.
+    pub record_list_state: TableState,
 }
 
 impl State {
@@ -32,6 +43,7 @@ impl State {
             running: true,
             selected: None,
             records: BoundedVecDeque::new(max_records),
+            record_list_state: TableState::new(),
         }
     }
 }
@@ -117,7 +129,7 @@ impl App {
             .context("start Kafka consumer")?;
 
         while self.state.running {
-            terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
+            terminal.draw(|frame| self.draw(frame))?;
 
             let mut event_bus_guard = self.event_bus.lock().await;
             let event = event_bus_guard.next().await?;

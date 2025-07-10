@@ -3,19 +3,12 @@ mod event;
 mod kafka;
 mod ui;
 
-use crate::app::App;
+use crate::app::{App, DEFAULT_CONSUMER_GROUP_ID, DEFAULT_MAX_RECORDS};
 
 use app::Config;
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
-
-/// Default group id for the Kafka consumer.
-const DEFAULT_CONSUMER_GROUP_ID: &str = "kaftui-consumer";
-
-/// Default maximum number of records consumed from the Kafka toic to hold in memory at any given
-/// time.
-const DEFAULT_MAX_RECORDS: usize = 256;
 
 /// The [`Args`] struct is a contains the resolved values for the command line arguments supported
 /// by the application.
