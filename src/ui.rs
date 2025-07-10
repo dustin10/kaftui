@@ -10,6 +10,9 @@ use ratatui::{
     widgets::{Block, List, ListItem, Paragraph, Row, Table, Widget},
 };
 
+/// Value displayed for the partition key field when one is not present in the Kafka record.
+const EMPTY_PARTITION_KEY: &str = "<empty>";
+
 impl Widget for &App {
     /// Renders the widgets that make up the application based on the current application state.
     fn render(self, area: Rect, buf: &mut Buffer) {
@@ -29,27 +32,56 @@ fn render_consume_topic(state: &State, area: Rect, buf: &mut Buffer) {
     let left_side = containers[0];
     let right_side = containers[1];
 
-    render_record_list(left_side, buf);
+    render_record_list(state, left_side, buf);
 
-    if let Some(record) = state.record.clone() {
-        render_record_details(record, right_side, buf);
+    if let Some(record) = state.selected.as_ref() {
+        render_record_details(record.clone(), right_side, buf);
     } else {
         render_record_empty(right_side, buf);
     }
 }
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
-fn render_record_list(area: Rect, buf: &mut Buffer) {
+fn render_record_list(state: &State, area: Rect, buf: &mut Buffer) {
     let record_list_block = Block::bordered()
         .title(" Records ")
         .border_style(Color::Cyan);
 
-    record_list_block.render(area, buf);
+    let records_rows = state.records.iter().rev().map(|r| {
+        let key = r
+            .partition_key
+            .clone()
+            .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
+
+        let partition = r.partition.to_string();
+
+        let timestamp = r.timestamp.to_string();
+
+        Row::new([key, partition, timestamp])
+    });
+
+    let records_table = Table::new(
+        records_rows,
+        [
+            Constraint::Fill(2),
+            Constraint::Fill(1),
+            Constraint::Fill(2),
+        ],
+    )
+    .column_spacing(1)
+    .header(Row::new([
+        "Key".bold(),
+        "Partition".bold(),
+        "Timestamp".bold(),
+    ]))
+    .block(record_list_block);
+
+    records_table.render(area, buf);
 }
 
 /// Renders the record details panel when there is an active [`Record`] set.
 fn render_record_details(record: Record, area: Rect, buf: &mut Buffer) {
-    let view_record_slices = Layout::default()
+    let layout_slices = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Fill(1),
@@ -58,21 +90,22 @@ fn render_record_details(record: Record, area: Rect, buf: &mut Buffer) {
         ])
         .split(area);
 
-    let info_slice = view_record_slices[0];
-    let headers_slice = view_record_slices[1];
-    let value_slice = view_record_slices[2];
+    let info_slice = layout_slices[0];
+    let headers_slice = layout_slices[1];
+    let value_slice = layout_slices[2];
 
     let info_block = Block::bordered().title(" Info ").border_style(Color::Cyan);
 
     let info_items = vec![
-        ListItem::new(format!("Topic:         {}", record.topic)),
-        ListItem::new(format!("Partition:     {}", record.partition)),
+        ListItem::new(format!("Topic:     {}", record.topic)),
+        ListItem::new(format!("Partition: {}", record.partition)),
         ListItem::new(format!(
-            "Partition Key: {}",
+            "Key:       {}",
             record
                 .partition_key
-                .unwrap_or_else(|| String::from("<n/a>"))
+                .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY))
         )),
+        ListItem::new(format!("Timestamp: {}", record.timestamp)),
     ];
 
     let info_list = List::new(info_items).block(info_block);

@@ -10,6 +10,13 @@ use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
+/// Default group id for the Kafka consumer.
+const DEFAULT_CONSUMER_GROUP_ID: &str = "kaftui-consumer";
+
+/// Default maximum number of records consumed from the Kafka toic to hold in memory at any given
+/// time.
+const DEFAULT_MAX_RECORDS: usize = 256;
+
 /// The [`Args`] struct is a contains the resolved values for the command line arguments supported
 /// by the application.
 #[derive(Debug, Parser)]
@@ -24,6 +31,10 @@ struct Args {
     /// Optional. Id of the group that the application will use when consuming messages from the Kafka topic.
     #[arg(short, long)]
     group_id: Option<String>,
+    /// Optional. Maximum nunber of records that should be held in memory at any given time after being
+    /// consumed from the Kafka topic. Defaults to 256.
+    #[arg(long)]
+    max_records: Option<usize>,
     /// Optional. JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
     /// from the Kafka topic that the end user may not be interested in. A message will only be
     /// presented to the user if it matches the filter.
@@ -43,9 +54,10 @@ impl From<Args> for Config {
             .group_id(
                 value
                     .group_id
-                    .unwrap_or_else(|| String::from("kaftui-consumer")),
+                    .unwrap_or_else(|| String::from(DEFAULT_CONSUMER_GROUP_ID)),
             )
             .filter(value.filter)
+            .max_records(value.max_records.unwrap_or(DEFAULT_MAX_RECORDS))
             .build()
             .expect("valid app config")
     }

@@ -1,6 +1,7 @@
 use crate::event::{AppEvent, EventBus};
 
 use anyhow::Context;
+use chrono::{DateTime, Utc};
 use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
@@ -30,6 +31,8 @@ pub struct Record {
     pub headers: HashMap<String, String>,
     /// Value of the Kafka record.
     pub value: String,
+    /// UTC timestamp represeting when the event was created.
+    pub timestamp: DateTime<Utc>,
 }
 
 /// The [`ConsumeContext`] is a struct that is used to implement a custom Kafka consumer context
@@ -144,7 +147,7 @@ impl From<&BorrowedMessage<'_>> for Record {
             Some(hs) => {
                 let mut headers = HashMap::new();
                 for h in hs.iter() {
-                    let value = match std::str::from_utf8(h.value.unwrap()) {
+                    let value = match std::str::from_utf8(h.value.expect("header value exists")) {
                         Ok(s) => String::from(s),
                         Err(e) => {
                             tracing::warn!("invalid UTF8 header value: {}", e);
@@ -163,11 +166,18 @@ impl From<&BorrowedMessage<'_>> for Record {
         let value = match msg.payload_view::<str>() {
             Some(Ok(data)) => String::from(data),
             Some(Err(e)) => {
-                tracing::error!("invalid string value in message: {}", e);
+                tracing::error!("non-UTF8 string value in message: {}", e);
                 String::from("")
             }
             None => String::from(""),
         };
+
+        let timestamp = DateTime::from_timestamp_millis(
+            msg.timestamp()
+                .to_millis()
+                .expect("Kafka message has valid timestamp"),
+        )
+        .expect("DateTime can be created from millis");
 
         Self {
             partition: msg.partition(),
@@ -175,6 +185,7 @@ impl From<&BorrowedMessage<'_>> for Record {
             partition_key,
             headers,
             value,
+            timestamp,
         }
     }
 }

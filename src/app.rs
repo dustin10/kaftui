@@ -4,6 +4,7 @@ use crate::{
 };
 
 use anyhow::Context;
+use bounded_vec_deque::BoundedVecDeque;
 use crossterm::event::MouseEvent;
 use derive_builder::Builder;
 use ratatui::{
@@ -18,23 +19,19 @@ use tokio::sync::Mutex;
 pub struct State {
     /// Flag indicating the application is running.
     pub running: bool,
-    /// Current [`Record`] that is being viewed.
-    pub record: Option<Record>,
+    /// Currently selected [`Record`] that is being viewed.
+    pub selected: Option<Record>,
+    /// Collection of the [`Record`]s that have been consumed from the Kafka topic.
+    pub records: BoundedVecDeque<Record>,
 }
 
 impl State {
     /// Creates a new default [`State`].
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl Default for State {
-    /// Creates a new instance of [`State`] initialized to the default state.
-    fn default() -> Self {
+    pub fn with_max_records(max_records: usize) -> Self {
         Self {
             running: true,
-            record: None,
+            selected: None,
+            records: BoundedVecDeque::new(max_records),
         }
     }
 }
@@ -59,6 +56,9 @@ pub struct Config {
     /// from the Kafka topic that the end user may not be interested in. A message will only be
     /// presented to the user if it matches the filter.
     filter: Option<String>,
+    /// Maximum nunber of [`Records`] that should be held in memory at any given time after being
+    /// consumed from the Kafka topic.
+    max_records: usize,
 }
 
 impl Config {
@@ -95,9 +95,11 @@ impl App {
 
         let consumer = Consumer::new(consumer_config, Arc::clone(&event_bus));
 
+        let max_records = config.max_records;
+
         Ok(Self {
             config,
-            state: State::default(),
+            state: State::with_max_records(max_records),
             event_bus,
             consumer,
             screen: Screen::ConsumeTopic,
@@ -157,7 +159,10 @@ impl App {
     /// Handles the record recieved event emitted by the [`EventBus`].
     fn on_record_received(&mut self, record: Record) {
         tracing::debug!("Kafka record received");
-        self.state.record = Some(record);
+
+        self.state.selected = Some(record.clone());
+
+        self.state.records.push_back(record);
     }
     /// Handles the tick event of the terminal.
     fn tick(&self) {}
