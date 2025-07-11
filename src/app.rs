@@ -32,7 +32,7 @@ pub struct State {
     /// Collection of the [`Record`]s that have been consumed from the Kafka topic.
     pub records: BoundedVecDeque<Record>,
     /// [`TableState`] for the table that the records consumed from the Kafka topic are rendered
-    /// to.
+    /// into.
     pub record_list_state: TableState,
 }
 
@@ -174,7 +174,7 @@ impl App {
 
         self.state.selected = Some(record.clone());
 
-        self.state.records.push_back(record);
+        self.state.records.push_front(record);
     }
     /// Handles the tick event of the terminal.
     fn tick(&self) {}

@@ -50,7 +50,7 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
         .title(" Records ")
         .border_style(Color::Cyan);
 
-    let records_rows = state.records.iter().rev().map(|r| {
+    let records_rows = state.records.iter().map(|r| {
         let key = r
             .partition_key
             .clone()
