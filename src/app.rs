@@ -34,6 +34,8 @@ pub struct State {
     /// [`TableState`] for the table that the records consumed from the Kafka topic are rendered
     /// into.
     pub record_list_state: TableState,
+    /// Total number of records consumed from the Kafka topic since the application was launched.
+    pub total_consumed: u32,
 }
 
 impl State {
@@ -44,6 +46,7 @@ impl State {
             selected: None,
             records: BoundedVecDeque::new(max_records),
             record_list_state: TableState::new(),
+            total_consumed: 0,
         }
     }
 }
@@ -78,12 +81,16 @@ impl Config {
     pub fn builder() -> ConfigBuilder {
         ConfigBuilder::default()
     }
+    /// Returns the configured Kafka topic name.
+    pub fn topic(&self) -> &String {
+        &self.topic
+    }
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
-    config: Config,
+    pub config: Config,
     /// Contains the current state of the application.
     pub state: State,
     /// Emits events to be handled by the application.
@@ -179,6 +186,7 @@ impl App {
     fn on_record_received(&mut self, record: Record) {
         tracing::debug!("Kafka record received");
         self.state.records.push_front(record);
+        self.state.total_consumed += 1;
 
         if let Some(i) = self.state.record_list_state.selected().as_mut() {
             self.state.record_list_state.select(Some(*i + 1));

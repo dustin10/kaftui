@@ -14,20 +14,22 @@ use ratatui::{
 const EMPTY_PARTITION_KEY: &str = "<empty>";
 
 /// Key bindings that are displayed to the user in the footer.
-const INSTRUCTIONS: &str = "(esc) quit | (j) next | (k) prev";
+const KEY_BINDINGS: &str = "(esc) quit | (j) next | (k) prev";
 
 impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {
         match self.screen {
-            Screen::ConsumeTopic => render_consume_topic(&mut self.state, frame),
+            Screen::ConsumeTopic => render_consume_topic(self, frame),
         }
     }
 }
 
 /// Renders the UI to the terminal for the [`Screen::ConsumeTopic`] screen.
-fn render_consume_topic(state: &mut State, frame: &mut Frame) {
+fn render_consume_topic(app: &mut App, frame: &mut Frame) {
+    let state = &mut app.state;
+
     let full_screen = frame.area();
 
     let outer = Layout::default()
@@ -54,7 +56,7 @@ fn render_consume_topic(state: &mut State, frame: &mut Frame) {
         render_record_empty(frame, right_panel);
     }
 
-    render_footer(frame, footer);
+    render_footer(app, frame, footer);
 }
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
@@ -79,7 +81,7 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
         [
             Constraint::Fill(2),
             Constraint::Fill(1),
-            Constraint::Fill(2),
+            Constraint::Fill(1),
         ],
     )
     .column_spacing(1)
@@ -100,8 +102,8 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Fill(1),
-            Constraint::Fill(1),
-            Constraint::Fill(3),
+            Constraint::Fill(4),
+            Constraint::Fill(10),
         ])
         .split(area);
 
@@ -112,20 +114,17 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
     let info_block = Block::bordered().title(" Info ");
 
     let info_items = vec![
-        ListItem::new(format!("Topic:     {}", record.topic)),
-        ListItem::new(format!("Partition: {}", record.partition)),
         ListItem::new(format!(
             "Key:       {}",
             record
                 .partition_key
                 .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY))
         )),
+        ListItem::new(format!("Partition: {}", record.partition)),
         ListItem::new(format!("Timestamp: {}", record.timestamp)),
     ];
 
     let info_list = List::new(info_items).block(info_block);
-
-    frame.render_widget(info_list, info_slice);
 
     let headers_block = Block::bordered().title(" Headers ");
 
@@ -139,8 +138,6 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
         .column_spacing(1)
         .header(Row::new(["Key".bold(), "Value".bold()]))
         .block(headers_block);
-
-    frame.render_widget(headers_table, headers_slice);
 
     let value_block = Block::bordered().title(" Value ");
 
@@ -160,6 +157,8 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
 
     let value_paragraph = Paragraph::new(value).block(value_block);
 
+    frame.render_widget(info_list, info_slice);
+    frame.render_widget(headers_table, headers_slice);
     frame.render_widget(value_paragraph, value_slice);
 }
 
@@ -180,12 +179,27 @@ fn render_record_empty(frame: &mut Frame, area: Rect) {
 }
 
 /// Renders the footer panel that contains the key bindings.
-fn render_footer(frame: &mut Frame, area: Rect) {
-    let instructions_block = Block::bordered();
+fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
+    let outer = Block::bordered();
 
-    let instructions = Paragraph::new(INSTRUCTIONS)
-        .centered()
-        .block(instructions_block);
+    let inner_area = outer.inner(area);
 
-    frame.render_widget(instructions, area);
+    let inner_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner_area);
+
+    let left_panel = inner_layout[0];
+    let right_panel = inner_layout[1];
+
+    let stats = Paragraph::new(format!(
+        "Topic - {} | Consumed - {}",
+        app.config.topic(),
+        app.state.total_consumed
+    ));
+    let key_bindings = Paragraph::new(KEY_BINDINGS).right_aligned();
+
+    frame.render_widget(outer, area);
+    frame.render_widget(stats, left_panel);
+    frame.render_widget(key_bindings, right_panel);
 }
