@@ -212,9 +212,6 @@ impl ConsumerTask {
         client_config.set("auto.offset.reset", "latest");
         client_config.set("enable.auto.commit", "false");
 
-        // TODO
-        client_config.set_log_level(rdkafka::config::RDKafkaLogLevel::Debug);
-
         let consumer: StreamConsumer<ConsumeContext> =
             client_config.create_with_context(ConsumeContext)?;
 
@@ -235,7 +232,7 @@ impl ConsumerTask {
             let filter = filter.clone();
 
             async move {
-                let record = (&msg).into();
+                let record = Record::from(&msg);
 
                 if let Some(f) = filter {
                     let json_value =
@@ -255,7 +252,7 @@ impl ConsumerTask {
                 std::mem::drop(event_bus_guard);
 
                 if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
-                    tracing::error!("error committing message: {}", err);
+                    tracing::error!("error committing Kafka message: {}", err);
                 }
 
                 Ok(())

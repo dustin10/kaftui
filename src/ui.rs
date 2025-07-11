@@ -5,13 +5,16 @@ use crate::{
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Stylize},
+    style::{Modifier, Style, Stylize},
     widgets::{Block, List, ListItem, Paragraph, Row, Table},
     Frame,
 };
 
 /// Value displayed for the partition key field when one is not present in the Kafka record.
 const EMPTY_PARTITION_KEY: &str = "<empty>";
+
+/// Key bindings that are displayed to the user in the footer.
+const INSTRUCTIONS: &str = "(esc) quit | (j) next | (k) prev";
 
 impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
@@ -27,13 +30,21 @@ impl App {
 fn render_consume_topic(state: &mut State, frame: &mut Frame) {
     let full_screen = frame.area();
 
-    let containers = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(3)])
         .split(full_screen);
 
-    let left_panel = containers[0];
-    let right_panel = containers[1];
+    let view_record = outer[0];
+    let footer = outer[1];
+
+    let view_record_inner = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(view_record);
+
+    let left_panel = view_record_inner[0];
+    let right_panel = view_record_inner[1];
 
     render_record_list(state, frame, left_panel);
 
@@ -42,13 +53,13 @@ fn render_consume_topic(state: &mut State, frame: &mut Frame) {
     } else {
         render_record_empty(frame, right_panel);
     }
+
+    render_footer(frame, footer);
 }
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
 fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
-    let record_list_block = Block::bordered()
-        .title(" Records ")
-        .border_style(Color::Cyan);
+    let record_list_block = Block::bordered().title(" Records ");
 
     let records_rows = state.records.iter().map(|r| {
         let key = r
@@ -77,6 +88,7 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
         "Partition".bold(),
         "Timestamp".bold(),
     ]))
+    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .block(record_list_block);
 
     frame.render_stateful_widget(records_table, area, &mut state.record_list_state);
@@ -97,7 +109,7 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
     let headers_slice = layout_slices[1];
     let value_slice = layout_slices[2];
 
-    let info_block = Block::bordered().title(" Info ").border_style(Color::Cyan);
+    let info_block = Block::bordered().title(" Info ");
 
     let info_items = vec![
         ListItem::new(format!("Topic:     {}", record.topic)),
@@ -115,9 +127,7 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(info_list, info_slice);
 
-    let headers_block = Block::bordered()
-        .title(format!(" Headers ({}) ", record.headers.len()))
-        .border_style(Color::Cyan);
+    let headers_block = Block::bordered().title(" Headers ");
 
     let header_rows: Vec<Row> = record
         .headers
@@ -132,9 +142,7 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(headers_table, headers_slice);
 
-    let value_block = Block::bordered()
-        .title(" Value ".cyan())
-        .border_style(Color::Cyan);
+    let value_block = Block::bordered().title(" Value ");
 
     let value = if record.value.is_empty() {
         String::from("")
@@ -169,4 +177,15 @@ fn render_record_empty(frame: &mut Frame, area: Rect) {
         .centered();
 
     frame.render_widget(empty_text, text_area);
+}
+
+/// Renders the footer panel that contains the key bindings.
+fn render_footer(frame: &mut Frame, area: Rect) {
+    let instructions_block = Block::bordered();
+
+    let instructions = Paragraph::new(INSTRUCTIONS)
+        .centered()
+        .block(instructions_block);
+
+    frame.render_widget(instructions, area);
 }

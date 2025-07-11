@@ -27,6 +27,10 @@ pub enum AppEvent {
     Quit,
     /// Fires when a new [`Record`] is received from a Kafka topic.
     RecordReceived(Record),
+    /// Fires when the user wants to select the previous record in the list.
+    SelectPrevRecord,
+    /// Fires when the user wants to select the next record in the list.
+    SelectNextRecord,
 }
 
 /// The bus over which [`Event`]s are published and consumed.

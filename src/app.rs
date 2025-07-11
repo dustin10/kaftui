@@ -147,6 +147,8 @@ impl App {
                 Event::App(app_event) => match app_event {
                     AppEvent::Quit => self.quit(),
                     AppEvent::RecordReceived(r) => self.on_record_received(r),
+                    AppEvent::SelectPrevRecord => self.on_select_prev_record(),
+                    AppEvent::SelectNextRecord => self.on_select_next_record(),
                 },
             }
         }
@@ -163,6 +165,11 @@ impl App {
     async fn on_key_event(&mut self, key_event: KeyEvent) -> anyhow::Result<()> {
         match key_event.code {
             KeyCode::Esc => self.event_bus.lock().await.send(AppEvent::Quit),
+            KeyCode::Char(c) => match c {
+                'j' => self.event_bus.lock().await.send(AppEvent::SelectNextRecord),
+                'k' => self.event_bus.lock().await.send(AppEvent::SelectPrevRecord),
+                _ => {}
+            },
             _ => {}
         }
 
@@ -171,10 +178,55 @@ impl App {
     /// Handles the record recieved event emitted by the [`EventBus`].
     fn on_record_received(&mut self, record: Record) {
         tracing::debug!("Kafka record received");
-
-        self.state.selected = Some(record.clone());
-
         self.state.records.push_front(record);
+
+        if let Some(i) = self.state.record_list_state.selected().as_mut() {
+            self.state.record_list_state.select(Some(*i + 1));
+        }
+    }
+    /// Handles the select previous record event emitted by the [`EventBus`].
+    fn on_select_prev_record(&mut self) {
+        tracing::debug!("select previous record");
+
+        if self.state.records.is_empty() {
+            return;
+        }
+
+        if let Some(i) = self.state.record_list_state.selected().as_mut() {
+            if *i == 0 {
+                return;
+            }
+
+            let prev = *i - 1;
+
+            self.state.record_list_state.select(Some(prev));
+            self.state.selected = self.state.records.get(prev).cloned();
+        } else {
+            self.state.record_list_state.select(Some(0));
+            self.state.selected = self.state.records.get(0).cloned();
+        }
+    }
+    /// Handles the select next record event emitted by the [`EventBus`].
+    fn on_select_next_record(&mut self) {
+        tracing::debug!("select next record");
+
+        if self.state.records.is_empty() {
+            return;
+        }
+
+        if let Some(i) = self.state.record_list_state.selected().as_mut() {
+            if *i == self.state.records.len() - 1 {
+                return;
+            }
+
+            let next = *i + 1;
+
+            self.state.record_list_state.select(Some(next));
+            self.state.selected = self.state.records.get(next).cloned();
+        } else {
+            self.state.record_list_state.select(Some(0));
+            self.state.selected = self.state.records.get(0).cloned();
+        }
     }
     /// Handles the tick event of the terminal.
     fn tick(&self) {}
