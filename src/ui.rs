@@ -1,6 +1,6 @@
 use crate::{
     app::{App, Screen, State},
-    kafka::Record,
+    kafka::{DebugMode, Record},
 };
 
 use ratatui::{
@@ -64,6 +64,8 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
     let record_list_block = Block::bordered().title(" Records ");
 
     let records_rows = state.records.iter().map(|r| {
+        let offset = r.offset.to_string();
+
         let key = r
             .partition_key
             .clone()
@@ -73,12 +75,13 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
 
         let timestamp = r.timestamp.to_string();
 
-        Row::new([key, partition, timestamp])
+        Row::new([offset, key, partition, timestamp])
     });
 
     let records_table = Table::new(
         records_rows,
         [
+            Constraint::Fill(1),
             Constraint::Fill(2),
             Constraint::Fill(1),
             Constraint::Fill(1),
@@ -86,6 +89,7 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
     )
     .column_spacing(1)
     .header(Row::new([
+        "Offset".bold(),
         "Key".bold(),
         "Partition".bold(),
         "Timestamp".bold(),
@@ -102,8 +106,8 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Fill(1),
-            Constraint::Fill(4),
-            Constraint::Fill(10),
+            Constraint::Fill(3),
+            Constraint::Fill(7),
         ])
         .split(area);
 
@@ -114,6 +118,7 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
     let info_block = Block::bordered().title(" Info ");
 
     let info_items = vec![
+        ListItem::new(format!("Offset:    {}", record.offset)),
         ListItem::new(format!(
             "Key:       {}",
             record
@@ -192,10 +197,16 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
+    let debug_mode = match app.state.debug_mode {
+        DebugMode::Disable => "Disabled",
+        DebugMode::Pause | DebugMode::Step => "Enabled",
+    };
+
     let stats = Paragraph::new(format!(
-        "Topic - {} | Consumed - {}",
+        "Topic - {} | Consumed - {} | Debug Mode - {}",
         app.config.topic(),
-        app.state.total_consumed
+        app.state.total_consumed,
+        debug_mode,
     ));
     let key_bindings = Paragraph::new(KEY_BINDINGS).right_aligned();
 

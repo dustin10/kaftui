@@ -1,6 +1,6 @@
 use crate::{
     event::{AppEvent, Event, EventBus},
-    kafka::{Consumer, ConsumerConfig, Record},
+    kafka::{Consumer, ConsumerConfig, DebugMode, Record},
 };
 
 use anyhow::Context;
@@ -36,6 +36,9 @@ pub struct State {
     pub record_list_state: TableState,
     /// Total number of records consumed from the Kafka topic since the application was launched.
     pub total_consumed: u32,
+    /// Stores the current [`DebugMode`] of the application which controls how the records from the
+    /// Kafka topic are consumed.
+    pub debug_mode: DebugMode,
 }
 
 impl State {
@@ -47,6 +50,7 @@ impl State {
             records: BoundedVecDeque::new(max_records),
             record_list_state: TableState::new(),
             total_consumed: 0,
+            debug_mode: DebugMode::Disable,
         }
     }
 }

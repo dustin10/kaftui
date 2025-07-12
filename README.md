@@ -1,4 +1,4 @@
 # kaftui
 
-A TUI application used to interact with Kafka.
+A simple TUI application used to consume messages from a Kafka topic.
 

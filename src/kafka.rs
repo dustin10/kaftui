@@ -17,6 +17,17 @@ use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
+/// Enumerates the different states that the debugging feature of the Kafka consumer can be in.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum DebugMode {
+    /// Debugging is disabled, consumer runs as normal.
+    Disable,
+    /// Consumer is paused.
+    Pause,
+    /// Consumer will accept one new message pause afterward.
+    Step,
+}
+
 /// Contains the data in the record consumed from a Kafka topic.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +36,8 @@ pub struct Record {
     pub topic: String,
     /// Partition number the record was assigned in the topic.
     pub partition: i32,
+    /// Offset of the record in the topic.
+    pub offset: i64,
     /// Partition key for the record if one was set.
     pub partition_key: Option<String>,
     /// Contains any headers from the Kafka record.
@@ -186,6 +199,7 @@ impl From<&BorrowedMessage<'_>> for Record {
             headers,
             value,
             timestamp,
+            offset: msg.offset(),
         }
     }
 }
@@ -211,6 +225,8 @@ impl ConsumerTask {
         client_config.set("statistics.interval.ms", "60000");
         client_config.set("auto.offset.reset", "latest");
         client_config.set("enable.auto.commit", "false");
+
+        // TODO: auth support
 
         let consumer: StreamConsumer<ConsumeContext> =
             client_config.create_with_context(ConsumeContext)?;
