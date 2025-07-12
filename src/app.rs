@@ -23,7 +23,8 @@ pub const DEFAULT_CONSUMER_GROUP_ID: &str = "kaftui-consumer";
 /// time.
 pub const DEFAULT_MAX_RECORDS: usize = 256;
 
-const DEFAULT_EXPORT_FILE_PREFIX: &str = "message-export";
+/// Default prefix used for the name of the exported file when no partition key is set.
+const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
 
 /// Manages the global appliation state.
 #[derive(Debug)]
