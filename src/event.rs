@@ -31,6 +31,8 @@ pub enum AppEvent {
     SelectPrevRecord,
     /// Fires when the user wants to select the next record in the list.
     SelectNextRecord,
+    /// Fires when the user wants to export the selected record to a file.
+    ExportSelectedRecord,
 }
 
 /// The bus over which [`Event`]s are published and consumed.

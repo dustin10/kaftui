@@ -14,7 +14,7 @@ use ratatui::{
 const EMPTY_PARTITION_KEY: &str = "<empty>";
 
 /// Key bindings that are displayed to the user in the footer.
-const KEY_BINDINGS: &str = "(esc) quit | (j) next | (k) prev";
+const KEY_BINDINGS: &str = "(esc) quit | (j) next | (k) prev | (e) export selected";
 
 impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
@@ -208,6 +208,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         app.state.total_consumed,
         debug_mode,
     ));
+
     let key_bindings = Paragraph::new(KEY_BINDINGS).right_aligned();
 
     frame.render_widget(outer, area);

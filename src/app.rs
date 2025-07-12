@@ -5,6 +5,7 @@ use crate::{
 
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
+use chrono::Utc;
 use crossterm::event::MouseEvent;
 use derive_builder::Builder;
 use ratatui::{
@@ -21,6 +22,8 @@ pub const DEFAULT_CONSUMER_GROUP_ID: &str = "kaftui-consumer";
 /// Default maximum number of records consumed from the Kafka toic to hold in memory at any given
 /// time.
 pub const DEFAULT_MAX_RECORDS: usize = 256;
+
+const DEFAULT_EXPORT_FILE_PREFIX: &str = "message-export";
 
 /// Manages the global appliation state.
 #[derive(Debug)]
@@ -160,6 +163,7 @@ impl App {
                     AppEvent::RecordReceived(r) => self.on_record_received(r),
                     AppEvent::SelectPrevRecord => self.on_select_prev_record(),
                     AppEvent::SelectNextRecord => self.on_select_next_record(),
+                    AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
                 },
             }
         }
@@ -179,6 +183,11 @@ impl App {
             KeyCode::Char(c) => match c {
                 'j' => self.event_bus.lock().await.send(AppEvent::SelectNextRecord),
                 'k' => self.event_bus.lock().await.send(AppEvent::SelectPrevRecord),
+                'e' => self
+                    .event_bus
+                    .lock()
+                    .await
+                    .send(AppEvent::ExportSelectedRecord),
                 _ => {}
             },
             _ => {}
@@ -215,7 +224,7 @@ impl App {
             self.state.selected = self.state.records.get(prev).cloned();
         } else {
             self.state.record_list_state.select(Some(0));
-            self.state.selected = self.state.records.get(0).cloned();
+            self.state.selected = self.state.records.front().cloned();
         }
     }
     /// Handles the select next record event emitted by the [`EventBus`].
@@ -237,7 +246,36 @@ impl App {
             self.state.selected = self.state.records.get(next).cloned();
         } else {
             self.state.record_list_state.select(Some(0));
-            self.state.selected = self.state.records.get(0).cloned();
+            self.state.selected = self.state.records.front().cloned();
+        }
+    }
+    /// Handles the export selected record event emitted by the [`EventBus`].
+    fn on_export_selected_record(&self) {
+        if let Some(r) = self.state.selected.as_ref() {
+            match serde_json::to_string_pretty(r) {
+                Ok(json) => {
+                    // TODO: configurable export direcotry
+                    let dir = ".";
+
+                    let name = r
+                        .partition_key
+                        .as_ref()
+                        .map_or(DEFAULT_EXPORT_FILE_PREFIX, |v| v);
+
+                    let file_path = format!(
+                        "{}{}{}-{}.json",
+                        dir,
+                        std::path::MAIN_SEPARATOR,
+                        name,
+                        Utc::now().timestamp_millis()
+                    );
+
+                    if let Err(e) = std::fs::write(file_path, json) {
+                        tracing::error!("failed to export record to file: {}", e);
+                    }
+                }
+                Err(e) => tracing::error!("unable to export selected record: {}", e),
+            }
         }
     }
     /// Handles the tick event of the terminal.
