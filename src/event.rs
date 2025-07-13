@@ -1,4 +1,5 @@
 use crate::kafka::Record;
+
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
 use std::time::Duration;

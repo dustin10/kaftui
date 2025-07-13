@@ -5,7 +5,7 @@ use crate::{
 
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use crossterm::event::MouseEvent;
 use derive_builder::Builder;
 use ratatui::{
@@ -13,6 +13,7 @@ use ratatui::{
     widgets::TableState,
     DefaultTerminal,
 };
+use serde::Serialize;
 use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -95,6 +96,47 @@ impl Config {
     /// Returns the configured Kafka topic name.
     pub fn topic(&self) -> &String {
         &self.topic
+    }
+}
+
+/// View of a [`Record`] that is saved to a file in JSON format when the user requests that the
+/// selected record be exported.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportedRecord {
+    /// Offset of the record in the topic.
+    offset: i64,
+    /// Partition key for the record if one was set.
+    partition_key: Option<String>,
+    /// Contains any headers from the Kafka record.
+    headers: HashMap<String, String>,
+    /// Value of the Kafka record.
+    value: serde_json::Value,
+    /// UTC timestamp represeting when the event was created.
+    timestamp: DateTime<Utc>,
+}
+
+impl From<Record> for ExportedRecord {
+    /// Converts the given [`Record`] to an [`ExportedRecord`].
+    fn from(value: Record) -> Self {
+        let json_value = if value.value.is_empty() {
+            serde_json::from_str("{}").expect("valid JSON value")
+        } else {
+            match serde_json::from_str(&value.value) {
+                Ok(json_value) => json_value,
+                Err(e) => {
+                    tracing::error!("invalid JSON value: {}", e);
+                    serde_json::from_str("{}").expect("valid json value")
+                }
+            }
+        };
+        Self {
+            offset: value.offset,
+            partition_key: value.partition_key,
+            headers: value.headers,
+            value: json_value,
+            timestamp: value.timestamp,
+        }
     }
 }
 
@@ -265,13 +307,15 @@ impl App {
     }
     /// Handles the export selected record event emitted by the [`EventBus`].
     fn on_export_selected_record(&self) {
-        if let Some(r) = self.state.selected.as_ref() {
-            match serde_json::to_string_pretty(r) {
+        if let Some(r) = self.state.selected.clone() {
+            let exported_record = ExportedRecord::from(r);
+
+            match serde_json::to_string_pretty(&exported_record) {
                 Ok(json) => {
                     // TODO: configurable export direcotry
                     let dir = ".";
 
-                    let name = r
+                    let name = exported_record
                         .partition_key
                         .as_ref()
                         .map_or(DEFAULT_EXPORT_FILE_PREFIX, |v| v);
