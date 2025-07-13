@@ -15,6 +15,7 @@ crossterm = { version = "0.28.1", features = ["event-stream"] }
 derive_builder = "0.20.2"
 dotenvy = "0.15.7"
 futures = "0.3.31"
+java-properties = "2.0.0"
 ratatui = "0.29.0"
 rdkafka = { version = "0.37.0", features = ["dynamic-linking", "sasl", "ssl"] }
 serde = { version = "1.0.219", features = ["derive"] }

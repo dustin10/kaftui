@@ -21,16 +21,21 @@ struct Args {
     /// Name of the topic to consume messages from.
     #[arg(short, long)]
     topic: String,
-    /// Optional. Id of the group that the application will use when consuming messages from the Kafka topic.
+    /// Optional. Id of the group that the application will use when consuming messages from the
+    /// Kafka topic.
     #[arg(short, long)]
     group_id: Option<String>,
-    /// Optional. Maximum nunber of records that should be held in memory at any given time after being
-    /// consumed from the Kafka topic. Defaults to 256.
+    /// Optional. Path to a properties file containing the configuration properties that will be
+    /// applied to the Kafka consumer.
+    #[arg(long)]
+    consumer_properties_file: Option<String>,
+    /// Optional. Maximum nunber of records that should be held in memory at any given time after
+    /// being consumed from the Kafka topic. Defaults to 256.
     #[arg(long)]
     max_records: Option<usize>,
-    /// Optional. JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
-    /// from the Kafka topic that the end user may not be interested in. A message will only be
-    /// presented to the user if it matches the filter.
+    /// Optional. JSONPath filter that is applied to a record. Can be used to filter out any
+    /// records from the Kafka topic that the end user may not be interested in. A message will
+    /// only be presented to the user if it matches the filter.
     #[arg(short, long)]
     filter: Option<String>,
     /// Optional. Flag indicating that application logs should be output to a file.
@@ -49,6 +54,7 @@ impl From<Args> for Config {
                     .group_id
                     .unwrap_or_else(|| String::from(DEFAULT_CONSUMER_GROUP_ID)),
             )
+            .consumer_properties_file(value.consumer_properties_file)
             .filter(value.filter)
             .max_records(value.max_records.unwrap_or(DEFAULT_MAX_RECORDS))
             .build()

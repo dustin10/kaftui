@@ -2,7 +2,6 @@ use crate::event::{AppEvent, EventBus};
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
-use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
     consumer::{
@@ -97,50 +96,21 @@ impl ConsumerContext for ConsumeContext {
     }
 }
 
-/// Contains the data used to initialize and configure the Kafka consumer.
-#[derive(Builder, Clone, Debug)]
-pub struct ConsumerConfig {
-    /// Kafka server hosts.
-    bootstrap_servers: String,
-    /// Id of the group used when consuming a topic.
-    group_id: String,
-}
-
-impl ConsumerConfig {
-    /// Creates a new default instance of [`ConsumerConfig`].
-    pub fn builder() -> ConsumerConfigBuilder {
-        ConsumerConfigBuilder::default()
-    }
-}
-
-impl Default for ConsumerConfig {
-    /// Creates a new instance of [`ConsumerConfig`] initialized to default values.
-    fn default() -> Self {
-        Self {
-            bootstrap_servers: String::from("localhost:29092"),
-            group_id: String::from("kaftui-consumer"),
-        }
-    }
-}
-
 pub struct Consumer {
     /// Configuration for the underlying Kafka consumer.
-    consumer_config: ConsumerConfig,
+    config: HashMap<String, String>,
     /// Bus that Kafka-related application events are published to.
     event_bus: Arc<Mutex<EventBus>>,
 }
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
-    pub fn new(consumer_config: ConsumerConfig, event_bus: Arc<Mutex<EventBus>>) -> Self {
-        Self {
-            consumer_config,
-            event_bus,
-        }
+    pub fn new(config: HashMap<String, String>, event_bus: Arc<Mutex<EventBus>>) -> Self {
+        Self { config, event_bus }
     }
     /// Starts the consumption of messages from the specified topic.
     pub async fn start(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
-        let task = ConsumerTask::new(self.consumer_config.clone(), Arc::clone(&self.event_bus))?;
+        let task = ConsumerTask::new(self.config.clone(), Arc::clone(&self.event_bus))?;
 
         tokio::spawn(async move { task.run(topic, filter).await });
 
@@ -190,7 +160,7 @@ impl From<&BorrowedMessage<'_>> for Record {
                 .to_millis()
                 .expect("Kafka message has valid timestamp"),
         )
-        .expect("DateTime can be created from millis");
+        .expect("DateTime created from millis");
 
         Self {
             partition: msg.partition(),
@@ -216,17 +186,17 @@ struct ConsumerTask {
 impl ConsumerTask {
     /// Creates a new [`ConsumerTask`] with the specified dependencies.
     fn new(
-        consumer_config: ConsumerConfig,
+        config: HashMap<String, String>,
         event_bus: Arc<Mutex<EventBus>>,
     ) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
-        client_config.set("group.id", consumer_config.group_id);
-        client_config.set("bootstrap.servers", consumer_config.bootstrap_servers);
-        client_config.set("statistics.interval.ms", "60000");
         client_config.set("auto.offset.reset", "latest");
-        client_config.set("enable.auto.commit", "false");
+        client_config.set("statistics.interval.ms", "60000");
 
-        // TODO: auth support
+        client_config.extend(config);
+
+        client_config.set("statistics.interval.ms", "60000");
+        client_config.set("enable.auto.commit", "false");
 
         let consumer: StreamConsumer<ConsumeContext> =
             client_config.create_with_context(ConsumeContext)?;
