@@ -104,6 +104,10 @@ impl Config {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ExportedRecord {
+    /// Name of the topic that the record was consumed from.
+    topic: String,
+    /// Partition number the record was assigned in the topic.
+    partition: i32,
     /// Offset of the record in the topic.
     offset: i64,
     /// Partition key for the record if one was set.
@@ -131,6 +135,8 @@ impl From<Record> for ExportedRecord {
             }
         };
         Self {
+            topic: value.topic,
+            partition: value.partition,
             offset: value.offset,
             partition_key: value.partition_key,
             headers: value.headers,
