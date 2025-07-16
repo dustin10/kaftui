@@ -29,7 +29,7 @@ const KEY_BINDING_PAUSE: &str = "(p) pause";
 const KEY_BINDING_RESUME: &str = "(r) resume";
 
 /// Text displayed to the user in the footer for the export key binding.
-const KEY_BINDING_EXPORT: &str = "(e) export selected";
+const KEY_BINDING_EXPORT: &str = "(e) export";
 
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
 /// the appliction is.
