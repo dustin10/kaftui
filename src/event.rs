@@ -34,12 +34,10 @@ pub enum AppEvent {
     SelectNextRecord,
     /// Fires when the user wants to export the selected record to a file.
     ExportSelectedRecord,
-    /// Fires when the user wants to enter or exit debug mode.
-    ToggleDebug,
-    /// Fires when the user wants to pause record consumption in debug mode.
-    PauseRecords,
-    /// Fires when the user wants to step to the next record in debug mode.
-    StepRecord,
+    /// Fires when the user wants to continue processing records.
+    ResumeProcessing,
+    /// Fires when the user wants to pause record consumption.
+    PauseProcessing,
 }
 
 /// The bus over which [`Event`]s are published and consumed.

@@ -1,6 +1,6 @@
 use crate::{
     event::{AppEvent, Event, EventBus},
-    kafka::{Consumer, DebugMode, Record},
+    kafka::{Consumer, Record},
 };
 
 use anyhow::Context;
@@ -27,6 +27,15 @@ pub const DEFAULT_MAX_RECORDS: usize = 256;
 /// Default prefix used for the name of the exported file when no partition key is set.
 const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
 
+/// Enumerates the different states that the Kafka consumer can be in.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ConsumerMode {
+    /// Consumer is paused and not processing records from the topic.
+    Paused,
+    /// Consumer is processing records from the topic.
+    Processing,
+}
+
 /// Manages the global appliation state.
 #[derive(Debug)]
 pub struct State {
@@ -41,9 +50,9 @@ pub struct State {
     pub record_list_state: TableState,
     /// Total number of records consumed from the Kafka topic since the application was launched.
     pub total_consumed: u32,
-    /// Stores the current [`DebugMode`] of the application which controls how the records from the
-    /// Kafka topic are consumed.
-    pub debug_mode: DebugMode,
+    /// Stores the current [`ConsumerMode`] of the application which controls whether or not
+    /// records are currently being consumed from the topic.
+    pub consumer_mode: ConsumerMode,
 }
 
 impl State {
@@ -55,7 +64,7 @@ impl State {
             records: BoundedVecDeque::new(max_records),
             record_list_state: TableState::new(),
             total_consumed: 0,
-            debug_mode: DebugMode::Disable,
+            consumer_mode: ConsumerMode::Processing,
         }
     }
 }
@@ -228,9 +237,8 @@ impl App {
                     AppEvent::SelectPrevRecord => self.on_select_prev_record(),
                     AppEvent::SelectNextRecord => self.on_select_next_record(),
                     AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
-                    AppEvent::ToggleDebug => self.on_toggle_debug(),
-                    AppEvent::PauseRecords => self.on_pause_records(),
-                    AppEvent::StepRecord => self.on_step_record(),
+                    AppEvent::PauseProcessing => self.on_pause_processing(),
+                    AppEvent::ResumeProcessing => self.on_resume_processing(),
                 },
             }
         }
@@ -248,7 +256,6 @@ impl App {
         match key_event.code {
             KeyCode::Esc => self.event_bus.lock().await.send(AppEvent::Quit),
             KeyCode::Char(c) => match c {
-                'd' => self.event_bus.lock().await.send(AppEvent::ToggleDebug),
                 'e' => self
                     .event_bus
                     .lock()
@@ -256,8 +263,8 @@ impl App {
                     .send(AppEvent::ExportSelectedRecord),
                 'j' => self.event_bus.lock().await.send(AppEvent::SelectNextRecord),
                 'k' => self.event_bus.lock().await.send(AppEvent::SelectPrevRecord),
-                'p' => self.event_bus.lock().await.send(AppEvent::PauseRecords),
-                's' => self.event_bus.lock().await.send(AppEvent::StepRecord),
+                'p' => self.event_bus.lock().await.send(AppEvent::PauseProcessing),
+                'r' => self.event_bus.lock().await.send(AppEvent::ResumeProcessing),
                 _ => {}
             },
             _ => {}
@@ -273,14 +280,6 @@ impl App {
 
         if let Some(i) = self.state.record_list_state.selected().as_mut() {
             self.state.record_list_state.select(Some(*i + 1));
-        }
-
-        if self.state.debug_mode == DebugMode::Step {
-            self.state.debug_mode = DebugMode::Pause;
-
-            if let Err(e) = self.consumer.pause() {
-                tracing::error!("failed to pause consumer: {}", e);
-            }
         }
     }
     /// Handles the select previous record event emitted by the [`EventBus`].
@@ -358,39 +357,20 @@ impl App {
             }
         }
     }
-    /// Handles the toggle debug event emitted by the [`EventBus`].
-    fn on_toggle_debug(&mut self) {
-        self.state.debug_mode = match self.state.debug_mode {
-            DebugMode::Disable => {
-                if let Err(e) = self.consumer.pause() {
-                    tracing::error!("failed to pause consumer: {}", e);
-                }
-
-                DebugMode::Pause
-            }
-            DebugMode::Pause | DebugMode::Step => {
-                if let Err(e) = self.consumer.resume() {
-                    tracing::error!("failed to resume consumer: {}", e);
-                }
-
-                DebugMode::Disable
-            }
-        };
-    }
-    /// Handles the pause records event emitted by the [`EventBus`].
-    fn on_pause_records(&mut self) {
-        if self.state.debug_mode != DebugMode::Disable {
-            self.state.debug_mode = DebugMode::Pause;
+    /// Handles the pause record processing event emitted by the [`EventBus`].
+    fn on_pause_processing(&mut self) {
+        if self.state.consumer_mode == ConsumerMode::Processing {
+            self.state.consumer_mode = ConsumerMode::Paused;
 
             if let Err(e) = self.consumer.pause() {
                 tracing::error!("failed to pause consumer: {}", e);
             }
         }
     }
-    /// Handles the step record event emitted by the [`EventBus`].
-    fn on_step_record(&mut self) {
-        if self.state.debug_mode == DebugMode::Pause {
-            self.state.debug_mode = DebugMode::Step;
+    /// Handles the resume record processing event emitted by the [`EventBus`].
+    fn on_resume_processing(&mut self) {
+        if self.state.consumer_mode == ConsumerMode::Paused {
+            self.state.consumer_mode = ConsumerMode::Processing;
 
             if let Err(e) = self.consumer.resume() {
                 tracing::error!("failed to resume consumer: {}", e);

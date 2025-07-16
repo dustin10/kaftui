@@ -16,17 +16,6 @@ use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-/// Enumerates the different states that the debugging feature of the Kafka consumer can be in.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum DebugMode {
-    /// Debugging is disabled, consumer runs as normal.
-    Disable,
-    /// Consumer is paused.
-    Pause,
-    /// Consumer will accept one new message pause afterward.
-    Step,
-}
-
 /// Contains the data in the record consumed from a Kafka topic.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]

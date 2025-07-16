@@ -1,6 +1,6 @@
 use crate::{
-    app::{App, Screen, State},
-    kafka::{DebugMode, Record},
+    app::{App, ConsumerMode, Screen, State},
+    kafka::Record,
 };
 
 use ratatui::{
@@ -22,20 +22,14 @@ const KEY_BINDING_NEXT: &str = "(j) next";
 /// Text displayed to the user in the footer for the previous record key binding.
 const KEY_BINDING_PREV: &str = "(k) prev";
 
+/// Text displayed to the user in the footer for the pause key binding.
+const KEY_BINDING_PAUSE: &str = "(p) pause";
+
+/// Text displayed to the user in the footer for the resume key binding.
+const KEY_BINDING_RESUME: &str = "(r) resume";
+
 /// Text displayed to the user in the footer for the export key binding.
 const KEY_BINDING_EXPORT: &str = "(e) export selected";
-
-/// Text displayed to the user in the footer for the enter debug mode key binding.
-const KEY_BINDING_DEBUG_ENABLE: &str = "(d) start debugging";
-
-/// Text displayed to the user in the footer for the exit debug mode key binding.
-const KEY_BINDING_DEBUG_DISABLE: &str = "(d) stop debugging";
-
-/// Text displayed to the user in the footer for the step forward key binding.
-const KEY_BINDING_DEBUG_STEP: &str = "(s) step";
-
-/// Text displayed to the user in the footer for the pause key binding.
-const KEY_BINDING_DEBUG_PAUSE: &str = "(p) pause";
 
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
 /// the appliction is.
@@ -100,23 +94,23 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
 
         let timestamp = r.timestamp.to_string();
 
-        Row::new([offset, key, partition, timestamp])
+        Row::new([partition, offset, key, timestamp])
     });
 
     let records_table = Table::new(
         records_rows,
         [
             Constraint::Fill(1),
+            Constraint::Fill(1),
+            Constraint::Fill(6),
             Constraint::Fill(2),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
         ],
     )
     .column_spacing(1)
     .header(Row::new([
+        "Partition".bold(),
         "Offset".bold(),
         "Key".bold(),
-        "Partition".bold(),
         "Timestamp".bold(),
     ]))
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
@@ -222,27 +216,20 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
-    let (debug_mode, debug_key_bindings) = match app.state.debug_mode {
-        DebugMode::Disable => ("Disabled", vec![KEY_BINDING_DEBUG_ENABLE]),
-        DebugMode::Pause => (
-            "Paused",
-            vec![KEY_BINDING_DEBUG_STEP, KEY_BINDING_DEBUG_DISABLE],
-        ),
-        DebugMode::Step => (
-            "Stepping",
-            vec![KEY_BINDING_DEBUG_PAUSE, KEY_BINDING_DEBUG_DISABLE],
-        ),
+    let consumer_mode_key_binding = match app.state.consumer_mode {
+        ConsumerMode::Processing => KEY_BINDING_PAUSE,
+        ConsumerMode::Paused => KEY_BINDING_RESUME,
     };
 
     let stats = Paragraph::new(format!(
-        "Topic - {} | Consumed - {} | Debug Mode - {}",
+        "Topic: {} | Consumed: {} | {:?}",
         app.config.topic(),
         app.state.total_consumed,
-        debug_mode,
+        app.state.consumer_mode,
     ));
 
     let mut key_bindings = Vec::from(STANDARD_KEY_BINDINGS);
-    key_bindings.extend(debug_key_bindings);
+    key_bindings.push(consumer_mode_key_binding);
 
     if app.state.selected.is_some() {
         key_bindings.push(KEY_BINDING_EXPORT);
