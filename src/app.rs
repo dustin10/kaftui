@@ -100,7 +100,8 @@ impl Config {
 }
 
 /// View of a [`Record`] that is saved to a file in JSON format when the user requests that the
-/// selected record be exported.
+/// selected record be exported. This allows for better handling of the value field which would
+/// just be rendered as a JSON encoded string otherwise.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ExportedRecord {
@@ -134,6 +135,7 @@ impl From<Record> for ExportedRecord {
                 }
             }
         };
+
         Self {
             topic: value.topic,
             partition: value.partition,
@@ -181,7 +183,8 @@ impl App {
         );
         consumer_config.insert(String::from("group.id"), config.group_id.clone());
 
-        let consumer = Consumer::new(consumer_config, Arc::clone(&event_bus));
+        let consumer =
+            Consumer::new(consumer_config, Arc::clone(&event_bus)).context("create consumer")?;
 
         let max_records = config.max_records;
 
@@ -201,7 +204,6 @@ impl App {
 
         self.consumer
             .start(self.config.topic.clone(), self.config.filter.clone())
-            .await
             .context("start Kafka consumer")?;
 
         while self.state.running {
@@ -226,6 +228,9 @@ impl App {
                     AppEvent::SelectPrevRecord => self.on_select_prev_record(),
                     AppEvent::SelectNextRecord => self.on_select_next_record(),
                     AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
+                    AppEvent::ToggleDebug => self.on_toggle_debug(),
+                    AppEvent::PauseRecords => self.on_pause_records(),
+                    AppEvent::StepRecord => self.on_step_record(),
                 },
             }
         }
@@ -243,13 +248,16 @@ impl App {
         match key_event.code {
             KeyCode::Esc => self.event_bus.lock().await.send(AppEvent::Quit),
             KeyCode::Char(c) => match c {
-                'j' => self.event_bus.lock().await.send(AppEvent::SelectNextRecord),
-                'k' => self.event_bus.lock().await.send(AppEvent::SelectPrevRecord),
+                'd' => self.event_bus.lock().await.send(AppEvent::ToggleDebug),
                 'e' => self
                     .event_bus
                     .lock()
                     .await
                     .send(AppEvent::ExportSelectedRecord),
+                'j' => self.event_bus.lock().await.send(AppEvent::SelectNextRecord),
+                'k' => self.event_bus.lock().await.send(AppEvent::SelectPrevRecord),
+                'p' => self.event_bus.lock().await.send(AppEvent::PauseRecords),
+                's' => self.event_bus.lock().await.send(AppEvent::StepRecord),
                 _ => {}
             },
             _ => {}
@@ -265,6 +273,14 @@ impl App {
 
         if let Some(i) = self.state.record_list_state.selected().as_mut() {
             self.state.record_list_state.select(Some(*i + 1));
+        }
+
+        if self.state.debug_mode == DebugMode::Step {
+            self.state.debug_mode = DebugMode::Pause;
+
+            if let Err(e) = self.consumer.pause() {
+                tracing::error!("failed to pause consumer: {}", e);
+            }
         }
     }
     /// Handles the select previous record event emitted by the [`EventBus`].
@@ -339,6 +355,45 @@ impl App {
                     }
                 }
                 Err(e) => tracing::error!("unable to export selected record: {}", e),
+            }
+        }
+    }
+    /// Handles the toggle debug event emitted by the [`EventBus`].
+    fn on_toggle_debug(&mut self) {
+        self.state.debug_mode = match self.state.debug_mode {
+            DebugMode::Disable => {
+                if let Err(e) = self.consumer.pause() {
+                    tracing::error!("failed to pause consumer: {}", e);
+                }
+
+                DebugMode::Pause
+            }
+            DebugMode::Pause | DebugMode::Step => {
+                if let Err(e) = self.consumer.resume() {
+                    tracing::error!("failed to resume consumer: {}", e);
+                }
+
+                DebugMode::Disable
+            }
+        };
+    }
+    /// Handles the pause records event emitted by the [`EventBus`].
+    fn on_pause_records(&mut self) {
+        if self.state.debug_mode != DebugMode::Disable {
+            self.state.debug_mode = DebugMode::Pause;
+
+            if let Err(e) = self.consumer.pause() {
+                tracing::error!("failed to pause consumer: {}", e);
+            }
+        }
+    }
+    /// Handles the step record event emitted by the [`EventBus`].
+    fn on_step_record(&mut self) {
+        if self.state.debug_mode == DebugMode::Pause {
+            self.state.debug_mode = DebugMode::Step;
+
+            if let Err(e) = self.consumer.resume() {
+                tracing::error!("failed to resume consumer: {}", e);
             }
         }
     }

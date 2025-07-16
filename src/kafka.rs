@@ -97,24 +97,66 @@ impl ConsumerContext for ConsumeContext {
 }
 
 pub struct Consumer {
-    /// Configuration for the underlying Kafka consumer.
-    config: HashMap<String, String>,
+    /// Underlying Kafka consumer.
+    consumer: Arc<StreamConsumer<ConsumeContext>>,
     /// Bus that Kafka-related application events are published to.
     event_bus: Arc<Mutex<EventBus>>,
 }
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
-    pub fn new(config: HashMap<String, String>, event_bus: Arc<Mutex<EventBus>>) -> Self {
-        Self { config, event_bus }
+    pub fn new(
+        config: HashMap<String, String>,
+        event_bus: Arc<Mutex<EventBus>>,
+    ) -> anyhow::Result<Self> {
+        let mut client_config = ClientConfig::new();
+        client_config.set("auto.offset.reset", "latest");
+        client_config.set("statistics.interval.ms", "60000");
+
+        client_config.extend(config);
+
+        client_config.set("statistics.interval.ms", "60000");
+        client_config.set("enable.auto.commit", "false");
+
+        let consumer: StreamConsumer<ConsumeContext> = client_config
+            .create_with_context(ConsumeContext)
+            .context("create stream consumer")?;
+
+        Ok(Self {
+            consumer: Arc::new(consumer),
+            event_bus,
+        })
     }
-    /// Starts the consumption of messages from the specified topic.
-    pub async fn start(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
-        let task = ConsumerTask::new(self.config.clone(), Arc::clone(&self.event_bus))?;
+    /// Starts the consumption of records from the specified topic.
+    pub fn start(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
+        let task = ConsumerTask::new(Arc::clone(&self.consumer), Arc::clone(&self.event_bus))
+            .context("create background consumer task")?;
 
         tokio::spawn(async move { task.run(topic, filter).await });
 
         Ok(())
+    }
+    /// Pauses the consumption of records from the topic.
+    pub fn pause(&self) -> anyhow::Result<()> {
+        let assignment = self
+            .consumer
+            .assignment()
+            .context("get consumer partition assignments")?;
+
+        self.consumer
+            .pause(&assignment)
+            .context("pause consumer assignments")
+    }
+    /// Resumes the consumption of records from the topic.
+    pub fn resume(&self) -> anyhow::Result<()> {
+        let assignment = self
+            .consumer
+            .assignment()
+            .context("get consumer partition assignments")?;
+
+        self.consumer
+            .resume(&assignment)
+            .context("resume consumer assignments")
     }
 }
 
@@ -179,7 +221,7 @@ impl From<&BorrowedMessage<'_>> for Record {
 /// topic.
 struct ConsumerTask {
     /// Raw Kafka consumer.
-    consumer: StreamConsumer<ConsumeContext>,
+    consumer: Arc<StreamConsumer<ConsumeContext>>,
     /// Bus that Kafka-related application events are published to.
     event_bus: Arc<Mutex<EventBus>>,
 }
@@ -187,21 +229,9 @@ struct ConsumerTask {
 impl ConsumerTask {
     /// Creates a new [`ConsumerTask`] with the specified dependencies.
     fn new(
-        config: HashMap<String, String>,
+        consumer: Arc<StreamConsumer<ConsumeContext>>,
         event_bus: Arc<Mutex<EventBus>>,
     ) -> anyhow::Result<Self> {
-        let mut client_config = ClientConfig::new();
-        client_config.set("auto.offset.reset", "latest");
-        client_config.set("statistics.interval.ms", "60000");
-
-        client_config.extend(config);
-
-        client_config.set("statistics.interval.ms", "60000");
-        client_config.set("enable.auto.commit", "false");
-
-        let consumer: StreamConsumer<ConsumeContext> =
-            client_config.create_with_context(ConsumeContext)?;
-
         Ok(Self {
             consumer,
             event_bus,

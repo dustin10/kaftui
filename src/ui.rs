@@ -13,8 +13,33 @@ use ratatui::{
 /// Value displayed for the partition key field when one is not present in the Kafka record.
 const EMPTY_PARTITION_KEY: &str = "<empty>";
 
-/// Key bindings that are displayed to the user in the footer.
-const KEY_BINDINGS: &str = "(esc) quit | (j) next | (k) prev | (e) export selected";
+/// Text displayed to the user in the footer for the quit key binding.
+const KEY_BINDING_QUIT: &str = "(esc) quit";
+
+/// Text displayed to the user in the footer for the next record key binding.
+const KEY_BINDING_NEXT: &str = "(j) next";
+
+/// Text displayed to the user in the footer for the previous record key binding.
+const KEY_BINDING_PREV: &str = "(k) prev";
+
+/// Text displayed to the user in the footer for the export key binding.
+const KEY_BINDING_EXPORT: &str = "(e) export selected";
+
+/// Text displayed to the user in the footer for the enter debug mode key binding.
+const KEY_BINDING_DEBUG_ENABLE: &str = "(d) start debugging";
+
+/// Text displayed to the user in the footer for the exit debug mode key binding.
+const KEY_BINDING_DEBUG_DISABLE: &str = "(d) stop debugging";
+
+/// Text displayed to the user in the footer for the step forward key binding.
+const KEY_BINDING_DEBUG_STEP: &str = "(s) step";
+
+/// Text displayed to the user in the footer for the pause key binding.
+const KEY_BINDING_DEBUG_PAUSE: &str = "(p) pause";
+
+/// Key bindings that are displayed to the user in the footer no matter what the current state of
+/// the appliction is.
+const STANDARD_KEY_BINDINGS: [&str; 3] = [KEY_BINDING_QUIT, KEY_BINDING_NEXT, KEY_BINDING_PREV];
 
 impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
@@ -197,9 +222,16 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
-    let debug_mode = match app.state.debug_mode {
-        DebugMode::Disable => "Disabled",
-        DebugMode::Pause | DebugMode::Step => "Enabled",
+    let (debug_mode, debug_key_bindings) = match app.state.debug_mode {
+        DebugMode::Disable => ("Disabled", vec![KEY_BINDING_DEBUG_ENABLE]),
+        DebugMode::Pause => (
+            "Paused",
+            vec![KEY_BINDING_DEBUG_STEP, KEY_BINDING_DEBUG_DISABLE],
+        ),
+        DebugMode::Step => (
+            "Stepping",
+            vec![KEY_BINDING_DEBUG_PAUSE, KEY_BINDING_DEBUG_DISABLE],
+        ),
     };
 
     let stats = Paragraph::new(format!(
@@ -209,9 +241,16 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         debug_mode,
     ));
 
-    let key_bindings = Paragraph::new(KEY_BINDINGS).right_aligned();
+    let mut key_bindings = Vec::from(STANDARD_KEY_BINDINGS);
+    key_bindings.extend(debug_key_bindings);
+
+    if app.state.selected.is_some() {
+        key_bindings.push(KEY_BINDING_EXPORT);
+    }
+
+    let key_bindings_paragraph = Paragraph::new(key_bindings.join(" | ")).right_aligned();
 
     frame.render_widget(outer, area);
     frame.render_widget(stats, left_panel);
-    frame.render_widget(key_bindings, right_panel);
+    frame.render_widget(key_bindings_paragraph, right_panel);
 }
