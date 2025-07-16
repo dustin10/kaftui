@@ -6,7 +6,7 @@ use crate::{
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
-    widgets::{Block, List, ListItem, Paragraph, Row, Table},
+    widgets::{Block, List, ListItem, Padding, Paragraph, Row, Table},
     Frame,
 };
 
@@ -80,7 +80,9 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
 fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
-    let record_list_block = Block::bordered().title(" Records ");
+    let record_list_block = Block::bordered()
+        .title(" Records ")
+        .padding(Padding::new(1, 1, 0, 0));
 
     let records_rows = state.records.iter().map(|r| {
         let offset = r.offset.to_string();
@@ -134,7 +136,9 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
     let headers_slice = layout_slices[1];
     let value_slice = layout_slices[2];
 
-    let info_block = Block::bordered().title(" Info ");
+    let info_block = Block::bordered()
+        .title(" Info ")
+        .padding(Padding::new(1, 1, 0, 0));
 
     let info_items = vec![
         ListItem::new(format!("Offset:    {}", record.offset)),
@@ -150,7 +154,9 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
 
     let info_list = List::new(info_items).block(info_block);
 
-    let headers_block = Block::bordered().title(" Headers ");
+    let headers_block = Block::bordered()
+        .title(" Headers ")
+        .padding(Padding::new(1, 1, 0, 0));
 
     let header_rows: Vec<Row> = record
         .headers
@@ -163,7 +169,9 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
         .header(Row::new(["Key".bold(), "Value".bold()]))
         .block(headers_block);
 
-    let value_block = Block::bordered().title(" Value ");
+    let value_block = Block::bordered()
+        .title(" Value ")
+        .padding(Padding::new(1, 1, 0, 0));
 
     let value = if record.value.is_empty() {
         String::from("")
@@ -204,7 +212,7 @@ fn render_record_empty(frame: &mut Frame, area: Rect) {
 
 /// Renders the footer panel that contains the key bindings.
 fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
-    let outer = Block::bordered();
+    let outer = Block::bordered().padding(Padding::new(1, 1, 0, 0));
 
     let inner_area = outer.inner(area);
 
