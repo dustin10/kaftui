@@ -206,6 +206,56 @@ impl From<&BorrowedMessage<'_>> for Record {
     }
 }
 
+/// A view of a [`Record`] that can be more easily filtered using a JSONPath query.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FilterableRecord {
+    /// Filterable info data.
+    info: Vec<HashMap<String, String>>,
+    /// Filterable header data.
+    headers: Vec<HashMap<String, String>>,
+    /// Filterable value data.
+    value: serde_json::Value,
+}
+
+impl From<&Record> for FilterableRecord {
+    /// Creates a new [`FilterableRecord`] from the given [`Record`] reference.
+    fn from(record: &Record) -> Self {
+        let mut info = Vec::new();
+
+        if let Some(pk) = record.partition_key.as_ref() {
+            let mut pk_map = HashMap::new();
+            pk_map.insert(String::from("partitionKey"), pk.clone());
+
+            info.push(pk_map);
+        }
+
+        let mut offset_map = HashMap::new();
+        offset_map.insert(String::from("offset"), record.offset.to_string());
+        info.push(offset_map);
+
+        let mut partition_map = HashMap::new();
+        partition_map.insert(String::from("partition"), record.partition.to_string());
+        info.push(partition_map);
+
+        let mut headers = Vec::new();
+        for (k, v) in record.headers.iter() {
+            let mut record_headers = HashMap::new();
+            record_headers.insert(k.clone(), v.clone());
+
+            headers.push(record_headers);
+        }
+
+        let value = serde_json::to_value(&record.value).expect("value serializes to JSON");
+
+        Self {
+            info,
+            headers,
+            value,
+        }
+    }
+}
+
 /// A task which is executed in a background thread that handles consuming messages from a Kafka
 /// topic.
 struct ConsumerTask {
@@ -241,8 +291,10 @@ impl ConsumerTask {
                 let record = Record::from(&msg);
 
                 if let Some(f) = filter {
-                    let json_value =
-                        serde_json::to_value(&record).expect("Record serializes to JSON");
+                    let filterable_record = FilterableRecord::from(&record);
+
+                    let json_value = serde_json::to_value(filterable_record)
+                        .expect("FilterableRecord serializes to JSON");
 
                     let json_path =
                         serde_json_path::JsonPath::parse(&f).expect("valid JSONPath expression");
