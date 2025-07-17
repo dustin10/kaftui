@@ -5,7 +5,7 @@ use crate::{
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style, Stylize},
+    style::{Color, Modifier, Style, Stylize},
     widgets::{Block, List, ListItem, Padding, Paragraph, Row, Table},
     Frame,
 };
@@ -224,9 +224,9 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
-    let consumer_mode_key_binding = match app.state.consumer_mode {
-        ConsumerMode::Processing => KEY_BINDING_PAUSE,
-        ConsumerMode::Paused => KEY_BINDING_RESUME,
+    let (consumer_mode_key_binding, stats_color) = match app.state.consumer_mode {
+        ConsumerMode::Processing => (KEY_BINDING_PAUSE, Color::LightGreen),
+        ConsumerMode::Paused => (KEY_BINDING_RESUME, Color::LightRed),
     };
 
     let stats = Paragraph::new(format!(
@@ -234,7 +234,8 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         app.config.topic(),
         app.state.total_consumed,
         app.state.consumer_mode,
-    ));
+    ))
+    .style(stats_color);
 
     let mut key_bindings = Vec::from(STANDARD_KEY_BINDINGS);
     key_bindings.push(consumer_mode_key_binding);
