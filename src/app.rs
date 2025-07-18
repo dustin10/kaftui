@@ -10,7 +10,7 @@ use crossterm::event::MouseEvent;
 use derive_builder::Builder;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
-    widgets::TableState,
+    widgets::{ScrollbarState, TableState},
     DefaultTerminal,
 };
 use serde::Serialize;
@@ -48,6 +48,7 @@ pub struct State {
     /// [`TableState`] for the table that the records consumed from the Kafka topic are rendered
     /// into.
     pub record_list_state: TableState,
+    pub record_list_scroll_state: ScrollbarState,
     /// Total number of records consumed from the Kafka topic since the application was launched.
     pub total_consumed: u32,
     /// Stores the current [`ConsumerMode`] of the application which controls whether or not
@@ -62,7 +63,8 @@ impl State {
             running: true,
             selected: None,
             records: BoundedVecDeque::new(max_records),
-            record_list_state: TableState::new(),
+            record_list_state: TableState::default(),
+            record_list_scroll_state: ScrollbarState::default(),
             total_consumed: 0,
             consumer_mode: ConsumerMode::Processing,
         }
@@ -273,7 +275,10 @@ impl App {
         self.state.total_consumed += 1;
 
         if let Some(i) = self.state.record_list_state.selected().as_mut() {
-            self.state.record_list_state.select(Some(*i + 1));
+            let new_idx = *i + 1;
+            self.state.record_list_state.select(Some(new_idx));
+            self.state.record_list_scroll_state =
+                self.state.record_list_scroll_state.position(new_idx);
         }
     }
     /// Handles the select previous record event emitted by the [`EventBus`].
@@ -292,9 +297,14 @@ impl App {
             let prev = *i - 1;
 
             self.state.record_list_state.select(Some(prev));
+            self.state.record_list_scroll_state =
+                self.state.record_list_scroll_state.position(prev);
+
             self.state.selected = self.state.records.get(prev).cloned();
         } else {
             self.state.record_list_state.select(Some(0));
+            self.state.record_list_scroll_state = self.state.record_list_scroll_state.position(0);
+
             self.state.selected = self.state.records.front().cloned();
         }
     }
@@ -314,9 +324,13 @@ impl App {
             let next = *i + 1;
 
             self.state.record_list_state.select(Some(next));
+            self.state.record_list_scroll_state =
+                self.state.record_list_scroll_state.position(next);
             self.state.selected = self.state.records.get(next).cloned();
         } else {
             self.state.record_list_state.select(Some(0));
+            self.state.record_list_scroll_state = self.state.record_list_scroll_state.position(0);
+
             self.state.selected = self.state.records.front().cloned();
         }
     }

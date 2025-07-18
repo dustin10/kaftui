@@ -4,9 +4,11 @@ use crate::{
 };
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
-    widgets::{Block, List, ListItem, Padding, Paragraph, Row, Table},
+    widgets::{
+        Block, List, ListItem, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
+    },
     Frame,
 };
 
@@ -119,6 +121,26 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
     .block(record_list_block);
 
     frame.render_stateful_widget(records_table, area, &mut state.record_list_state);
+
+    if state.selected.is_some() {
+        state.record_list_scroll_state = state
+            .record_list_scroll_state
+            .content_length(state.records.len());
+
+        let scrollbar = Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
+
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(Margin {
+                horizontal: 1,
+                vertical: 1,
+            }),
+            &mut state.record_list_scroll_state,
+        );
+    }
 }
 
 /// Renders the record details panel when there is an active [`Record`] set.
