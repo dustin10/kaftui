@@ -26,8 +26,9 @@ struct Args {
     /// Kafka topic.
     #[arg(short, long)]
     group_id: Option<String>,
-    /// Optional. Path to a properties file containing the configuration properties that will be
-    /// applied to the Kafka consumer.
+    /// Optional. Path to a properties file containing additional configuration for the Kafka
+    /// consumer other than the bootstrap servers and group id. Typically configuration for
+    /// authentication, etc.
     #[arg(long)]
     consumer_properties_file: Option<String>,
     /// Optional. Maximum nunber of records that should be held in memory at any given time after
@@ -39,9 +40,6 @@ struct Args {
     /// only be presented to the user if it matches the filter.
     #[arg(short, long)]
     filter: Option<String>,
-    /// Optional. Flag indicating that application logs should be output to a file.
-    #[arg(long)]
-    enable_logs: bool,
 }
 
 impl From<Args> for Config {
@@ -68,14 +66,22 @@ impl From<Args> for Config {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    init_env(args.enable_logs);
+    init_env();
 
     run_app(args).await
 }
 
+/// Environment variable that can be used to enable capturing logs to a file for debugging.
+const ENABLE_LOGS_ENV_VAR: &str = "KAFTUI_ENABLE_LOGS";
+
 /// Initializes the environment that the application will run in.
-fn init_env(enable_logs: bool) {
+fn init_env() {
     let dot_env_result = dotenvy::dotenv();
+
+    let enable_logs = std::env::var(ENABLE_LOGS_ENV_VAR)
+        .ok()
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
     if !enable_logs {
         return;
@@ -127,7 +133,7 @@ async fn run_app(args: Args) -> anyhow::Result<()> {
     let terminal = ratatui::init();
 
     let result = App::new(args.into())
-        .context("bootstrap application")?
+        .context("initialize application")?
         .run(terminal)
         .await;
 

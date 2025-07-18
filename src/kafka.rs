@@ -99,12 +99,15 @@ impl Consumer {
         event_bus: Arc<Mutex<EventBus>>,
     ) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
+
+        // apply default config
         client_config.set("auto.offset.reset", "latest");
         client_config.set("statistics.interval.ms", "60000");
 
+        // apply user config
         client_config.extend(config);
 
-        client_config.set("statistics.interval.ms", "60000");
+        // apply enforced config
         client_config.set("enable.auto.commit", "false");
 
         let consumer: StreamConsumer<ConsumeContext> = client_config
