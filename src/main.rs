@@ -5,6 +5,7 @@ mod ui;
 
 use crate::app::{App, DEFAULT_CONSUMER_GROUP_ID, DEFAULT_MAX_RECORDS};
 
+use anyhow::Context;
 use app::Config;
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
@@ -125,7 +126,10 @@ fn init_env(enable_logs: bool) {
 async fn run_app(args: Args) -> anyhow::Result<()> {
     let terminal = ratatui::init();
 
-    let result = App::new(args.into())?.run(terminal).await;
+    let result = App::new(args.into())
+        .context("bootstrap application")?
+        .run(terminal)
+        .await;
 
     ratatui::restore();
 

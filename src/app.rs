@@ -225,10 +225,8 @@ impl App {
             match event {
                 Event::Tick => self.tick(),
                 Event::Crossterm(event) => match event {
-                    crossterm::event::Event::Mouse(mouse_event) => {
-                        self.on_mouse_event(mouse_event)?
-                    }
-                    crossterm::event::Event::Key(key_event) => self.on_key_event(key_event).await?,
+                    crossterm::event::Event::Mouse(mouse_event) => self.on_mouse_event(mouse_event),
+                    crossterm::event::Event::Key(key_event) => self.on_key_event(key_event).await,
                     _ => {}
                 },
                 Event::App(app_event) => match app_event {
@@ -248,11 +246,9 @@ impl App {
         Ok(())
     }
     /// Handles mouse events emitted by the [`EventBus`].
-    fn on_mouse_event(&mut self, _mouse_event: MouseEvent) -> anyhow::Result<()> {
-        Ok(())
-    }
+    fn on_mouse_event(&mut self, _mouse_event: MouseEvent) {}
     /// Handles key events emitted by the [`EventBus`].
-    async fn on_key_event(&mut self, key_event: KeyEvent) -> anyhow::Result<()> {
+    async fn on_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Esc => self.event_bus.lock().await.send(AppEvent::Quit),
             KeyCode::Char(c) => match c {
@@ -269,8 +265,6 @@ impl App {
             },
             _ => {}
         }
-
-        Ok(())
     }
     /// Handles the record recieved event emitted by the [`EventBus`].
     fn on_record_received(&mut self, record: Record) {
