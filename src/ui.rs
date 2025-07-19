@@ -47,7 +47,7 @@ const KEY_BINDING_RESUME: &str = "(r) resume";
 const KEY_BINDING_EXPORT: &str = "(e) export";
 
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
-/// the appliction is.
+/// the application is.
 const STANDARD_KEY_BINDINGS: [&str; 2] = [KEY_BINDING_QUIT, KEY_BINDING_CHANGE_FOCUS];
 
 impl App {
