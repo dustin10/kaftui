@@ -90,7 +90,7 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
         let offset = r.offset.to_string();
 
         let key = r
-            .partition_key
+            .key
             .clone()
             .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
 
@@ -167,7 +167,7 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
         ListItem::new(format!(
             "Key:       {}",
             record
-                .partition_key
+                .key
                 .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY))
         )),
         ListItem::new(format!("Partition: {}", record.partition)),

@@ -123,7 +123,7 @@ struct ExportedRecord {
     /// Offset of the record in the topic.
     offset: i64,
     /// Partition key for the record if one was set.
-    partition_key: Option<String>,
+    key: Option<String>,
     /// Contains any headers from the Kafka record.
     headers: HashMap<String, String>,
     /// Value of the Kafka record.
@@ -151,7 +151,7 @@ impl From<Record> for ExportedRecord {
             topic: value.topic,
             partition: value.partition,
             offset: value.offset,
-            partition_key: value.partition_key,
+            key: value.key,
             headers: value.headers,
             value: json_value,
             timestamp: value.timestamp,
@@ -289,7 +289,7 @@ impl App {
             return;
         }
 
-        if let Some(i) = self.state.record_list_state.selected().as_mut() {
+        if let Some(i) = self.state.record_list_state.selected().as_ref() {
             if *i == 0 {
                 return;
             }
@@ -316,7 +316,7 @@ impl App {
             return;
         }
 
-        if let Some(i) = self.state.record_list_state.selected().as_mut() {
+        if let Some(i) = self.state.record_list_state.selected().as_ref() {
             if *i == self.state.records.len() - 1 {
                 return;
             }
@@ -326,6 +326,7 @@ impl App {
             self.state.record_list_state.select(Some(next));
             self.state.record_list_scroll_state =
                 self.state.record_list_scroll_state.position(next);
+
             self.state.selected = self.state.records.get(next).cloned();
         } else {
             self.state.record_list_state.select(Some(0));
@@ -341,11 +342,11 @@ impl App {
 
             match serde_json::to_string_pretty(&exported_record) {
                 Ok(json) => {
-                    // TODO: configurable export direcotry
+                    // TODO: configurable export directory
                     let dir = ".";
 
                     let name = exported_record
-                        .partition_key
+                        .key
                         .as_ref()
                         .map_or(DEFAULT_EXPORT_FILE_PREFIX, |v| v);
 
