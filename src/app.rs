@@ -17,8 +17,9 @@ use serde::Serialize;
 use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc};
 use tokio::sync::Mutex;
 
-/// Default group id for the Kafka consumer.
-pub const DEFAULT_CONSUMER_GROUP_ID: &str = "kaftui-consumer";
+/// Prefix for the default group id for the Kafka consumer generated from the hostname of the
+/// machine the application is running on.
+pub const DEFAULT_CONSUMER_GROUP_ID_PREFIX: &str = "kaftui-";
 
 /// Default maximum number of records consumed from the Kafka toic to hold in memory at any given
 /// time.

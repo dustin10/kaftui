@@ -3,10 +3,11 @@ mod event;
 mod kafka;
 mod ui;
 
-use crate::app::{App, DEFAULT_CONSUMER_GROUP_ID, DEFAULT_MAX_RECORDS};
+use crate::app::{App, DEFAULT_CONSUMER_GROUP_ID_PREFIX, DEFAULT_MAX_RECORDS};
 
 use anyhow::Context;
 use app::Config;
+use chrono::Utc;
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -19,11 +20,12 @@ struct Args {
     /// Kafka bootstrap servers host value that the application will connect to.
     #[arg(short, long)]
     bootstrap_servers: String,
-    /// Name of the topic to consume messages from.
+    /// Name of the Kafka topic to consume records from.
     #[arg(short, long)]
     topic: String,
     /// Optional. Id of the group that the application will use when consuming messages from the
-    /// Kafka topic.
+    /// Kafka topic. By default a group id will be generated from the hostname of the machine that
+    /// is executing the application.
     #[arg(short, long)]
     group_id: Option<String>,
     /// Optional. Path to a properties file containing additional configuration for the Kafka
@@ -37,7 +39,7 @@ struct Args {
     max_records: Option<usize>,
     /// Optional. JSONPath filter that is applied to a record. Can be used to filter out any
     /// records from the Kafka topic that the end user may not be interested in. A message will
-    /// only be presented to the user if it matches the filter.
+    /// only be presented to the user if it matches the filter. By default no filter is applied.
     #[arg(short, long)]
     filter: Option<String>,
 }
@@ -45,19 +47,34 @@ struct Args {
 impl From<Args> for Config {
     /// Consumes and converts an instance of [`Args`] to one of [`Config`].
     fn from(value: Args) -> Self {
+        let group_id = value.group_id.unwrap_or_else(generate_group_id);
+
         Self::builder()
             .bootstrap_servers(value.bootstrap_servers)
             .topic(value.topic)
-            .group_id(
-                value
-                    .group_id
-                    .unwrap_or_else(|| String::from(DEFAULT_CONSUMER_GROUP_ID)),
-            )
+            .group_id(group_id)
             .consumer_properties_file(value.consumer_properties_file)
             .filter(value.filter)
             .max_records(value.max_records.unwrap_or(DEFAULT_MAX_RECORDS))
             .build()
             .expect("valid app config")
+    }
+}
+
+/// Generates a consumer group id for the Kafka consumer based on the hostname of the maachine
+/// running the application. If no hostname is able to be resolved then the current UTC epoch
+/// timestamp milliseconds value will be used in it's place.
+fn generate_group_id() -> String {
+    match gethostname::gethostname().into_string() {
+        Ok(name) => format!("{}-{}", DEFAULT_CONSUMER_GROUP_ID_PREFIX, name),
+        Err(_) => {
+            tracing::error!("failed to get hostname");
+            format!(
+                "{}-{}",
+                DEFAULT_CONSUMER_GROUP_ID_PREFIX,
+                Utc::now().timestamp_millis()
+            )
+        }
     }
 }
 
