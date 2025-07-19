@@ -48,6 +48,8 @@ pub struct State {
     /// [`TableState`] for the table that the records consumed from the Kafka topic are rendered
     /// into.
     pub record_list_state: TableState,
+    /// [`ScrollbarState`] for the table that the records consumed from the Kafka topic are
+    /// rendered into.
     pub record_list_scroll_state: ScrollbarState,
     /// Total number of records consumed from the Kafka topic since the application was launched.
     pub total_consumed: u32,
