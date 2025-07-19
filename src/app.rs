@@ -29,6 +29,13 @@ pub enum ConsumerMode {
     Processing,
 }
 
+/// Enumeration of the widgets that the user can select.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum SelectableWidget {
+    RecordList,
+    RecordValue,
+}
+
 /// Manages the global appliation state.
 #[derive(Debug)]
 pub struct State {
@@ -44,11 +51,15 @@ pub struct State {
     /// [`ScrollbarState`] for the table that the records consumed from the Kafka topic are
     /// rendered into.
     pub record_list_scroll_state: ScrollbarState,
+    /// Contains the current scolling state for the record value text.
+    pub record_list_value_scroll: (u16, u16),
     /// Total number of records consumed from the Kafka topic since the application was launched.
     pub total_consumed: u32,
     /// Stores the current [`ConsumerMode`] of the application which controls whether or not
     /// records are currently being consumed from the topic.
     pub consumer_mode: ConsumerMode,
+    /// Stores the widget that the user currently has selected.
+    pub selected_widget: SelectableWidget,
 }
 
 impl State {
@@ -60,8 +71,10 @@ impl State {
             records: BoundedVecDeque::new(max_records),
             record_list_state: TableState::default(),
             record_list_scroll_state: ScrollbarState::default(),
+            record_list_value_scroll: (0, 0),
             total_consumed: 0,
             consumer_mode: ConsumerMode::Processing,
+            selected_widget: SelectableWidget::RecordList,
         }
     }
 }
@@ -234,6 +247,11 @@ impl App {
                     AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
                     AppEvent::PauseProcessing => self.on_pause_processing(),
                     AppEvent::ResumeProcessing => self.on_resume_processing(),
+                    AppEvent::SelectNextWidget => self.on_select_next_widget(),
+                    AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
+                    AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
+                    AppEvent::ScrollRecordValueRight => self.on_scroll_record_value_right(),
+                    AppEvent::ScrollRecordValueLeft => self.on_scroll_record_value_left(),
                 },
             }
         }
@@ -248,14 +266,43 @@ impl App {
     async fn on_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Esc => self.event_bus.lock().await.send(AppEvent::Quit),
+            KeyCode::Tab => self.event_bus.lock().await.send(AppEvent::SelectNextWidget),
             KeyCode::Char(c) => match c {
                 'e' => self
                     .event_bus
                     .lock()
                     .await
                     .send(AppEvent::ExportSelectedRecord),
-                'j' => self.event_bus.lock().await.send(AppEvent::SelectNextRecord),
-                'k' => self.event_bus.lock().await.send(AppEvent::SelectPrevRecord),
+                'h' if self.state.selected_widget == SelectableWidget::RecordValue => self
+                    .event_bus
+                    .lock()
+                    .await
+                    .send(AppEvent::ScrollRecordValueLeft),
+                'j' => match self.state.selected_widget {
+                    SelectableWidget::RecordList => {
+                        self.event_bus.lock().await.send(AppEvent::SelectNextRecord)
+                    }
+                    SelectableWidget::RecordValue => self
+                        .event_bus
+                        .lock()
+                        .await
+                        .send(AppEvent::ScrollRecordValueDown),
+                },
+                'k' => match self.state.selected_widget {
+                    SelectableWidget::RecordList => {
+                        self.event_bus.lock().await.send(AppEvent::SelectPrevRecord)
+                    }
+                    SelectableWidget::RecordValue => self
+                        .event_bus
+                        .lock()
+                        .await
+                        .send(AppEvent::ScrollRecordValueUp),
+                },
+                'l' if self.state.selected_widget == SelectableWidget::RecordValue => self
+                    .event_bus
+                    .lock()
+                    .await
+                    .send(AppEvent::ScrollRecordValueRight),
                 'p' => self.event_bus.lock().await.send(AppEvent::PauseProcessing),
                 'r' => self.event_bus.lock().await.send(AppEvent::ResumeProcessing),
                 _ => {}
@@ -302,6 +349,8 @@ impl App {
 
             self.state.selected = self.state.records.front().cloned();
         }
+
+        self.state.record_list_value_scroll = (0, 0);
     }
     /// Handles the select next record event emitted by the [`EventBus`].
     fn on_select_next_record(&mut self) {
@@ -329,6 +378,8 @@ impl App {
 
             self.state.selected = self.state.records.front().cloned();
         }
+
+        self.state.record_list_value_scroll = (0, 0);
     }
     /// Handles the export selected record event emitted by the [`EventBus`].
     fn on_export_selected_record(&self) {
@@ -379,6 +430,37 @@ impl App {
             if let Err(e) = self.consumer.resume() {
                 tracing::error!("failed to resume consumer: {}", e);
             }
+        }
+    }
+    /// Handles the select next widget event emitted by the [`EventBus`].
+    fn on_select_next_widget(&mut self) {
+        let selected = match self.state.selected_widget {
+            SelectableWidget::RecordList if self.state.selected.is_some() => {
+                SelectableWidget::RecordValue
+            }
+            _ => SelectableWidget::RecordList,
+        };
+
+        self.state.selected_widget = selected;
+    }
+    /// Handles the scroll record value down event emitted by the [`EventBus`].
+    fn on_scroll_record_value_down(&mut self) {
+        self.state.record_list_value_scroll.0 += 1;
+    }
+    /// Handles the scroll record value up event emitted by the [`EventBus`].
+    fn on_scroll_record_value_up(&mut self) {
+        if self.state.record_list_value_scroll.0 != 0 {
+            self.state.record_list_value_scroll.0 -= 1;
+        }
+    }
+    /// Handles the scroll record value right event emitted by the [`EventBus`].
+    fn on_scroll_record_value_right(&mut self) {
+        self.state.record_list_value_scroll.1 += 1;
+    }
+    /// Handles the scroll record value left event emitted by the [`EventBus`].
+    fn on_scroll_record_value_left(&mut self) {
+        if self.state.record_list_value_scroll.1 != 0 {
+            self.state.record_list_value_scroll.1 -= 1;
         }
     }
     /// Handles the tick event of the terminal.

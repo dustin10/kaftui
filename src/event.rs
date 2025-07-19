@@ -38,6 +38,16 @@ pub enum AppEvent {
     ResumeProcessing,
     /// Fires when the user wants to pause record consumption.
     PauseProcessing,
+    /// Fires when the user wants to select a different widget.
+    SelectNextWidget,
+    /// Fires when the user wants to scroll the record value widget down.
+    ScrollRecordValueDown,
+    /// Fires when the user wants to scroll the record value widget up.
+    ScrollRecordValueUp,
+    /// Fires when the user wants to scroll the record value widget right.
+    ScrollRecordValueRight,
+    /// Fires when the user wants to scroll the record value widget left.
+    ScrollRecordValueLeft,
 }
 
 /// The bus over which [`Event`]s are published and consumed.

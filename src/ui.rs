@@ -1,13 +1,11 @@
-use crate::{
-    app::{App, ConsumerMode, Screen, State},
-    kafka::Record,
-};
+use crate::app::{App, ConsumerMode, Screen, SelectableWidget, State};
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     widgets::{
-        Block, List, ListItem, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
+        Block, BorderType, List, ListItem, Padding, Paragraph, Row, Scrollbar,
+        ScrollbarOrientation, Table,
     },
     Frame,
 };
@@ -17,6 +15,21 @@ const EMPTY_PARTITION_KEY: &str = "<empty>";
 
 /// Text displayed to the user in the footer for the quit key binding.
 const KEY_BINDING_QUIT: &str = "(esc) quit";
+
+/// Text displayed to the user in the footer for the cycle widget key binding.
+const KEY_BINDING_CHANGE_FOCUS: &str = "(tab) change focus";
+
+/// Text displayed to the user in the footer for the scroll left key binding.
+const KEY_BINDING_SCROLL_LEFT: &str = "(h) left";
+
+/// Text displayed to the user in the footer for the scroll right key binding.
+const KEY_BINDING_SCROLL_RIGHT: &str = "(l) right";
+
+/// Text displayed to the user in the footer for the scroll down key binding.
+const KEY_BINDING_SCROLL_DOWN: &str = "(j) down";
+
+/// Text displayed to the user in the footer for the scroll up key binding.
+const KEY_BINDING_SCROLL_UP: &str = "(k) up";
 
 /// Text displayed to the user in the footer for the next record key binding.
 const KEY_BINDING_NEXT: &str = "(j) next";
@@ -35,7 +48,7 @@ const KEY_BINDING_EXPORT: &str = "(e) export";
 
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
 /// the appliction is.
-const STANDARD_KEY_BINDINGS: [&str; 3] = [KEY_BINDING_QUIT, KEY_BINDING_NEXT, KEY_BINDING_PREV];
+const STANDARD_KEY_BINDINGS: [&str; 2] = [KEY_BINDING_QUIT, KEY_BINDING_CHANGE_FOCUS];
 
 impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
@@ -71,8 +84,8 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 
     render_record_list(state, frame, left_panel);
 
-    if let Some(record) = state.selected.as_ref() {
-        render_record_details(record.clone(), frame, right_panel);
+    if state.selected.is_some() {
+        render_record_details(state, frame, right_panel);
     } else {
         render_record_empty(frame, right_panel);
     }
@@ -82,9 +95,15 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
 fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
-    let record_list_block = Block::bordered()
+    let mut record_list_block = Block::bordered()
         .title(" Records ")
         .padding(Padding::new(1, 1, 0, 0));
+
+    if state.selected_widget == SelectableWidget::RecordList {
+        record_list_block = record_list_block
+            .border_type(BorderType::Thick)
+            .border_style(Color::Cyan);
+    }
 
     let records_rows = state.records.iter().map(|r| {
         let offset = r.offset.to_string();
@@ -144,7 +163,9 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
 }
 
 /// Renders the record details panel when there is an active [`Record`] set.
-fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
+fn render_record_details(state: &State, frame: &mut Frame, area: Rect) {
+    let record = state.selected.clone().expect("selected record exists");
+
     let layout_slices = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -191,9 +212,15 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
         .header(Row::new(["Key".bold(), "Value".bold()]))
         .block(headers_block);
 
-    let value_block = Block::bordered()
+    let mut value_block = Block::bordered()
         .title(" Value ")
         .padding(Padding::new(1, 1, 0, 0));
+
+    if state.selected_widget == SelectableWidget::RecordValue {
+        value_block = value_block
+            .border_type(BorderType::Thick)
+            .border_style(Color::Cyan);
+    }
 
     let value = if record.value.is_empty() {
         String::from("")
@@ -209,7 +236,9 @@ fn render_record_details(record: Record, frame: &mut Frame, area: Rect) {
         }
     };
 
-    let value_paragraph = Paragraph::new(value).block(value_block);
+    let value_paragraph = Paragraph::new(value)
+        .block(value_block)
+        .scroll(state.record_list_value_scroll);
 
     frame.render_widget(info_list, info_slice);
     frame.render_widget(headers_table, headers_slice);
@@ -260,6 +289,20 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     .style(stats_color);
 
     let mut key_bindings = Vec::from(STANDARD_KEY_BINDINGS);
+
+    match app.state.selected_widget {
+        SelectableWidget::RecordList => {
+            key_bindings.push(KEY_BINDING_NEXT);
+            key_bindings.push(KEY_BINDING_PREV);
+        }
+        SelectableWidget::RecordValue => {
+            key_bindings.push(KEY_BINDING_SCROLL_LEFT);
+            key_bindings.push(KEY_BINDING_SCROLL_DOWN);
+            key_bindings.push(KEY_BINDING_SCROLL_UP);
+            key_bindings.push(KEY_BINDING_SCROLL_RIGHT);
+        }
+    };
+
     key_bindings.push(consumer_mode_key_binding);
 
     if app.state.selected.is_some() {
