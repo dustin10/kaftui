@@ -17,14 +17,6 @@ use serde::Serialize;
 use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc};
 use tokio::sync::Mutex;
 
-/// Prefix for the default group id for the Kafka consumer generated from the hostname of the
-/// machine the application is running on.
-pub const DEFAULT_CONSUMER_GROUP_ID_PREFIX: &str = "kaftui-";
-
-/// Default maximum number of records consumed from the Kafka toic to hold in memory at any given
-/// time.
-pub const DEFAULT_MAX_RECORDS: usize = 256;
-
 /// Default prefix used for the name of the exported file when no partition key is set.
 const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
 
