@@ -14,7 +14,7 @@ use ratatui::{
     DefaultTerminal,
 };
 use serde::Serialize;
-use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 /// Default prefix used for the name of the exported file when no partition key is set.
@@ -98,9 +98,7 @@ pub struct Config {
     topic: String,
     /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
     group_id: String,
-    /// Path to a properties file containing the configuration properties that will be
-    /// applied to the Kafka consumer.
-    consumer_properties_file: Option<String>,
+    consumer_properties: Option<HashMap<String, String>>,
     /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
     /// from the Kafka topic that the end user may not be interested in. A message will only be
     /// presented to the user if it matches the filter.
@@ -191,12 +189,8 @@ impl App {
 
         let mut consumer_config = HashMap::new();
 
-        if let Some(path) = &config.consumer_properties_file {
-            let file = File::open(path).context("open properties file")?;
-            let props =
-                java_properties::read(BufReader::new(file)).context("read properties file")?;
-
-            consumer_config.extend(props);
+        if let Some(ref props) = config.consumer_properties {
+            consumer_config.extend(props.clone());
         }
 
         consumer_config.insert(
