@@ -198,20 +198,20 @@ fn init_config() -> anyhow::Result<Config> {
 
     let profile = profile.expect("profile exists");
 
-    let bootstrap_servers = profile.bootstrap_servers.clone().unwrap_or_else(|| {
-        args.bootstrap_servers
+    let bootstrap_servers = args.bootstrap_servers.unwrap_or_else(|| {
+        profile
+            .bootstrap_servers
+            .clone()
             .expect("bootstrap servers configured")
     });
 
-    let topic = profile
+    let topic = args
         .topic
-        .clone()
-        .unwrap_or_else(|| args.topic.expect("topic configured"));
+        .unwrap_or_else(|| profile.topic.clone().expect("topic configured"));
 
-    let group_id = profile
+    let group_id = args
         .group_id
-        .clone()
-        .unwrap_or_else(|| args.group_id.unwrap_or_else(generate_group_id));
+        .unwrap_or_else(|| profile.group_id.clone().unwrap_or_else(generate_group_id));
 
     let mut consumer_properties = profile.consumer_properties.clone().unwrap_or_default();
 
@@ -222,14 +222,14 @@ fn init_config() -> anyhow::Result<Config> {
         consumer_properties.extend(props);
     }
 
-    let mut filter = profile.filter.clone();
+    let mut filter = args.filter;
     if filter.is_none() {
-        filter = args.filter;
+        filter = profile.filter.clone();
     }
 
-    let max_records = profile
+    let max_records = args
         .max_records
-        .unwrap_or_else(|| args.max_records.unwrap_or(DEFAULT_MAX_RECORDS));
+        .unwrap_or_else(|| profile.max_records.unwrap_or(DEFAULT_MAX_RECORDS));
 
     Config::builder()
         .bootstrap_servers(bootstrap_servers)
