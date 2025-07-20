@@ -7,13 +7,12 @@ use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
 use chrono::{DateTime, Utc};
 use crossterm::event::MouseEvent;
-use derive_builder::Builder;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     widgets::{ScrollbarState, TableState},
     DefaultTerminal,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -90,30 +89,26 @@ pub enum Screen {
 }
 
 /// Configuration values which drive the behavior of the application.
-#[derive(Builder, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Kafka bootstrap servers host value that the application will connect to.
-    bootstrap_servers: String,
+    pub bootstrap_servers: String,
     /// Name of the Kafka topic to consume messages from.
-    topic: String,
+    pub topic: String,
     /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
-    group_id: String,
+    pub group_id: String,
     /// Additional configuration properties that will be applied to the Kafka consumer.
-    consumer_properties: Option<HashMap<String, String>>,
+    pub consumer_properties: Option<HashMap<String, String>>,
     /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
     /// from the Kafka topic that the end user may not be interested in. A message will only be
     /// presented to the user if it matches the filter.
-    filter: Option<String>,
+    pub filter: Option<String>,
     /// Maximum nunber of [`Records`] that should be held in memory at any given time after being
     /// consumed from the Kafka topic.
-    max_records: usize,
+    pub max_records: usize,
 }
 
 impl Config {
-    /// Creates a new default [`ConfigBuilder`].
-    pub fn builder() -> ConfigBuilder {
-        ConfigBuilder::default()
-    }
     /// Returns the configured Kafka topic name.
     pub fn topic(&self) -> &String {
         &self.topic
