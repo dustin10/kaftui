@@ -277,16 +277,14 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     let filter_text = app
         .config
-        .filter()
+        .filter
+        .as_ref()
         .map(|f| format!(" (Filter: {})", f))
         .unwrap_or_default();
 
     let stats = Paragraph::new(format!(
         "Topic: {} | Consumed: {} | {:?}{}",
-        app.config.topic(),
-        app.state.total_consumed,
-        app.state.consumer_mode,
-        filter_text,
+        app.config.topic, app.state.total_consumed, app.state.consumer_mode, filter_text,
     ))
     .style(stats_color);
 

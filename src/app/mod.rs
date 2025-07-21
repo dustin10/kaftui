@@ -1,4 +1,7 @@
+pub mod config;
+
 use crate::{
+    app::config::Config,
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, Record},
 };
@@ -12,7 +15,7 @@ use ratatui::{
     widgets::{ScrollbarState, TableState},
     DefaultTerminal,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -86,37 +89,6 @@ impl State {
 pub enum Screen {
     /// Active when the user is viewing messages being consumed from a Kafka topic.
     ConsumeTopic,
-}
-
-/// Configuration values which drive the behavior of the application.
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Config {
-    /// Kafka bootstrap servers host value that the application will connect to.
-    pub bootstrap_servers: String,
-    /// Name of the Kafka topic to consume messages from.
-    pub topic: String,
-    /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
-    pub group_id: String,
-    /// Additional configuration properties that will be applied to the Kafka consumer.
-    pub consumer_properties: Option<HashMap<String, String>>,
-    /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
-    /// from the Kafka topic that the end user may not be interested in. A message will only be
-    /// presented to the user if it matches the filter.
-    pub filter: Option<String>,
-    /// Maximum nunber of [`Records`] that should be held in memory at any given time after being
-    /// consumed from the Kafka topic.
-    pub max_records: usize,
-}
-
-impl Config {
-    /// Returns a reference to the the configured Kafka topic name.
-    pub fn topic(&self) -> &String {
-        &self.topic
-    }
-    /// Returns a reference to the filter being applied to Kafka records if one exists.
-    pub fn filter(&self) -> Option<&String> {
-        self.filter.as_ref()
-    }
 }
 
 /// View of a [`Record`] that is saved to a file in JSON format when the user requests that the
