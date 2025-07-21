@@ -22,9 +22,6 @@ use tokio::sync::Mutex;
 /// Default prefix used for the name of the exported file when no partition key is set.
 const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
 
-/// Controls the speed of the record value panel scrolling. TODO: Make this configurable.
-const RECORD_VALUE_SCROLL_FACTOR: u16 = 2;
-
 /// Enumerates the different states that the Kafka consumer can be in.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ConsumerMode {
@@ -41,7 +38,7 @@ pub enum SelectableWidget {
     RecordValue,
 }
 
-/// Manages the global appliation state.
+/// Manages the global application state.
 #[derive(Debug)]
 pub struct State {
     /// Flag indicating the application is running.
@@ -402,12 +399,12 @@ impl App {
     }
     /// Handles the scroll record value down event emitted by the [`EventBus`].
     fn on_scroll_record_value_down(&mut self) {
-        self.state.record_list_value_scroll.0 += RECORD_VALUE_SCROLL_FACTOR;
+        self.state.record_list_value_scroll.0 += self.config.scroll_factor;
     }
     /// Handles the scroll record value up event emitted by the [`EventBus`].
     fn on_scroll_record_value_up(&mut self) {
-        if self.state.record_list_value_scroll.0 >= RECORD_VALUE_SCROLL_FACTOR {
-            self.state.record_list_value_scroll.0 -= RECORD_VALUE_SCROLL_FACTOR;
+        if self.state.record_list_value_scroll.0 >= self.config.scroll_factor {
+            self.state.record_list_value_scroll.0 -= self.config.scroll_factor;
         }
     }
     /// Handles the tick event of the terminal.
