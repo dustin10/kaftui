@@ -5,7 +5,7 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     widgets::{
         Block, BorderType, List, ListItem, Padding, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, Table,
+        ScrollbarOrientation, Table, Wrap,
     },
     Frame,
 };
@@ -18,12 +18,6 @@ const KEY_BINDING_QUIT: &str = "(esc) quit";
 
 /// Text displayed to the user in the footer for the cycle widget key binding.
 const KEY_BINDING_CHANGE_FOCUS: &str = "(tab) change focus";
-
-/// Text displayed to the user in the footer for the scroll left key binding.
-const KEY_BINDING_SCROLL_LEFT: &str = "(h) left";
-
-/// Text displayed to the user in the footer for the scroll right key binding.
-const KEY_BINDING_SCROLL_RIGHT: &str = "(l) right";
 
 /// Text displayed to the user in the footer for the scroll down key binding.
 const KEY_BINDING_SCROLL_DOWN: &str = "(j) down";
@@ -238,6 +232,7 @@ fn render_record_details(state: &State, frame: &mut Frame, area: Rect) {
 
     let value_paragraph = Paragraph::new(value)
         .block(value_block)
+        .wrap(Wrap { trim: false })
         .scroll(state.record_list_value_scroll);
 
     frame.render_widget(info_list, info_slice);
@@ -303,10 +298,8 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             key_bindings.push(KEY_BINDING_PREV);
         }
         SelectableWidget::RecordValue => {
-            key_bindings.push(KEY_BINDING_SCROLL_LEFT);
             key_bindings.push(KEY_BINDING_SCROLL_DOWN);
             key_bindings.push(KEY_BINDING_SCROLL_UP);
-            key_bindings.push(KEY_BINDING_SCROLL_RIGHT);
         }
     };
 

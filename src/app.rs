@@ -247,8 +247,6 @@ impl App {
                     AppEvent::SelectNextWidget => self.on_select_next_widget(),
                     AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
                     AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
-                    AppEvent::ScrollRecordValueRight => self.on_scroll_record_value_right(),
-                    AppEvent::ScrollRecordValueLeft => self.on_scroll_record_value_left(),
                 },
             }
         }
@@ -270,11 +268,6 @@ impl App {
                     .lock()
                     .await
                     .send(AppEvent::ExportSelectedRecord),
-                'h' if self.state.selected_widget == SelectableWidget::RecordValue => self
-                    .event_bus
-                    .lock()
-                    .await
-                    .send(AppEvent::ScrollRecordValueLeft),
                 'j' => match self.state.selected_widget {
                     SelectableWidget::RecordList => {
                         self.event_bus.lock().await.send(AppEvent::SelectNextRecord)
@@ -295,11 +288,6 @@ impl App {
                         .await
                         .send(AppEvent::ScrollRecordValueUp),
                 },
-                'l' if self.state.selected_widget == SelectableWidget::RecordValue => self
-                    .event_bus
-                    .lock()
-                    .await
-                    .send(AppEvent::ScrollRecordValueRight),
                 'p' => self.event_bus.lock().await.send(AppEvent::PauseProcessing),
                 'r' => self.event_bus.lock().await.send(AppEvent::ResumeProcessing),
                 _ => {}
@@ -448,16 +436,6 @@ impl App {
     fn on_scroll_record_value_up(&mut self) {
         if self.state.record_list_value_scroll.0 >= RECORD_VALUE_SCROLL_FACTOR {
             self.state.record_list_value_scroll.0 -= RECORD_VALUE_SCROLL_FACTOR;
-        }
-    }
-    /// Handles the scroll record value right event emitted by the [`EventBus`].
-    fn on_scroll_record_value_right(&mut self) {
-        self.state.record_list_value_scroll.1 += RECORD_VALUE_SCROLL_FACTOR;
-    }
-    /// Handles the scroll record value left event emitted by the [`EventBus`].
-    fn on_scroll_record_value_left(&mut self) {
-        if self.state.record_list_value_scroll.1 >= RECORD_VALUE_SCROLL_FACTOR {
-            self.state.record_list_value_scroll.1 -= RECORD_VALUE_SCROLL_FACTOR;
         }
     }
     /// Handles the tick event of the terminal.

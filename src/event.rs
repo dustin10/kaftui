@@ -44,10 +44,6 @@ pub enum AppEvent {
     ScrollRecordValueDown,
     /// Fires when the user wants to scroll the record value widget up.
     ScrollRecordValueUp,
-    /// Fires when the user wants to scroll the record value widget right.
-    ScrollRecordValueRight,
-    /// Fires when the user wants to scroll the record value widget left.
-    ScrollRecordValueLeft,
 }
 
 /// The bus over which [`Event`]s are published and consumed.
