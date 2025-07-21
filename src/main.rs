@@ -8,7 +8,7 @@ use crate::app::{App, Config as AppConfig};
 use anyhow::Context;
 use chrono::Utc;
 use clap::Parser;
-use config::{Config, ConfigError, Map, Source, Value};
+use config::{Config, ConfigError, Environment, Map, Source, Value};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::File, io::BufReader};
 use tracing::level_filters::LevelFilter;
@@ -129,6 +129,13 @@ fn init_env() {
 
 /// Initializes the configuration for the application. Uses values from the any specified profile
 /// as defaults and then overlays arguments on top.
+///
+/// Configuration precedence is applied as follows where 1 is the highest:
+///
+/// 1. CLI arguments
+/// 2. Profile values, if one is specified
+/// 3. Environment variables
+/// 4. Default values
 fn init_config() -> anyhow::Result<AppConfig> {
     let args = Args::parse();
     let mut profile: Option<Profile> = None;
@@ -145,23 +152,21 @@ fn init_config() -> anyhow::Result<AppConfig> {
             Err(e) => return Err(e).context("read config file"),
         };
 
-        if config.profiles.is_some() {
-            let profiles = config.profiles.expect("profiles configured");
-
-            for p in profiles.iter() {
-                if p.name.eq(name) {
-                    profile = Some(p.clone());
-                    break;
-                }
-            }
-        }
+        profile = config.profiles.and_then(|ps| {
+            ps.iter()
+                .find(|p| p.name.eq(name))
+                .into_iter()
+                .next()
+                .cloned()
+        });
     }
 
-    // layer global defaults, profile and then args
-    let mut builder = Config::builder().add_source(Defaults);
+    let mut builder = Config::builder()
+        .add_source(Defaults)
+        .add_source(Environment::with_prefix("KAFTUI").separator("_"));
 
-    if let Some(profile) = profile {
-        builder = builder.add_source(profile);
+    if let Some(p) = profile {
+        builder = builder.add_source(p);
     }
 
     let consumer_properties_file = args.consumer_properties_file.clone();
