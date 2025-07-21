@@ -88,7 +88,7 @@ impl Config {
     }
 }
 
-/// Empty struct that simply implements the [`Source`] trait to integrate the global appliction
+/// Empty struct that simply implements the [`Source`] trait to integrate the global application
 /// default values into the configuration resolution.
 #[derive(Debug)]
 pub struct Defaults;
