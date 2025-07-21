@@ -66,7 +66,7 @@ pub struct State {
 
 impl State {
     /// Creates a new default [`State`].
-    pub fn with_max_records(max_records: usize) -> Self {
+    pub fn new(max_records: usize) -> Self {
         Self {
             running: true,
             selected: None,
@@ -206,7 +206,7 @@ impl App {
 
         Ok(Self {
             config,
-            state: State::with_max_records(max_records),
+            state: State::new(max_records),
             event_bus,
             consumer,
             screen: Screen::ConsumeTopic,
