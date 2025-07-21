@@ -280,11 +280,18 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         ConsumerMode::Paused => (KEY_BINDING_RESUME, Color::LightRed),
     };
 
+    let filter_text = app
+        .config
+        .filter()
+        .map(|f| format!(" (Filter: {})", f))
+        .unwrap_or_default();
+
     let stats = Paragraph::new(format!(
-        "Topic: {} | Consumed: {} | {:?}",
+        "Topic: {} | Consumed: {} | {:?}{}",
         app.config.topic(),
         app.state.total_consumed,
         app.state.consumer_mode,
+        filter_text,
     ))
     .style(stats_color);
 

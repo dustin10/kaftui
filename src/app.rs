@@ -109,9 +109,13 @@ pub struct Config {
 }
 
 impl Config {
-    /// Returns the configured Kafka topic name.
+    /// Returns a reference to the the configured Kafka topic name.
     pub fn topic(&self) -> &String {
         &self.topic
+    }
+    /// Returns a reference to the filter being applied to Kafka records if one exists.
+    pub fn filter(&self) -> Option<&String> {
+        self.filter.as_ref()
     }
 }
 
