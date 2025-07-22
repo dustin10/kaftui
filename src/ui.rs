@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::app::{App, ConsumerMode, Screen, SelectableWidget};
 
 use ratatui::{
@@ -11,6 +9,7 @@ use ratatui::{
     },
     Frame,
 };
+use std::collections::BTreeMap;
 
 /// Value displayed for the partition key field when one is not present in the Kafka record.
 const EMPTY_PARTITION_KEY: &str = "<empty>";
@@ -268,7 +267,9 @@ fn render_record_empty(frame: &mut Frame, area: Rect) {
 
 /// Renders the footer panel that contains the key bindings.
 fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
-    let outer = Block::bordered().padding(Padding::new(1, 1, 0, 0));
+    let outer = Block::bordered()
+        .border_style(Color::from_u32(app.config.theme.panel_border_color))
+        .padding(Padding::new(1, 1, 0, 0));
 
     let inner_area = outer.inner(area);
 
