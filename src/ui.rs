@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::app::{App, ConsumerMode, Screen, SelectableWidget};
 
 use ratatui::{
@@ -201,11 +203,9 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .border_style(Color::from_u32(app.config.theme.panel_border_color))
         .padding(Padding::new(1, 1, 0, 0));
 
-    // TODO: sort headers by key
-    let header_rows: Vec<Row> = record
-        .headers
+    let header_rows: Vec<Row> = BTreeMap::from_iter(record.headers.iter())
         .into_iter()
-        .map(|(k, v)| Row::new([k, v]))
+        .map(|(k, v)| Row::new([k.as_str(), v.as_str()]))
         .collect();
 
     let headers_table = Table::new(header_rows, [Constraint::Min(1), Constraint::Fill(3)])
