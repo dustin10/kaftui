@@ -256,8 +256,10 @@ pub struct Theme {
     pub status_text_color_processing: u32,
     /// Color used for the status text while the Kafka consumer is paused. Defaults to red.
     pub status_text_color_paused: u32,
-    /// Color used for the key bindings text. Defaults to white..
+    /// Color used for the key bindings text. Defaults to white.
     pub key_bindings_text_color: u32,
+    /// Color used for the label text in tables, etc. Defaults to white.
+    pub label_color: u32,
 }
 
 impl Default for Theme {
@@ -280,6 +282,7 @@ impl Default for Theme {
             status_text_color_processing: 0x0000FF00,
             status_text_color_paused: 0x00FF0000,
             key_bindings_text_color: 0x00FFFFFF,
+            label_color: 0x00FFFFFF,
         }
     }
 }
@@ -314,6 +317,8 @@ impl From<Theme> for ValueKind {
             String::from("keyBindingsTextColor"),
             Value::from(value.key_bindings_text_color),
         );
+
+        data.insert(String::from("labelColor"), Value::from(value.label_color));
 
         Self::Table(data)
     }

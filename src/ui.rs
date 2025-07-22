@@ -3,9 +3,10 @@ use crate::app::{App, ConsumerMode, Screen, SelectableWidget};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
+    text::ToSpan,
     widgets::{
-        Block, BorderType, List, ListItem, Padding, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, Table, Wrap,
+        Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        Table, Wrap,
     },
     Frame,
 };
@@ -80,7 +81,7 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
     if app.state.selected.is_some() {
         render_record_details(app, frame, right_panel);
     } else {
-        render_record_empty(frame, right_panel);
+        render_record_empty(app, frame, right_panel);
     }
 
     render_footer(app, frame, footer);
@@ -128,10 +129,18 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
     )
     .column_spacing(1)
     .header(Row::new([
-        "Partition".bold(),
-        "Offset".bold(),
-        "Key".bold(),
-        "Timestamp".bold(),
+        "Partition"
+            .bold()
+            .style(Color::from_u32(app.config.theme.label_color)),
+        "Offset"
+            .bold()
+            .style(Color::from_u32(app.config.theme.label_color)),
+        "Key"
+            .bold()
+            .style(Color::from_u32(app.config.theme.label_color)),
+        "Timestamp"
+            .bold()
+            .style(Color::from_u32(app.config.theme.label_color)),
     ]))
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .block(record_list_block);
@@ -183,19 +192,40 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .border_style(Color::from_u32(app.config.theme.panel_border_color))
         .padding(Padding::new(1, 1, 0, 0));
 
-    let info_items = vec![
-        ListItem::new(format!("Partition: {}", record.partition)),
-        ListItem::new(format!("Offset:    {}", record.offset)),
-        ListItem::new(format!(
-            "Key:       {}",
-            record
-                .key
-                .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY))
-        )),
-        ListItem::new(format!("Timestamp: {}", record.timestamp)),
+    let key_value = record
+        .key
+        .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
+
+    let info_rows = vec![
+        Row::new([
+            "Partition"
+                .bold()
+                .style(Color::from_u32(app.config.theme.label_color)),
+            record.partition.to_span(),
+        ]),
+        Row::new([
+            "Offset"
+                .bold()
+                .style(Color::from_u32(app.config.theme.label_color)),
+            record.offset.to_span(),
+        ]),
+        Row::new([
+            "Key"
+                .bold()
+                .style(Color::from_u32(app.config.theme.label_color)),
+            key_value.to_span(),
+        ]),
+        Row::new([
+            "Timestamp"
+                .bold()
+                .style(Color::from_u32(app.config.theme.label_color)),
+            record.timestamp.to_span(),
+        ]),
     ];
 
-    let info_list = List::new(info_items).block(info_block);
+    let info_table = Table::new(info_rows, [Constraint::Fill(1), Constraint::Fill(9)])
+        .column_spacing(1)
+        .block(info_block);
 
     let headers_block = Block::bordered()
         .title(" Headers ")
@@ -209,7 +239,14 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 
     let headers_table = Table::new(header_rows, [Constraint::Min(1), Constraint::Fill(3)])
         .column_spacing(1)
-        .header(Row::new(["Key".bold(), "Value".bold()]))
+        .header(Row::new([
+            "Key"
+                .bold()
+                .style(Color::from_u32(app.config.theme.label_color)),
+            "Value"
+                .bold()
+                .style(Color::from_u32(app.config.theme.label_color)),
+        ]))
         .block(headers_block);
 
     let mut value_block = Block::bordered()
@@ -244,25 +281,38 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .wrap(Wrap { trim: false })
         .scroll(state.record_list_value_scroll);
 
-    frame.render_widget(info_list, info_slice);
+    frame.render_widget(info_table, info_slice);
     frame.render_widget(headers_table, headers_slice);
     frame.render_widget(value_paragraph, value_slice);
 }
 
 /// Renders the record details panel when no active [`Record`] set.
-fn render_record_empty(frame: &mut Frame, area: Rect) {
+fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
 
-    let text_area = layout[1];
+    let empty_area = layout[0];
+    let no_record_text_area = layout[1];
 
-    let empty_text = Paragraph::new("No Record Selected")
-        .block(Block::default())
+    let empty_text = Paragraph::default().block(
+        Block::default()
+            .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
+            .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+    );
+
+    let no_record_text = Paragraph::new("No Record Selected")
+        .style(Color::from_u32(app.config.theme.panel_border_color))
+        .block(
+            Block::default()
+                .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
+                .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+        )
         .centered();
 
-    frame.render_widget(empty_text, text_area);
+    frame.render_widget(empty_text, empty_area);
+    frame.render_widget(no_record_text, no_record_text_area);
 }
 
 /// Renders the footer panel that contains the key bindings.
