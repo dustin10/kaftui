@@ -1,4 +1,4 @@
-use crate::app::{App, ConsumerMode, Screen, SelectableWidget, State};
+use crate::app::{App, ConsumerMode, Screen, SelectableWidget};
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
@@ -56,8 +56,6 @@ impl App {
 
 /// Renders the UI to the terminal for the [`Screen::ConsumeTopic`] screen.
 fn render_consume_topic(app: &mut App, frame: &mut Frame) {
-    let state = &mut app.state;
-
     let full_screen = frame.area();
 
     let outer = Layout::default()
@@ -76,10 +74,10 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
     let left_panel = view_record_inner[0];
     let right_panel = view_record_inner[1];
 
-    render_record_list(state, frame, left_panel);
+    render_record_list(app, frame, left_panel);
 
-    if state.selected.is_some() {
-        render_record_details(state, frame, right_panel);
+    if app.state.selected.is_some() {
+        render_record_details(app, frame, right_panel);
     } else {
         render_record_empty(frame, right_panel);
     }
@@ -88,7 +86,9 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 }
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
-fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
+fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
+    let state = &mut app.state;
+
     let mut record_list_block = Block::bordered()
         .title(" Records ")
         .padding(Padding::new(1, 1, 0, 0));
@@ -96,7 +96,9 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
     if state.selected_widget == SelectableWidget::RecordList {
         record_list_block = record_list_block
             .border_type(BorderType::Thick)
-            .border_style(Color::Cyan);
+            .border_style(Color::from_u32(
+                app.config.theme.selected_panel_border_color,
+            ));
     }
 
     let records_rows = state.records.iter().map(|r| {
@@ -157,7 +159,9 @@ fn render_record_list(state: &mut State, frame: &mut Frame, area: Rect) {
 }
 
 /// Renders the record details panel when there is an active [`Record`] set.
-fn render_record_details(state: &State, frame: &mut Frame, area: Rect) {
+fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
+    let state = &app.state;
+
     let record = state.selected.clone().expect("selected record exists");
 
     let layout_slices = Layout::default()
@@ -175,9 +179,11 @@ fn render_record_details(state: &State, frame: &mut Frame, area: Rect) {
 
     let info_block = Block::bordered()
         .title(" Info ")
+        .border_style(Color::from_u32(app.config.theme.panel_border_color))
         .padding(Padding::new(1, 1, 0, 0));
 
     let info_items = vec![
+        ListItem::new(format!("Partition: {}", record.partition)),
         ListItem::new(format!("Offset:    {}", record.offset)),
         ListItem::new(format!(
             "Key:       {}",
@@ -185,7 +191,6 @@ fn render_record_details(state: &State, frame: &mut Frame, area: Rect) {
                 .key
                 .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY))
         )),
-        ListItem::new(format!("Partition: {}", record.partition)),
         ListItem::new(format!("Timestamp: {}", record.timestamp)),
     ];
 
@@ -193,8 +198,10 @@ fn render_record_details(state: &State, frame: &mut Frame, area: Rect) {
 
     let headers_block = Block::bordered()
         .title(" Headers ")
+        .border_style(Color::from_u32(app.config.theme.panel_border_color))
         .padding(Padding::new(1, 1, 0, 0));
 
+    // TODO: sort headers by key
     let header_rows: Vec<Row> = record
         .headers
         .into_iter()
@@ -208,12 +215,15 @@ fn render_record_details(state: &State, frame: &mut Frame, area: Rect) {
 
     let mut value_block = Block::bordered()
         .title(" Value ")
+        .border_style(Color::from_u32(app.config.theme.panel_border_color))
         .padding(Padding::new(1, 1, 0, 0));
 
     if state.selected_widget == SelectableWidget::RecordValue {
         value_block = value_block
             .border_type(BorderType::Thick)
-            .border_style(Color::Cyan);
+            .border_style(Color::from_u32(
+                app.config.theme.selected_panel_border_color,
+            ));
     }
 
     let value = if record.value.is_empty() {
@@ -271,8 +281,14 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let right_panel = inner_layout[1];
 
     let (consumer_mode_key_binding, stats_color) = match app.state.consumer_mode {
-        ConsumerMode::Processing => (KEY_BINDING_PAUSE, Color::LightGreen),
-        ConsumerMode::Paused => (KEY_BINDING_RESUME, Color::LightRed),
+        ConsumerMode::Processing => (
+            KEY_BINDING_PAUSE,
+            Color::from_u32(app.config.theme.status_text_color_processing),
+        ),
+        ConsumerMode::Paused => (
+            KEY_BINDING_RESUME,
+            Color::from_u32(app.config.theme.status_text_color_paused),
+        ),
     };
 
     let filter_text = app
@@ -307,7 +323,9 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         key_bindings.push(KEY_BINDING_EXPORT);
     }
 
-    let key_bindings_paragraph = Paragraph::new(key_bindings.join(" | ")).right_aligned();
+    let key_bindings_paragraph = Paragraph::new(key_bindings.join(" | "))
+        .style(Color::from_u32(app.config.theme.key_bindings_text_color))
+        .right_aligned();
 
     frame.render_widget(outer, area);
     frame.render_widget(stats, left_panel);

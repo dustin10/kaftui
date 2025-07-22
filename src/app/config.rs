@@ -1,6 +1,6 @@
 use anyhow::Context;
 use chrono::Utc;
-use config::{Config as ConfigRs, ConfigError, Environment, Map, Source, Value};
+use config::{Config as ConfigRs, ConfigError, Environment, Map, Source, Value, ValueKind};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, io::ErrorKind};
 
@@ -35,6 +35,8 @@ pub struct Config {
     pub max_records: usize,
     /// Controls how many lines each press of a key scrolls the record value text.
     pub scroll_factor: u16,
+    /// Color configuration for the UI components of the application.
+    pub theme: Theme,
 }
 
 impl Config {
@@ -114,6 +116,8 @@ impl Source for Defaults {
             Value::from(DEFAULT_SCROLL_FACTOR),
         );
 
+        cfg.insert(String::from("theme"), Value::from(Theme::default()));
+
         Ok(cfg)
     }
 }
@@ -146,6 +150,8 @@ struct PersistedConfig {
     max_records: Option<usize>,
     /// Controls how many lines each press of a key scrolls the record value text.
     scroll_factor: Option<u16>,
+    /// Color configuration for the UI components of the application.
+    theme: Option<Theme>,
 }
 
 impl Source for PersistedConfig {
@@ -166,6 +172,10 @@ impl Source for PersistedConfig {
 
         if let Some(scroll_factor) = self.scroll_factor {
             cfg.insert(String::from("scroll_factor"), Value::from(scroll_factor));
+        }
+
+        if let Some(theme) = self.theme.as_ref() {
+            cfg.insert(String::from("theme"), Value::from(theme.clone()));
         }
 
         Ok(cfg)
@@ -229,5 +239,82 @@ impl Source for Profile {
         }
 
         Ok(cfg)
+    }
+}
+
+/// Contains the configuration values for the colors of the UI components that make up the
+/// application. Color values should be 32 bits and the integer value for the hexadecimal
+/// represenation for the RGB values as follows: 0x00RRGGBB.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Theme {
+    /// Color used for the borders of the main info panels. Defaults to white.
+    pub panel_border_color: u32,
+    /// Color used for the borders of the selected info panel. Defaults to cyan.
+    pub selected_panel_border_color: u32,
+    /// Color used for the status text while the Kafka consumer is active. Defaults to green.
+    pub status_text_color_processing: u32,
+    /// Color used for the status text while the Kafka consumer is paused. Defaults to red.
+    pub status_text_color_paused: u32,
+    /// Color used for the key bindings text. Defaults to white..
+    pub key_bindings_text_color: u32,
+}
+
+impl Default for Theme {
+    /// Creates a new instance of [`Theme`] which contains the default color values for the
+    /// components of the application.
+    ///
+    /// # Defaults
+    ///
+    /// The following colors are used for the defaults.
+    ///
+    /// * Panel Border - White
+    /// * Selected Panel Border - Cyan
+    /// * Processing Status Text - Green
+    /// * Paused Status Text - Red
+    /// * Key Bindings Text - White
+    fn default() -> Self {
+        Self {
+            panel_border_color: 0x00FFFFFF,
+            selected_panel_border_color: 0x0000FFFF,
+            status_text_color_processing: 0x0000FF00,
+            status_text_color_paused: 0x00FF0000,
+            key_bindings_text_color: 0x00FFFFFF,
+        }
+    }
+}
+
+impl From<Theme> for ValueKind {
+    /// Consumes and converts a [`Theme`] to a [`ValueKind`] so that it can be used in a
+    /// [`Source`].
+    fn from(value: Theme) -> Self {
+        let mut data = HashMap::new();
+
+        data.insert(
+            String::from("panelBorderColor"),
+            Value::from(value.panel_border_color),
+        );
+
+        data.insert(
+            String::from("selectedPanelBorderColor"),
+            Value::from(value.selected_panel_border_color),
+        );
+
+        data.insert(
+            String::from("statusTextColorPaused"),
+            Value::from(value.status_text_color_paused),
+        );
+
+        data.insert(
+            String::from("statusTextColorProcessing"),
+            Value::from(value.status_text_color_processing),
+        );
+
+        data.insert(
+            String::from("keyBindingsTextColor"),
+            Value::from(value.key_bindings_text_color),
+        );
+
+        Self::Table(data)
     }
 }
