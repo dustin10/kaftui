@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
 use rdkafka::{
     consumer::{
-        BaseConsumer, CommitMode, Consumer as RDKafkaConsumer, ConsumerContext, Rebalance,
-        StreamConsumer,
+        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
+        Rebalance, StreamConsumer,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
@@ -36,13 +36,13 @@ pub struct Record {
     pub timestamp: DateTime<Utc>,
 }
 
-/// The [`ConsumeContext`] is a struct that is used to implement a custom Kafka consumer context
+/// The [`ConsumerContext`] is a struct that is used to implement a custom Kafka consumer context
 /// to hook into key events in the lifecycle of a Kafka consumer.
-struct ConsumeContext;
+struct ConsumerContext;
 
-impl ClientContext for ConsumeContext {}
+impl ClientContext for ConsumerContext {}
 
-impl ConsumerContext for ConsumeContext {
+impl RDConsumerContext for ConsumerContext {
     /// Hook invoked right before the consumer begins rebalancing.
     fn pre_rebalance(&self, _: &BaseConsumer<Self>, rebalance: &Rebalance<'_>) {
         tracing::debug!("rebalance initiated: {:?}", rebalance);
@@ -87,7 +87,7 @@ impl ConsumerContext for ConsumeContext {
 
 pub struct Consumer {
     /// Underlying Kafka consumer.
-    consumer: Arc<StreamConsumer<ConsumeContext>>,
+    consumer: Arc<StreamConsumer<ConsumerContext>>,
     /// Bus that Kafka-related application events are published to.
     event_bus: Arc<Mutex<EventBus>>,
 }
@@ -110,9 +110,9 @@ impl Consumer {
         // apply enforced config
         client_config.set("enable.auto.commit", "false");
 
-        let consumer: StreamConsumer<ConsumeContext> = client_config
-            .create_with_context(ConsumeContext)
-            .context("create stream consumer")?;
+        let consumer: StreamConsumer<ConsumerContext> = client_config
+            .create_with_context(ConsumerContext)
+            .context("create Kafka consumer")?;
 
         Ok(Self {
             consumer: Arc::new(consumer),
@@ -121,10 +121,15 @@ impl Consumer {
     }
     /// Starts the consumption of records from the specified topic.
     pub fn start(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
-        let task = ConsumerTask::new(Arc::clone(&self.consumer), Arc::clone(&self.event_bus))
-            .context("create background consumer task")?;
+        let task = ConsumerTask::new(
+            Arc::clone(&self.consumer),
+            topic,
+            filter,
+            Arc::clone(&self.event_bus),
+        )
+        .context("create background consumer task")?;
 
-        tokio::spawn(async move { task.run(topic, filter).await });
+        tokio::spawn(async move { task.run().await });
 
         Ok(())
     }
@@ -263,7 +268,11 @@ impl From<&Record> for FilterableRecord {
 /// topic.
 struct ConsumerTask {
     /// Raw Kafka consumer.
-    consumer: Arc<StreamConsumer<ConsumeContext>>,
+    consumer: Arc<StreamConsumer<ConsumerContext>>,
+    /// Name of the topic to consume records from.
+    topic: String,
+    /// Any filter to apply to the record.
+    filter: Option<String>,
     /// Bus that Kafka-related application events are published to.
     event_bus: Arc<Mutex<EventBus>>,
 }
@@ -271,53 +280,53 @@ struct ConsumerTask {
 impl ConsumerTask {
     /// Creates a new [`ConsumerTask`] with the specified dependencies.
     fn new(
-        consumer: Arc<StreamConsumer<ConsumeContext>>,
+        consumer: Arc<StreamConsumer<ConsumerContext>>,
+        topic: String,
+        filter: Option<String>,
         event_bus: Arc<Mutex<EventBus>>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             consumer,
+            topic,
+            filter,
             event_bus,
         })
     }
     /// Runs the task by subscribing to the specified topic and then consuming messages from it.
-    async fn run(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
-        let topics = vec![topic.as_str()];
+    async fn run(&self) -> anyhow::Result<()> {
+        let topics = vec![self.topic.as_str()];
 
         self.consumer
             .subscribe(&topics)
-            .context(format!("subscribe to Kafka topic: {}", topic))?;
+            .context(format!("subscribe to Kafka topic: {}", self.topic))?;
 
-        let stream_procesor = self.consumer.stream().try_for_each(|msg| {
-            let filter = filter.clone();
+        let stream_procesor = self.consumer.stream().try_for_each(|msg| async move {
+            let record = Record::from(&msg);
 
-            async move {
-                let record = Record::from(&msg);
+            if let Some(f) = self.filter.as_ref() {
+                let filterable_record = FilterableRecord::from(&record);
 
-                if let Some(f) = filter {
-                    let filterable_record = FilterableRecord::from(&record);
+                let json_value = serde_json::to_value(filterable_record)
+                    .expect("FilterableRecord serializes to JSON");
 
-                    let json_value = serde_json::to_value(filterable_record)
-                        .expect("FilterableRecord serializes to JSON");
+                let json_path =
+                    serde_json_path::JsonPath::parse(f).expect("valid JSONPath expression");
 
-                    let json_path =
-                        serde_json_path::JsonPath::parse(&f).expect("valid JSONPath expression");
-
-                    if json_path.query(&json_value).is_empty() {
-                        tracing::debug!("ignoring Kafka message based on filter");
-                        return Ok(());
-                    }
+                if json_path.query(&json_value).is_empty() {
+                    tracing::debug!("ignoring Kafka message based on filter");
+                    return Ok(());
                 }
-
-                let mut event_bus_guard = self.event_bus.lock().await;
-                event_bus_guard.send(AppEvent::RecordReceived(record));
-                std::mem::drop(event_bus_guard);
-
-                if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
-                    tracing::error!("error committing Kafka message: {}", err);
-                }
-
-                Ok(())
             }
+
+            let mut event_bus_guard = self.event_bus.lock().await;
+            event_bus_guard.send(AppEvent::RecordReceived(record));
+            std::mem::drop(event_bus_guard);
+
+            if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
+                tracing::error!("error committing Kafka message: {}", err);
+            }
+
+            Ok(())
         });
 
         stream_procesor.await.context("process Kafka record stream")
