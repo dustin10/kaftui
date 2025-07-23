@@ -159,7 +159,7 @@ impl App {
     pub fn new(config: Config) -> anyhow::Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let event_bus = Arc::new(EventBus::new(tx.clone()));
+        let event_bus = Arc::new(EventBus::new(tx));
 
         let mut consumer_config = HashMap::new();
 
