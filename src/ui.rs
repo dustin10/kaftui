@@ -51,9 +51,39 @@ impl App {
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {
         match self.screen {
+            Screen::Startup => render_startup(self, frame),
             Screen::ConsumeTopic => render_consume_topic(self, frame),
         }
     }
+}
+
+/// Renders the UI to the terminal for the [`Screen::Startup`] screen.
+fn render_startup(app: &App, frame: &mut Frame) {
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(frame.area());
+
+    let empty_area = layout[0];
+    let initializing_text_area = layout[1];
+
+    let empty_text = Paragraph::default().block(
+        Block::default()
+            .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
+            .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+    );
+
+    let no_record_text = Paragraph::new("Initializing...")
+        .style(Color::from_u32(app.config.theme.panel_border_color))
+        .block(
+            Block::default()
+                .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
+                .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+        )
+        .centered();
+
+    frame.render_widget(empty_text, empty_area);
+    frame.render_widget(no_record_text, initializing_text_area);
 }
 
 /// Renders the UI to the terminal for the [`Screen::ConsumeTopic`] screen.

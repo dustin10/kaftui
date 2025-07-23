@@ -1,15 +1,13 @@
-use crate::kafka::Record;
-
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
 use std::time::Duration;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 
 /// Frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
 
 /// Enumeration of events which can be sent on the [`EventBus`].
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Event {
     /// An event that is emitted on a regular schedule. This event is used to run any code which has to run
     /// outside of being a direct response to a user event. e.g. polling exernal systems, updating animations,
@@ -22,12 +20,14 @@ pub enum Event {
 }
 
 /// Enumeration of events which can be produced by the application.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum AppEvent {
     /// Fires when the user requests to quit the application.
     Quit,
-    /// Fires when a new [`Record`] is received from a Kafka topic.
-    RecordReceived(Record),
+    /// Fires when the Kafka consumer was started successfully.
+    ConsumerStarted,
+    /// Fires when the Kafka consumer startup failed.
+    ConsumerStartFailure(anyhow::Error),
     /// Fires when the user wants to select the previous record in the list.
     SelectPrevRecord,
     /// Fires when the user wants to select the next record in the list.
@@ -50,12 +50,12 @@ pub enum AppEvent {
 #[derive(Debug)]
 pub struct EventBus {
     /// Event channel sender.
-    sender: UnboundedSender<Event>,
+    sender: Sender<Event>,
 }
 
 impl EventBus {
     /// Constructs a new instance of [`EventBus`] and spawns a new thread to handle events.
-    pub fn new(sender: UnboundedSender<Event>) -> Self {
+    pub fn new(sender: Sender<Event>) -> Self {
         Self { sender }
     }
     /// Starts the the background thread that will emit the backend terminal events as well as the
@@ -63,11 +63,11 @@ impl EventBus {
     pub fn start(&self) {
         let task = EventTask::new(self.sender.clone());
 
-        tokio::spawn(async { task.run().await });
+        tokio::spawn(async move { task.run().await });
     }
     /// Publishes an application event to on the bus for processing.
-    pub fn send(&self, app_event: AppEvent) {
-        if let Err(e) = self.sender.send(Event::App(app_event)) {
+    pub async fn send(&self, app_event: AppEvent) {
+        if let Err(e) = self.sender.send(Event::App(app_event)).await {
             tracing::error!("error sending event: {}", e);
         }
     }
@@ -77,17 +77,17 @@ impl EventBus {
 /// events on a regular schedule.
 struct EventTask {
     /// Event channel sender.
-    sender: UnboundedSender<Event>,
+    sender: Sender<Event>,
 }
 
 impl EventTask {
     /// Constructs a new instance of [`EventTask`].
-    fn new(sender: UnboundedSender<Event>) -> Self {
+    fn new(sender: Sender<Event>) -> Self {
         Self { sender }
     }
     /// Runs the task. The task emits tick events at a fixed rate and polls for crossterm events
     /// in between. The task will exit when the sender for the event channel is closed.
-    async fn run(self) -> anyhow::Result<()> {
+    async fn run(self) {
         let tick_rate = Duration::from_secs_f64(1.0 / TICK_FPS);
         let mut tick = tokio::time::interval(tick_rate);
 
@@ -99,24 +99,23 @@ impl EventTask {
             let crossterm_event = reader.next().fuse();
 
             tokio::select! {
-              _ = self.sender.closed() => {
-                tracing::info!("exiting event loop because sender was closed");
-                break;
-              }
-              _ = tick_delay => {
-                self.send(Event::Tick);
-              }
-              Some(Ok(e)) = crossterm_event => {
-                self.send(Event::Crossterm(e));
-              }
+                _ = self.sender.closed() => {
+                    tracing::info!("exiting event loop because sender was closed");
+                    break;
+                }
+                _ = tick_delay => {
+                    self.send(Event::Tick).await;
+                }
+                Some(Ok(e)) = crossterm_event => {
+                    tracing::debug!("dispatching crossterm event: {:?}", e);
+                    self.send(Event::Crossterm(e)).await;
+                }
             };
         }
-
-        Ok(())
     }
     /// Publishes an event to the bus for processing.
-    fn send(&self, event: Event) {
-        if let Err(e) = self.sender.send(event) {
+    async fn send(&self, event: Event) {
+        if let Err(e) = self.sender.send(event).await {
             tracing::error!("error sending event: {}", e);
         }
     }

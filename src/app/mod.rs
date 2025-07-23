@@ -9,7 +9,6 @@ use crate::{
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
 use chrono::{DateTime, Utc};
-use crossterm::event::MouseEvent;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     widgets::{ScrollbarState, TableState},
@@ -17,7 +16,7 @@ use ratatui::{
 };
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::Receiver;
 
 /// Default prefix used for the name of the exported file when no partition key is set.
 const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
@@ -34,7 +33,9 @@ pub enum ConsumerMode {
 /// Enumeration of the widgets that the user can select.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum SelectableWidget {
+    /// Table that lists the records that have been consumed from the Kafka topic.
     RecordList,
+    /// Text panel that outputs the value of the currently selected record.
     RecordValue,
 }
 
@@ -84,6 +85,8 @@ impl State {
 /// Enumeration of the various screens that the application can display to the end user.
 #[derive(Debug, PartialEq)]
 pub enum Screen {
+    /// Active when the application is starting up and connecting to the Kafka brokers.
+    Startup,
     /// Active when the user is viewing messages being consumed from a Kafka topic.
     ConsumeTopic,
 }
@@ -143,13 +146,15 @@ pub struct App {
     pub config: Config,
     /// Contains the current state of the application.
     pub state: State,
-    /// Channel receiver that is used to recieve application events that are sent by the
+    /// Channel receiver that is used to receive application events that are sent by the
     /// [`EventBus`].
-    event_rx: UnboundedReceiver<Event>,
+    event_rx: Receiver<Event>,
+    /// Channel receiver that is used to receive records from the Kafka consumer.
+    consumer_rx: Receiver<Record>,
     /// Emits events to be handled by the application.
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
-    consumer: Consumer,
+    consumer: Arc<Consumer>,
     /// Holds the [`Screen`] the user is currently viewing.
     pub screen: Screen,
 }
@@ -157,9 +162,11 @@ pub struct App {
 impl App {
     /// Creates a new [`App`] configured by the specified [`Config`].
     pub fn new(config: Config) -> anyhow::Result<Self> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(64);
 
-        let event_bus = Arc::new(EventBus::new(tx));
+        let event_bus = Arc::new(EventBus::new(event_tx));
+
+        let (consumer_tx, consumer_rx) = tokio::sync::mpsc::channel(64);
 
         let mut consumer_config = HashMap::new();
 
@@ -173,56 +180,56 @@ impl App {
         );
         consumer_config.insert(String::from("group.id"), config.group_id.clone());
 
-        let consumer =
-            Consumer::new(consumer_config, Arc::clone(&event_bus)).context("create consumer")?;
+        let consumer = Consumer::new(consumer_config, consumer_tx).context("create consumer")?;
 
         let max_records = config.max_records;
 
         Ok(Self {
             config,
             state: State::new(max_records),
-            event_rx: rx,
+            event_rx,
+            consumer_rx,
             event_bus,
-            consumer,
-            screen: Screen::ConsumeTopic,
+            consumer: Arc::new(consumer),
+            screen: Screen::Startup,
         })
     }
     /// Run the main loop of the application.
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> anyhow::Result<()> {
         self.event_bus.start();
 
-        self.consumer
-            .start(self.config.topic.clone(), self.config.filter.clone())
-            .context("start Kafka consumer")?;
+        self.start_consumer_async();
 
         while self.state.running {
-            terminal.draw(|frame| self.draw(frame))?;
+            terminal
+                .draw(|frame| self.draw(frame))
+                .context("draw UI to screen")?;
 
-            let event = self
-                .event_rx
-                .recv()
-                .await
-                .ok_or(anyhow::anyhow!("failed to receive event"))?;
-
-            match event {
-                Event::Tick => self.tick(),
-                Event::Crossterm(event) => match event {
-                    crossterm::event::Event::Mouse(mouse_event) => self.on_mouse_event(mouse_event),
-                    crossterm::event::Event::Key(key_event) => self.on_key_event(key_event).await,
-                    _ => {}
+            tokio::select! {
+                Some(e) = self.event_rx.recv() => match e {
+                    Event::Tick => self.on_tick(),
+                    Event::Crossterm(crossterm_event) => {
+                        if let crossterm::event::Event::Key(key_event) = crossterm_event {
+                            self.on_key_event(key_event).await
+                        }
+                    }
+                    Event::App(app_event) => match app_event {
+                        AppEvent::Quit => self.on_quit(),
+                        AppEvent::ConsumerStarted => self.on_consumer_started(),
+                        AppEvent::ConsumerStartFailure(e) => {
+                            anyhow::bail!("failed to start Kafka consumer: {}", e)
+                        }
+                        AppEvent::SelectPrevRecord => self.on_select_prev_record(),
+                        AppEvent::SelectNextRecord => self.on_select_next_record(),
+                        AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
+                        AppEvent::PauseProcessing => self.on_pause_processing(),
+                        AppEvent::ResumeProcessing => self.on_resume_processing(),
+                        AppEvent::SelectNextWidget => self.on_select_next_widget(),
+                        AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
+                        AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
+                    },
                 },
-                Event::App(app_event) => match app_event {
-                    AppEvent::Quit => self.quit(),
-                    AppEvent::RecordReceived(r) => self.on_record_received(r),
-                    AppEvent::SelectPrevRecord => self.on_select_prev_record(),
-                    AppEvent::SelectNextRecord => self.on_select_next_record(),
-                    AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
-                    AppEvent::PauseProcessing => self.on_pause_processing(),
-                    AppEvent::ResumeProcessing => self.on_resume_processing(),
-                    AppEvent::SelectNextWidget => self.on_select_next_widget(),
-                    AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
-                    AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
-                },
+                Some(r) = self.consumer_rx.recv() => self.on_record_received(r),
             }
         }
 
@@ -230,33 +237,53 @@ impl App {
 
         Ok(())
     }
-    /// Handles mouse events emitted by the [`EventBus`].
-    fn on_mouse_event(&mut self, _mouse_event: MouseEvent) {}
+    /// Starts the consumer asynchronously. The result of the consumer startup is sent back to the
+    /// application through the [`EventBus`].
+    fn start_consumer_async(&self) {
+        let start_consumer_task = StartConsumerTask {
+            consumer: Arc::clone(&self.consumer),
+            topic: self.config.topic.clone(),
+            filter: self.config.filter.clone(),
+            event_bus: Arc::clone(&self.event_bus),
+        };
+
+        tokio::spawn(async move {
+            start_consumer_task.run().await;
+        });
+    }
     /// Handles key events emitted by the [`EventBus`].
     async fn on_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Esc => self.event_bus.send(AppEvent::Quit),
-            KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget),
+            KeyCode::Esc => self.event_bus.send(AppEvent::Quit).await,
+            KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget).await,
             KeyCode::Char(c) => match c {
-                'e' => self.event_bus.send(AppEvent::ExportSelectedRecord),
+                'e' => self.event_bus.send(AppEvent::ExportSelectedRecord).await,
                 'j' => match self.state.selected_widget {
-                    SelectableWidget::RecordList => self.event_bus.send(AppEvent::SelectNextRecord),
+                    SelectableWidget::RecordList => {
+                        self.event_bus.send(AppEvent::SelectNextRecord).await
+                    }
                     SelectableWidget::RecordValue => {
-                        self.event_bus.send(AppEvent::ScrollRecordValueDown)
+                        self.event_bus.send(AppEvent::ScrollRecordValueDown).await
                     }
                 },
                 'k' => match self.state.selected_widget {
-                    SelectableWidget::RecordList => self.event_bus.send(AppEvent::SelectPrevRecord),
+                    SelectableWidget::RecordList => {
+                        self.event_bus.send(AppEvent::SelectPrevRecord).await
+                    }
                     SelectableWidget::RecordValue => {
-                        self.event_bus.send(AppEvent::ScrollRecordValueUp)
+                        self.event_bus.send(AppEvent::ScrollRecordValueUp).await
                     }
                 },
-                'p' => self.event_bus.send(AppEvent::PauseProcessing),
-                'r' => self.event_bus.send(AppEvent::ResumeProcessing),
+                'p' => self.event_bus.send(AppEvent::PauseProcessing).await,
+                'r' => self.event_bus.send(AppEvent::ResumeProcessing).await,
                 _ => {}
             },
             _ => {}
         }
+    }
+    /// Handles the consumer started event emitted by the [`EventBus`].
+    fn on_consumer_started(&mut self) {
+        self.screen = Screen::ConsumeTopic;
     }
     /// Handles the record recieved event emitted by the [`EventBus`].
     fn on_record_received(&mut self, record: Record) {
@@ -402,10 +429,33 @@ impl App {
         }
     }
     /// Handles the tick event of the terminal.
-    fn tick(&self) {}
+    fn on_tick(&self) {}
     /// Quits the application.
-    fn quit(&mut self) {
+    fn on_quit(&mut self) {
         tracing::debug!("quit application request received");
         self.state.running = false;
+    }
+}
+
+/// Asynchronous task that starts the Kafka consumer.
+struct StartConsumerTask {
+    /// Kafka consumer to start.
+    consumer: Arc<Consumer>,
+    /// Topic to consume records from.
+    topic: String,
+    /// Any filter to apply to the consumed records.
+    filter: Option<String>,
+    /// [`EventBus`] on which the results of the startup will be sent.
+    event_bus: Arc<EventBus>,
+}
+
+impl StartConsumerTask {
+    /// Runs the task. Starts the consumer and send the appropriate event based on the result to
+    /// the [`EventBus`].
+    async fn run(self) {
+        match self.consumer.start(self.topic, self.filter) {
+            Ok(()) => self.event_bus.send(AppEvent::ConsumerStarted).await,
+            Err(e) => self.event_bus.send(AppEvent::ConsumerStartFailure(e)).await,
+        };
     }
 }
