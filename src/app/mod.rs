@@ -143,7 +143,9 @@ pub struct App {
     pub config: Config,
     /// Contains the current state of the application.
     pub state: State,
-    event_bus_rx: UnboundedReceiver<Event>,
+    /// Channel receiver that is used to recieve application events that are sent by the
+    /// [`EventBus`].
+    event_rx: UnboundedReceiver<Event>,
     /// Emits events to be handled by the application.
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
@@ -179,7 +181,7 @@ impl App {
         Ok(Self {
             config,
             state: State::new(max_records),
-            event_bus_rx: rx,
+            event_rx: rx,
             event_bus,
             consumer,
             screen: Screen::ConsumeTopic,
@@ -197,7 +199,7 @@ impl App {
             terminal.draw(|frame| self.draw(frame))?;
 
             let event = self
-                .event_bus_rx
+                .event_rx
                 .recv()
                 .await
                 .ok_or(anyhow::anyhow!("failed to receive event"))?;
