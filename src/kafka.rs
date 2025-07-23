@@ -14,7 +14,6 @@ use rdkafka::{
 };
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
 
 /// Contains the data in the record consumed from a Kafka topic.
 #[derive(Clone, Debug, Default, Serialize)]
@@ -89,15 +88,12 @@ pub struct Consumer {
     /// Underlying Kafka consumer.
     consumer: Arc<StreamConsumer<ConsumerContext>>,
     /// Bus that Kafka-related application events are published to.
-    event_bus: Arc<Mutex<EventBus>>,
+    event_bus: Arc<EventBus>,
 }
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
-    pub fn new(
-        config: HashMap<String, String>,
-        event_bus: Arc<Mutex<EventBus>>,
-    ) -> anyhow::Result<Self> {
+    pub fn new(config: HashMap<String, String>, event_bus: Arc<EventBus>) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
 
         // apply default config
@@ -274,7 +270,7 @@ struct ConsumerTask {
     /// Any filter to apply to the record.
     filter: Option<String>,
     /// Bus that Kafka-related application events are published to.
-    event_bus: Arc<Mutex<EventBus>>,
+    event_bus: Arc<EventBus>,
 }
 
 impl ConsumerTask {
@@ -283,7 +279,7 @@ impl ConsumerTask {
         consumer: Arc<StreamConsumer<ConsumerContext>>,
         topic: String,
         filter: Option<String>,
-        event_bus: Arc<Mutex<EventBus>>,
+        event_bus: Arc<EventBus>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             consumer,
@@ -318,9 +314,7 @@ impl ConsumerTask {
                 }
             }
 
-            let mut event_bus_guard = self.event_bus.lock().await;
-            event_bus_guard.send(AppEvent::RecordReceived(record));
-            std::mem::drop(event_bus_guard);
+            self.event_bus.send(AppEvent::RecordReceived(record));
 
             if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
                 tracing::error!("error committing Kafka message: {}", err);

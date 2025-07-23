@@ -17,7 +17,7 @@ use ratatui::{
 };
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 /// Default prefix used for the name of the exported file when no partition key is set.
 const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
@@ -143,8 +143,9 @@ pub struct App {
     pub config: Config,
     /// Contains the current state of the application.
     pub state: State,
+    event_bus_rx: UnboundedReceiver<Event>,
     /// Emits events to be handled by the application.
-    event_bus: Arc<Mutex<EventBus>>,
+    event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
     consumer: Consumer,
     /// Holds the [`Screen`] the user is currently viewing.
@@ -154,7 +155,9 @@ pub struct App {
 impl App {
     /// Creates a new [`App`] configured by the specified [`Config`].
     pub fn new(config: Config) -> anyhow::Result<Self> {
-        let event_bus = Arc::new(Mutex::new(EventBus::new()));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let event_bus = Arc::new(EventBus::new(tx.clone()));
 
         let mut consumer_config = HashMap::new();
 
@@ -176,6 +179,7 @@ impl App {
         Ok(Self {
             config,
             state: State::new(max_records),
+            event_bus_rx: rx,
             event_bus,
             consumer,
             screen: Screen::ConsumeTopic,
@@ -183,9 +187,7 @@ impl App {
     }
     /// Run the main loop of the application.
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> anyhow::Result<()> {
-        let event_bus_guard = self.event_bus.lock().await;
-        event_bus_guard.start();
-        std::mem::drop(event_bus_guard);
+        self.event_bus.start();
 
         self.consumer
             .start(self.config.topic.clone(), self.config.filter.clone())
@@ -194,9 +196,11 @@ impl App {
         while self.state.running {
             terminal.draw(|frame| self.draw(frame))?;
 
-            let mut event_bus_guard = self.event_bus.lock().await;
-            let event = event_bus_guard.next().await?;
-            std::mem::drop(event_bus_guard);
+            let event = self
+                .event_bus_rx
+                .recv()
+                .await
+                .ok_or(anyhow::anyhow!("failed to receive event"))?;
 
             match event {
                 Event::Tick => self.tick(),
@@ -229,36 +233,24 @@ impl App {
     /// Handles key events emitted by the [`EventBus`].
     async fn on_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Esc => self.event_bus.lock().await.send(AppEvent::Quit),
-            KeyCode::Tab => self.event_bus.lock().await.send(AppEvent::SelectNextWidget),
+            KeyCode::Esc => self.event_bus.send(AppEvent::Quit),
+            KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget),
             KeyCode::Char(c) => match c {
-                'e' => self
-                    .event_bus
-                    .lock()
-                    .await
-                    .send(AppEvent::ExportSelectedRecord),
+                'e' => self.event_bus.send(AppEvent::ExportSelectedRecord),
                 'j' => match self.state.selected_widget {
-                    SelectableWidget::RecordList => {
-                        self.event_bus.lock().await.send(AppEvent::SelectNextRecord)
+                    SelectableWidget::RecordList => self.event_bus.send(AppEvent::SelectNextRecord),
+                    SelectableWidget::RecordValue => {
+                        self.event_bus.send(AppEvent::ScrollRecordValueDown)
                     }
-                    SelectableWidget::RecordValue => self
-                        .event_bus
-                        .lock()
-                        .await
-                        .send(AppEvent::ScrollRecordValueDown),
                 },
                 'k' => match self.state.selected_widget {
-                    SelectableWidget::RecordList => {
-                        self.event_bus.lock().await.send(AppEvent::SelectPrevRecord)
+                    SelectableWidget::RecordList => self.event_bus.send(AppEvent::SelectPrevRecord),
+                    SelectableWidget::RecordValue => {
+                        self.event_bus.send(AppEvent::ScrollRecordValueUp)
                     }
-                    SelectableWidget::RecordValue => self
-                        .event_bus
-                        .lock()
-                        .await
-                        .send(AppEvent::ScrollRecordValueUp),
                 },
-                'p' => self.event_bus.lock().await.send(AppEvent::PauseProcessing),
-                'r' => self.event_bus.lock().await.send(AppEvent::ResumeProcessing),
+                'p' => self.event_bus.send(AppEvent::PauseProcessing),
+                'r' => self.event_bus.send(AppEvent::ResumeProcessing),
                 _ => {}
             },
             _ => {}

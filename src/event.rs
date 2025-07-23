@@ -3,7 +3,7 @@ use crate::kafka::Record;
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// Frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
@@ -50,15 +50,13 @@ pub enum AppEvent {
 #[derive(Debug)]
 pub struct EventBus {
     /// Event channel sender.
-    sender: mpsc::UnboundedSender<Event>,
-    /// Event channel receiver.
-    receiver: mpsc::UnboundedReceiver<Event>,
+    sender: UnboundedSender<Event>,
 }
 
 impl EventBus {
     /// Constructs a new instance of [`EventBus`] and spawns a new thread to handle events.
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(sender: UnboundedSender<Event>) -> Self {
+        Self { sender }
     }
     /// Starts the the background thread that will emit the backend terminal events as well as the
     /// tick event.
@@ -67,35 +65,11 @@ impl EventBus {
 
         tokio::spawn(async { task.run().await });
     }
-    /// Receives an event from the sender.
-    ///
-    /// This function blocks until an event is received.
-    ///
-    /// # Errors
-    ///
-    /// This function returns an error if the sender channel is disconnected. This can happen if an
-    /// error occurs in the event thread. In practice, this should not happen unless there is a
-    /// problem with the underlying terminal.
-    pub async fn next(&mut self) -> anyhow::Result<Event> {
-        self.receiver
-            .recv()
-            .await
-            .ok_or(anyhow::anyhow!("failed to receive event"))
-    }
     /// Publishes an application event to on the bus for processing.
-    pub fn send(&mut self, app_event: AppEvent) {
+    pub fn send(&self, app_event: AppEvent) {
         if let Err(e) = self.sender.send(Event::App(app_event)) {
             tracing::error!("error sending event: {}", e);
         }
-    }
-}
-
-impl Default for EventBus {
-    /// Creates a new instance of [`EventBus`] initialized to the default state.
-    fn default() -> Self {
-        let (sender, receiver) = mpsc::unbounded_channel();
-
-        Self { sender, receiver }
     }
 }
 
@@ -103,12 +77,12 @@ impl Default for EventBus {
 /// events on a regular schedule.
 struct EventTask {
     /// Event channel sender.
-    sender: mpsc::UnboundedSender<Event>,
+    sender: UnboundedSender<Event>,
 }
 
 impl EventTask {
     /// Constructs a new instance of [`EventTask`].
-    fn new(sender: mpsc::UnboundedSender<Event>) -> Self {
+    fn new(sender: UnboundedSender<Event>) -> Self {
         Self { sender }
     }
     /// Runs the task. The task emits tick events at a fixed rate and polls for crossterm events
