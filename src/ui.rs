@@ -10,7 +10,7 @@ use ratatui::{
     },
     Frame,
 };
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, num::ParseIntError};
 
 /// Value displayed for the partition key field when one is not present in the Kafka record.
 const EMPTY_PARTITION_KEY: &str = "<empty>";
@@ -57,8 +57,16 @@ impl App {
     }
 }
 
+/// Converts a string containing a hex color value into a [`Color`].
+fn color_from_hex_string(hex: &str) -> Result<Color, ParseIntError> {
+    u32::from_str_radix(hex, 16).map(Color::from_u32)
+}
+
 /// Renders the UI to the terminal for the [`Screen::Startup`] screen.
 fn render_startup(app: &App, frame: &mut Frame) {
+    let border_color =
+        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -70,15 +78,15 @@ fn render_startup(app: &App, frame: &mut Frame) {
     let empty_text = Paragraph::default().block(
         Block::default()
             .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-            .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+            .border_style(border_color),
     );
 
     let no_record_text = Paragraph::new("Initializing...")
-        .style(Color::from_u32(app.config.theme.panel_border_color))
+        .style(border_color)
         .block(
             Block::default()
                 .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-                .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+                .border_style(border_color),
         )
         .centered();
 
@@ -121,6 +129,11 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
     let state = &mut app.state;
 
+    let selected_panel_color = color_from_hex_string(&app.config.theme.selected_panel_border_color)
+        .expect("valid u32 hex");
+
+    let label_color = color_from_hex_string(&app.config.theme.label_color).expect("valid u32 hex");
+
     let mut record_list_block = Block::bordered()
         .title(" Records ")
         .padding(Padding::new(1, 1, 0, 0));
@@ -128,9 +141,7 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
     if state.selected_widget == SelectableWidget::RecordList {
         record_list_block = record_list_block
             .border_type(BorderType::Thick)
-            .border_style(Color::from_u32(
-                app.config.theme.selected_panel_border_color,
-            ));
+            .border_style(selected_panel_color);
     }
 
     let records_rows = state.records.iter().map(|r| {
@@ -159,18 +170,10 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
     )
     .column_spacing(1)
     .header(Row::new([
-        "Partition"
-            .bold()
-            .style(Color::from_u32(app.config.theme.label_color)),
-        "Offset"
-            .bold()
-            .style(Color::from_u32(app.config.theme.label_color)),
-        "Key"
-            .bold()
-            .style(Color::from_u32(app.config.theme.label_color)),
-        "Timestamp"
-            .bold()
-            .style(Color::from_u32(app.config.theme.label_color)),
+        "Partition".bold().style(label_color),
+        "Offset".bold().style(label_color),
+        "Key".bold().style(label_color),
+        "Timestamp".bold().style(label_color),
     ]))
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .block(record_list_block);
@@ -204,6 +207,14 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 
     let record = state.selected.clone().expect("selected record exists");
 
+    let border_color =
+        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
+    let selected_panel_color = color_from_hex_string(&app.config.theme.selected_panel_border_color)
+        .expect("valid u32 hex");
+
+    let label_color = color_from_hex_string(&app.config.theme.label_color).expect("valid u32 hex");
+
     let layout_slices = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -219,7 +230,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 
     let info_block = Block::bordered()
         .title(" Info ")
-        .border_style(Color::from_u32(app.config.theme.panel_border_color))
+        .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
 
     let key_value = record
@@ -228,27 +239,13 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 
     let info_rows = vec![
         Row::new([
-            "Partition"
-                .bold()
-                .style(Color::from_u32(app.config.theme.label_color)),
+            "Partition".bold().style(label_color),
             record.partition.to_span(),
         ]),
+        Row::new(["Offset".bold().style(label_color), record.offset.to_span()]),
+        Row::new(["Key".bold().style(label_color), key_value.to_span()]),
         Row::new([
-            "Offset"
-                .bold()
-                .style(Color::from_u32(app.config.theme.label_color)),
-            record.offset.to_span(),
-        ]),
-        Row::new([
-            "Key"
-                .bold()
-                .style(Color::from_u32(app.config.theme.label_color)),
-            key_value.to_span(),
-        ]),
-        Row::new([
-            "Timestamp"
-                .bold()
-                .style(Color::from_u32(app.config.theme.label_color)),
+            "Timestamp".bold().style(label_color),
             record.timestamp.to_span(),
         ]),
     ];
@@ -259,7 +256,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 
     let headers_block = Block::bordered()
         .title(" Headers ")
-        .border_style(Color::from_u32(app.config.theme.panel_border_color))
+        .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
 
     let header_rows: Vec<Row> = BTreeMap::from_iter(record.headers.iter())
@@ -270,26 +267,20 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
     let headers_table = Table::new(header_rows, [Constraint::Min(1), Constraint::Fill(3)])
         .column_spacing(1)
         .header(Row::new([
-            "Key"
-                .bold()
-                .style(Color::from_u32(app.config.theme.label_color)),
-            "Value"
-                .bold()
-                .style(Color::from_u32(app.config.theme.label_color)),
+            "Key".bold().style(label_color),
+            "Value".bold().style(label_color),
         ]))
         .block(headers_block);
 
     let mut value_block = Block::bordered()
         .title(" Value ")
-        .border_style(Color::from_u32(app.config.theme.panel_border_color))
+        .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
 
     if state.selected_widget == SelectableWidget::RecordValue {
         value_block = value_block
             .border_type(BorderType::Thick)
-            .border_style(Color::from_u32(
-                app.config.theme.selected_panel_border_color,
-            ));
+            .border_style(selected_panel_color);
     }
 
     let value = if record.value.is_empty() {
@@ -318,6 +309,9 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 
 /// Renders the record details panel when no active [`Record`] set.
 fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
+    let border_color =
+        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -329,15 +323,15 @@ fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
     let empty_text = Paragraph::default().block(
         Block::default()
             .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-            .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+            .border_style(border_color),
     );
 
     let no_record_text = Paragraph::new("No Record Selected")
-        .style(Color::from_u32(app.config.theme.panel_border_color))
+        .style(border_color)
         .block(
             Block::default()
                 .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-                .border_style(Color::from_u32(app.config.theme.panel_border_color)),
+                .border_style(border_color),
         )
         .centered();
 
@@ -347,8 +341,21 @@ fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
 
 /// Renders the footer panel that contains the key bindings.
 fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
+    let border_color =
+        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
+    let status_text_processing_color =
+        color_from_hex_string(&app.config.theme.status_text_color_processing)
+            .expect("valid u32 hex");
+
+    let status_text_color_paused =
+        color_from_hex_string(&app.config.theme.status_text_color_paused).expect("valid u32 hex");
+
+    let key_bindings_text_color =
+        color_from_hex_string(&app.config.theme.key_bindings_text_color).expect("valid u32 hex");
+
     let outer = Block::bordered()
-        .border_style(Color::from_u32(app.config.theme.panel_border_color))
+        .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
 
     let inner_area = outer.inner(area);
@@ -362,14 +369,8 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let right_panel = inner_layout[1];
 
     let (consumer_mode_key_binding, stats_color) = match app.state.consumer_mode {
-        ConsumerMode::Processing => (
-            KEY_BINDING_PAUSE,
-            Color::from_u32(app.config.theme.status_text_color_processing),
-        ),
-        ConsumerMode::Paused => (
-            KEY_BINDING_RESUME,
-            Color::from_u32(app.config.theme.status_text_color_paused),
-        ),
+        ConsumerMode::Processing => (KEY_BINDING_PAUSE, status_text_processing_color),
+        ConsumerMode::Paused => (KEY_BINDING_RESUME, status_text_color_paused),
     };
 
     let filter_text = app
@@ -405,7 +406,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     let key_bindings_paragraph = Paragraph::new(key_bindings.join(" | "))
-        .style(Color::from_u32(app.config.theme.key_bindings_text_color))
+        .style(key_bindings_text_color)
         .right_aligned();
 
     frame.render_widget(outer, area);

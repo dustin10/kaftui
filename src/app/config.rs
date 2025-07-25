@@ -249,17 +249,17 @@ impl Source for Profile {
 #[serde(rename_all = "camelCase")]
 pub struct Theme {
     /// Color used for the borders of the main info panels. Defaults to white.
-    pub panel_border_color: u32,
+    pub panel_border_color: String,
     /// Color used for the borders of the selected info panel. Defaults to cyan.
-    pub selected_panel_border_color: u32,
+    pub selected_panel_border_color: String,
     /// Color used for the status text while the Kafka consumer is active. Defaults to green.
-    pub status_text_color_processing: u32,
+    pub status_text_color_processing: String,
     /// Color used for the status text while the Kafka consumer is paused. Defaults to red.
-    pub status_text_color_paused: u32,
+    pub status_text_color_paused: String,
     /// Color used for the key bindings text. Defaults to white.
-    pub key_bindings_text_color: u32,
+    pub key_bindings_text_color: String,
     /// Color used for the label text in tables, etc. Defaults to white.
-    pub label_color: u32,
+    pub label_color: String,
 }
 
 impl Default for Theme {
@@ -277,18 +277,18 @@ impl Default for Theme {
     /// * Key Bindings Text - White
     fn default() -> Self {
         Self {
-            panel_border_color: 0x00FFFFFF,
-            selected_panel_border_color: 0x0000FFFF,
-            status_text_color_processing: 0x0000FF00,
-            status_text_color_paused: 0x00FF0000,
-            key_bindings_text_color: 0x00FFFFFF,
-            label_color: 0x00FFFFFF,
+            panel_border_color: String::from("FFFFFF"),
+            selected_panel_border_color: String::from("00FFFF"),
+            status_text_color_processing: String::from("00FF00"),
+            status_text_color_paused: String::from("FF0000"),
+            key_bindings_text_color: String::from("FFFFFF"),
+            label_color: String::from("FFFFFF"),
         }
     }
 }
 
 impl From<Theme> for ValueKind {
-    /// Consumes and converts a [`Theme`] to a [`ValueKind`] so that it can be used in a
+    /// Consumes and converts a [`Theme`] to a [`ValueKind`] so that it can be used as a
     /// [`Source`].
     fn from(value: Theme) -> Self {
         let mut data = HashMap::new();
