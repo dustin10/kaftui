@@ -47,15 +47,14 @@ impl Config {
     ///
     /// 1. CLI arguments
     /// 2. Profile values, if one is specified
-    /// 3. Environment variables
-    /// 4. Default values
+    /// 3. Applicable configuration values from $HOME/.kaftui.json file
+    /// 4. Environment variables
+    /// 5. Default values
     pub fn new<P, S>(profile_name: Option<P>, cli_args: S) -> anyhow::Result<Self>
     where
         P: AsRef<str>,
         S: Source + Send + Sync + 'static,
     {
-        let mut profile: Option<Profile> = None;
-
         let file_path = std::env::home_dir()
             .context("resolve home directory")?
             .join(".kaftui.json");
@@ -66,16 +65,15 @@ impl Config {
             Err(e) => return Err(e).context("read config file"),
         };
 
-        // check for a specified profile
-        if let Some(name) = profile_name {
-            profile = persisted_config.profiles.as_ref().and_then(|ps| {
+        let profile = profile_name.and_then(|name| {
+            persisted_config.profiles.as_ref().and_then(|ps| {
                 ps.iter()
                     .find(|p| p.name.eq(name.as_ref()))
                     .into_iter()
                     .next()
                     .cloned()
-            });
-        }
+            })
+        });
 
         let config = ConfigRs::builder()
             .add_source(Defaults)

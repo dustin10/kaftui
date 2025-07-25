@@ -51,19 +51,21 @@ impl App {
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {
         match self.screen {
-            Screen::Startup => render_startup(self, frame),
+            Screen::Initialize => render_initialize(self, frame),
             Screen::ConsumeTopic => render_consume_topic(self, frame),
         }
     }
 }
+
+// TODO: move away from parsing the string to Color on every draw by parsing once at startup
 
 /// Converts a string containing a hex color value into a [`Color`].
 fn color_from_hex_string(hex: &str) -> Result<Color, ParseIntError> {
     u32::from_str_radix(hex, 16).map(Color::from_u32)
 }
 
-/// Renders the UI to the terminal for the [`Screen::Startup`] screen.
-fn render_startup(app: &App, frame: &mut Frame) {
+/// Renders the UI to the terminal for the [`Screen::Initialize`] screen.
+fn render_initialize(app: &App, frame: &mut Frame) {
     let border_color =
         color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
 

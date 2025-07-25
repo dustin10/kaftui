@@ -86,7 +86,7 @@ impl State {
 #[derive(Debug, PartialEq)]
 pub enum Screen {
     /// Active when the application is starting up and connecting to the Kafka brokers.
-    Startup,
+    Initialize,
     /// Active when the user is viewing messages being consumed from a Kafka topic.
     ConsumeTopic,
 }
@@ -191,7 +191,7 @@ impl App {
             consumer_rx,
             event_bus,
             consumer: Arc::new(consumer),
-            screen: Screen::Startup,
+            screen: Screen::Initialize,
         })
     }
     /// Run the main loop of the application.
