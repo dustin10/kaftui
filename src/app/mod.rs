@@ -159,14 +159,20 @@ pub struct App {
     pub screen: Screen,
 }
 
+/// Maximum bound on the nunber of messages that can be in the event channel.
+const EVENT_CHANNEL_SIZE: usize = 16;
+
+/// Maximum bound on the nunber of messages that can be in the consumer channel.
+const CONSUMER_CHANNEL_SIZE: usize = 64;
+
 impl App {
     /// Creates a new [`App`] configured by the specified [`Config`].
     pub fn new(config: Config) -> anyhow::Result<Self> {
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(64);
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let event_bus = Arc::new(EventBus::new(event_tx));
 
-        let (consumer_tx, consumer_rx) = tokio::sync::mpsc::channel(64);
+        let (consumer_tx, consumer_rx) = tokio::sync::mpsc::channel(CONSUMER_CHANNEL_SIZE);
 
         let mut consumer_config = HashMap::new();
 
@@ -205,8 +211,8 @@ impl App {
                 .draw(|frame| self.draw(frame))
                 .context("draw UI to screen")?;
 
-            tokio::select! {
-                Some(e) = self.event_rx.recv() => match e {
+            if let Ok(event) = self.event_rx.try_recv() {
+                match event {
                     Event::Tick => self.on_tick(),
                     Event::Crossterm(crossterm_event) => {
                         if let crossterm::event::Event::Key(key_event) = crossterm_event {
@@ -228,8 +234,11 @@ impl App {
                         AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
                         AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
                     },
-                },
-                Some(r) = self.consumer_rx.recv() => self.on_record_received(r),
+                }
+            }
+
+            if let Ok(record) = self.consumer_rx.try_recv() {
+                self.on_record_received(record);
             }
         }
 
