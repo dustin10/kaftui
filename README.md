@@ -114,7 +114,8 @@ The JSON below contains is a full example of the set of values which can be used
     "statusTextColorPaused": "FF0000",
     "statusTextColorProcessing": "00FF00",
     "keyBindingsTextColor": "FFFFFF",
-    "labelColor": "FFFFFF"
+    "labelColor": "FFFFFF",
+    "recordListColor": "FFFFFF"
   }
 }
 ```
