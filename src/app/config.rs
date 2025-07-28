@@ -258,6 +258,8 @@ pub struct Theme {
     pub key_bindings_text_color: String,
     /// Color used for the label text in tables, etc. Defaults to white.
     pub label_color: String,
+    /// Color used for the text in the record list. Defaults to white.
+    pub record_list_color: String,
 }
 
 impl Default for Theme {
@@ -281,6 +283,7 @@ impl Default for Theme {
             status_text_color_paused: String::from("FF0000"),
             key_bindings_text_color: String::from("FFFFFF"),
             label_color: String::from("FFFFFF"),
+            record_list_color: String::from("FFFFFF"),
         }
     }
 }
@@ -317,6 +320,11 @@ impl From<Theme> for ValueKind {
         );
 
         data.insert(String::from("labelColor"), Value::from(value.label_color));
+
+        data.insert(
+            String::from("recordListColor"),
+            Value::from(value.record_list_color),
+        );
 
         Self::Table(data)
     }

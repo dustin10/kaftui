@@ -136,6 +136,9 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
 
     let label_color = color_from_hex_string(&app.config.theme.label_color).expect("valid u32 hex");
 
+    let record_list_color =
+        color_from_hex_string(&app.config.theme.record_list_color).expect("valid u32 hex");
+
     let mut record_list_block = Block::bordered()
         .title(" Records ")
         .padding(Padding::new(1, 1, 0, 0));
@@ -177,6 +180,7 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
         "Key".bold().style(label_color),
         "Timestamp".bold().style(label_color),
     ]))
+    .style(record_list_color)
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .block(record_list_block);
 
