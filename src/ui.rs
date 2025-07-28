@@ -27,6 +27,9 @@ const KEY_BINDING_SCROLL_DOWN: &str = "(j) down";
 /// Text displayed to the user in the footer for the scroll up key binding.
 const KEY_BINDING_SCROLL_UP: &str = "(k) up";
 
+/// Text displayed to the user in the footer for the first record key binding.
+const KEY_BINDING_FIRST: &str = "(gg) first";
+
 /// Text displayed to the user in the footer for the next record key binding.
 const KEY_BINDING_NEXT: &str = "(j) next";
 
@@ -399,6 +402,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     match app.state.selected_widget {
         SelectableWidget::RecordList => {
+            key_bindings.push(KEY_BINDING_FIRST);
             key_bindings.push(KEY_BINDING_NEXT);
             key_bindings.push(KEY_BINDING_PREV);
             key_bindings.push(KEY_BINDING_LAST);
