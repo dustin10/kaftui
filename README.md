@@ -76,12 +76,12 @@ The JSON below contains is a full example of the set of values which can be used
     }
   }],
   "theme": {
-    "panelBorderColor": 6451876,
-    "selectedPanelBorderColor": 12424185,
-    "statusTextColorPaused": 16733525,
-    "statusTextColorProcessing": 5307003,
-    "keyBindingsTextColor": 15858316,
-    "labelColor": 16742854
+    "panelBorderColor": "FFFFFF",
+    "selectedPanelBorderColor": "00FFFF",
+    "statusTextColorPaused": "FF0000",
+    "statusTextColorProcessing": "00FF00",
+    "keyBindingsTextColor": "FFFFFF",
+    "labelColor": "FFFFFF"
   }
 }
 ```
