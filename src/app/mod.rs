@@ -334,6 +334,7 @@ impl App {
                 }
                 _ => {
                     if self.is_record_list_selected() {
+                        // TODO: add TTL so buffered key expires
                         self.buffered_key = Some(c);
                     }
                 }

@@ -22,33 +22,32 @@ struct Args {
     /// Name of the Kafka topic to consume records from.
     #[arg(short, long)]
     topic: Option<String>,
-    /// Id of the group that the application will use when consuming messages from the
-    /// Kafka topic. By default a group id will be generated from the hostname of the machine that
-    /// is executing the application.
+    /// Id of the group that the application will use when consuming records from the Kafka topic.
+    /// By default a group id will be generated from the hostname of the machine that is executing
+    /// the application.
     #[arg(short, long)]
     group_id: Option<String>,
     /// CSV of color separated pairs of partition and offset that the Kafka consumer will seek to
     /// before starting to consume records.
     #[arg(long)]
     seek_to: Option<String>,
-    /// JSONPath filter that is applied to a record. Can be used to filter out any
-    /// records from the Kafka topic that the end user may not be interested in. A message will
-    /// only be presented to the user if it matches the filter. By default no filter is applied.
+    /// JSONPath filter that is applied to a record. Can be used to filter out any records from the
+    /// Kafka topic that the end user may not be interested in. A record will only be presented to
+    /// the user if it matches the filter. By default no filter is applied.
     #[arg(short, long)]
     filter: Option<String>,
-    /// Specifies the name of pre-configured set of values that will be used as default
-    /// values for the execution of the application. Profiles are stored in the $HOME/.kaftui.json
-    /// file. Any other arguments specified when executing the application will take precedence
-    /// over the ones loaded from the profile.
+    /// Specifies the name of pre-configured set of values that will be used as default values for
+    /// the execution of the application. Profiles are stored in the $HOME/.kaftui.json file. Any
+    /// other arguments specified when executing the application will take precedence over the ones
+    /// loaded from the profile.
     #[arg(short, long)]
     profile: Option<String>,
-    /// Path to a properties file containing additional configuration for the Kafka
-    /// consumer other than the bootstrap servers and group id. Typically configuration for
-    /// authentication, etc.
+    /// Path to a properties file containing additional configuration for the Kafka consumer other
+    /// than the bootstrap servers and group id. Typically configuration for authentication, etc.
     #[arg(long)]
     consumer_properties_file: Option<String>,
-    /// Maximum nunber of records that should be held in memory at any given time after
-    /// being consumed from the Kafka topic. Defaults to 256.
+    /// Maximum nunber of records that should be held in memory at any given time after being
+    /// consumed from the Kafka topic. Defaults to 256.
     #[arg(long)]
     max_records: Option<usize>,
 }

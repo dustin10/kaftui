@@ -234,7 +234,7 @@ impl From<&BorrowedMessage<'_>> for Record {
             None => HashMap::new(),
         };
 
-        // TODO: refactor value to Option
+        // TODO: refactor value to Option for null payloads
         let value = match msg.payload_view::<str>() {
             Some(Ok(data)) => String::from(data),
             Some(Err(e)) => {
