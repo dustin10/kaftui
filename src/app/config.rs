@@ -50,7 +50,7 @@ impl Config {
     /// 3. Applicable configuration values from $HOME/.kaftui.json file
     /// 4. Environment variables
     /// 5. Default values
-    pub fn new<P, S>(profile_name: Option<P>, cli_args: S) -> anyhow::Result<Self>
+    pub fn new<P, S>(cli_args: S, profile_name: Option<P>) -> anyhow::Result<Self>
     where
         P: AsRef<str>,
         S: Source + Send + Sync + 'static,

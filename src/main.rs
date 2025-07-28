@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let profile_name = args.profile.clone();
 
-    let config = Config::new(profile_name, args).context("create application config")?;
+    let config = Config::new(args, profile_name).context("create application config")?;
 
     run_app(config).await
 }
