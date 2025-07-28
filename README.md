@@ -10,6 +10,9 @@ First, install the `kafktui` application using `cargo`.
 > cargo install --git https://github.com/dustin10/kaftui.git
 ```
 
+> Note that currently the `rdkafka` shared library is configured to be dynamically linked, so it should be installed
+on the user's system before installation of the `kaftui` application.
+
 Next, execute the application passing the `--bootstrap-servers` and `--topic` arguments and start viewing records from
 the topic.
 
@@ -43,6 +46,33 @@ the Kafka topic. Defaults to `256`.
 * `--help, -h` - Prints the help text for the application to the terminal.
 
 ## Key Bindings
+
+There are some key bindings for the `kaftui` application which are global while others are dependent upon the currently
+active widget. The currently active key bindings will always be displayed in the UI on the right side of the footer.
+
+### Global
+
+The following key bindings apply no matter which widget is currently selected.
+
+* `esc` - Exits the `kaftui` application.
+* `tab` - Changes focus from the current widget to the next available one.
+* `p` - Pause consumption of records from the Kafka topic.
+* `r` - Resume consumption of records from the Kafka topic.
+* `e` - Exports the currently selected record to a JSON file.
+
+### Record List
+
+When the record list is the widget with focus then the following key bindings will be active.
+
+* `j` - Select the next record in the list.
+* `k` - Select the previous record in the list.
+
+### Record Value
+
+When the record value widget has focus then the following key bindings will be active.
+
+* `j` - Scrolls the text in the panel down.
+* `k` - Scrolls the text in the panel up.
 
 ## Filtering
 
@@ -85,3 +115,8 @@ The JSON below contains is a full example of the set of values which can be used
   }
 }
 ```
+
+Most of the available configuration above was discussed in previous sections. The list below outlines the rest.
+
+* `scrollFactor` - Determines the number of lines to scroll the record value panel with each keypress.
+
