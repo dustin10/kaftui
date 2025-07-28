@@ -67,6 +67,7 @@ The following key bindings apply no matter which widget is currently selected.
 
 When the record list is the widget with focus then the following key bindings will be active.
 
+* `gg` - Select the first record in the list.
 * `j` - Select the next record in the list.
 * `k` - Select the previous record in the list.
 * `G` - Select the last record in the list.

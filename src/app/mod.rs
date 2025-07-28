@@ -157,6 +157,8 @@ pub struct App {
     consumer: Arc<Consumer>,
     /// Holds the [`Screen`] the user is currently viewing.
     pub screen: Screen,
+    /// If available, contains the last key pressed that did not map to an active key binding.
+    buffered_key: Option<char>,
 }
 
 /// Maximum bound on the nunber of messages that can be in the event channel.
@@ -198,6 +200,7 @@ impl App {
             event_bus,
             consumer: Arc::new(consumer),
             screen: Screen::Initialize,
+            buffered_key: None,
         })
     }
     /// Run the main loop of the application.
@@ -224,6 +227,7 @@ impl App {
                         AppEvent::ConsumerStartFailure(e) => {
                             anyhow::bail!("failed to start Kafka consumer: {}", e)
                         }
+                        AppEvent::SelectFirstRecord => self.on_select_first_record(),
                         AppEvent::SelectPrevRecord => self.on_select_prev_record(),
                         AppEvent::SelectNextRecord => self.on_select_next_record(),
                         AppEvent::SelectLastRecord => self.on_select_last_record(),
@@ -294,6 +298,17 @@ impl App {
             KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget).await,
             KeyCode::Char(c) => match c {
                 'e' => self.event_bus.send(AppEvent::ExportSelectedRecord).await,
+                'g' => {
+                    if self.is_record_list_selected() {
+                        match self.buffered_key {
+                            Some('g') => {
+                                self.event_bus.send(AppEvent::SelectFirstRecord).await;
+                                self.buffered_key = None;
+                            }
+                            _ => self.buffered_key = Some('g'),
+                        }
+                    }
+                }
                 'j' => match self.state.selected_widget {
                     SelectableWidget::RecordList => {
                         self.event_bus.send(AppEvent::SelectNextRecord).await
@@ -313,14 +328,22 @@ impl App {
                 'p' => self.event_bus.send(AppEvent::PauseProcessing).await,
                 'r' => self.event_bus.send(AppEvent::ResumeProcessing).await,
                 'G' => {
-                    if SelectableWidget::RecordList == self.state.selected_widget {
+                    if self.is_record_list_selected() {
                         self.event_bus.send(AppEvent::SelectLastRecord).await;
                     }
                 }
-                _ => {}
+                _ => {
+                    if self.is_record_list_selected() {
+                        self.buffered_key = Some(c);
+                    }
+                }
             },
             _ => {}
         }
+    }
+    /// Determines if the record list is the currently selected widget.
+    fn is_record_list_selected(&self) -> bool {
+        self.state.selected_widget == SelectableWidget::RecordList
     }
     /// Handles the consumer started event emitted by the [`EventBus`].
     fn on_consumer_started(&mut self) {
@@ -338,6 +361,21 @@ impl App {
             self.state.record_list_scroll_state =
                 self.state.record_list_scroll_state.position(new_idx);
         }
+    }
+    /// Handles the select first record event emitted by the [`EventBus`].
+    fn on_select_first_record(&mut self) {
+        tracing::debug!("select first record");
+
+        if self.state.records.is_empty() {
+            return;
+        }
+
+        self.state.record_list_state.select(Some(0));
+        self.state.record_list_scroll_state = self.state.record_list_scroll_state.position(0);
+
+        self.state.selected = self.state.records.front().cloned();
+
+        self.state.record_list_value_scroll = (0, 0);
     }
     /// Handles the select previous record event emitted by the [`EventBus`].
     fn on_select_prev_record(&mut self) {
@@ -394,6 +432,24 @@ impl App {
 
             self.state.selected = self.state.records.front().cloned();
         }
+
+        self.state.record_list_value_scroll = (0, 0);
+    }
+    /// Handles the select last record event emitted by the [`EventBus`].
+    fn on_select_last_record(&mut self) {
+        tracing::debug!("select last record");
+
+        if self.state.records.is_empty() {
+            return;
+        }
+
+        let last_idx = self.state.records.len() - 1;
+
+        self.state.record_list_state.select(Some(last_idx));
+        self.state.record_list_scroll_state =
+            self.state.record_list_scroll_state.position(last_idx);
+
+        self.state.selected = self.state.records.back().cloned();
 
         self.state.record_list_value_scroll = (0, 0);
     }
@@ -468,24 +524,6 @@ impl App {
         if self.state.record_list_value_scroll.0 >= self.config.scroll_factor {
             self.state.record_list_value_scroll.0 -= self.config.scroll_factor;
         }
-    }
-    /// Handles the select last record event emitted by the [`EventBus`].
-    fn on_select_last_record(&mut self) {
-        tracing::debug!("select last record");
-
-        if self.state.records.is_empty() {
-            return;
-        }
-
-        let last_idx = self.state.records.len() - 1;
-
-        self.state.record_list_state.select(Some(last_idx));
-        self.state.record_list_scroll_state =
-            self.state.record_list_scroll_state.position(last_idx);
-
-        self.state.selected = self.state.records.back().cloned();
-
-        self.state.record_list_value_scroll = (0, 0);
     }
     /// Quits the application.
     fn on_quit(&mut self) {

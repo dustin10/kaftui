@@ -20,6 +20,8 @@ pub enum AppEvent {
     ConsumerStarted,
     /// Fires when the Kafka consumer startup failed.
     ConsumerStartFailure(anyhow::Error),
+    /// Fires when the user wants to select the first record in the list.
+    SelectFirstRecord,
     /// Fires when the user wants to select the previous record in the list.
     SelectPrevRecord,
     /// Fires when the user wants to select the next record in the list.
