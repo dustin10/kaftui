@@ -213,7 +213,6 @@ impl App {
 
             if let Ok(event) = self.event_rx.try_recv() {
                 match event {
-                    Event::Tick => self.on_tick(),
                     Event::Crossterm(crossterm_event) => {
                         if let crossterm::event::Event::Key(key_event) = crossterm_event {
                             self.on_key_event(key_event).await
@@ -437,8 +436,6 @@ impl App {
             self.state.record_list_value_scroll.0 -= self.config.scroll_factor;
         }
     }
-    /// Handles the tick event of the terminal.
-    fn on_tick(&self) {}
     /// Quits the application.
     fn on_quit(&mut self) {
         tracing::debug!("quit application request received");

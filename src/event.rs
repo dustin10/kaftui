@@ -1,18 +1,10 @@
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
-use std::time::Duration;
 use tokio::sync::mpsc::Sender;
-
-/// Frequency at which tick events are emitted.
-const TICK_FPS: f64 = 30.0;
 
 /// Enumeration of events which can be sent on the [`EventBus`].
 #[derive(Debug)]
 pub enum Event {
-    /// An event that is emitted on a regular schedule. This event is used to run any code which has to run
-    /// outside of being a direct response to a user event. e.g. polling exernal systems, updating animations,
-    /// or rendering the UI based on a fixed frame rate.
-    Tick,
     /// Crossterm events. These events are emitted by the terminal backend.
     Crossterm(CrosstermEvent),
     /// Application events. These are events emitted related to the application domain.
@@ -58,8 +50,8 @@ impl EventBus {
     pub fn new(sender: Sender<Event>) -> Self {
         Self { sender }
     }
-    /// Starts the the background thread that will emit the backend terminal events as well as the
-    /// tick event.
+    /// Starts the the background thread that will emit the backend terminal events onto the event
+    /// channel..
     pub fn start(&self) {
         let task = EventTask::new(self.sender.clone());
 
@@ -85,26 +77,18 @@ impl EventTask {
     fn new(sender: Sender<Event>) -> Self {
         Self { sender }
     }
-    /// Runs the task. The task emits tick events at a fixed rate and polls for crossterm events
-    /// in between. The task will exit when the sender for the event channel is closed.
+    /// Runs the task. The task polls for crossterm events and emits them into the event channel.
+    /// The task will exit when the sender for the event channel is closed.
     async fn run(self) {
-        let tick_rate = Duration::from_secs_f64(1.0 / TICK_FPS);
-        let mut tick = tokio::time::interval(tick_rate);
-
         let mut reader = crossterm::event::EventStream::new();
 
         loop {
-            let tick_delay = tick.tick();
-
             let crossterm_event = reader.next().fuse();
 
             tokio::select! {
                 _ = self.sender.closed() => {
                     tracing::info!("exiting event loop because sender was closed");
                     break;
-                }
-                _ = tick_delay => {
-                    self.send(Event::Tick).await;
                 }
                 Some(Ok(e)) = crossterm_event => {
                     tracing::debug!("dispatching crossterm event: {:?}", e);
