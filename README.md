@@ -35,6 +35,9 @@ default a group id will be generated from the hostname of the machine that is ex
 * `--filter, -f` - JSONPath filter that is applied to a record. Can be used to filter out any records from the Kafka
 topic that the end user may not be interested in. A message will only be presented to the user if it matches the filter.
 By default no filter is applied. See the [Filtering](#Filtering) section below for further details.
+* `--seek-to` - CSV of colon separated pairs of partition and offset values that the Kafka consumer will seek to before
+starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition `0`
+and offset `10` on partition `1`.
 * `--profile, -p` - Specifies the name of pre-configured set of values that will be used as defaults for the execution
 of the application. Profiles are stored in the `$HOME/.kaftui.json` file. Any other arguments specified when executing
 the application will take precedence over the ones loaded from the profile. See the [Profiles](#Profiles) section below

@@ -248,9 +248,36 @@ impl App {
     /// Starts the consumer asynchronously. The result of the consumer startup is sent back to the
     /// application through the [`EventBus`].
     fn start_consumer_async(&self) {
+        // TODO: clean this up
+        let seek_to: Vec<(i32, i64)> = self
+            .config
+            .seek_to
+            .as_ref()
+            .map(|csv| {
+                csv.split(",")
+                    .map(|pair| {
+                        let mut pair_itr = pair.split(":");
+
+                        let p = pair_itr
+                            .next()
+                            .map(|p| p.parse::<i32>().expect("valid partition value"))
+                            .expect("partition value set");
+
+                        let o = pair_itr
+                            .next()
+                            .map(|o| o.parse::<i64>().expect("valid offset value"))
+                            .expect("offset value set");
+
+                        (p, o)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let start_consumer_task = StartConsumerTask {
             consumer: Arc::clone(&self.consumer),
             topic: self.config.topic.clone(),
+            seek_to,
             filter: self.config.filter.clone(),
             event_bus: Arc::clone(&self.event_bus),
         };
@@ -449,6 +476,9 @@ struct StartConsumerTask {
     consumer: Arc<Consumer>,
     /// Topic to consume records from.
     topic: String,
+    /// Vec of partition and offset pairs that the Kafka consumer will seek to before starting to
+    /// consumer records.
+    seek_to: Vec<(i32, i64)>,
     /// Any filter to apply to the consumed records.
     filter: Option<String>,
     /// [`EventBus`] on which the results of the startup will be sent.
@@ -459,7 +489,7 @@ impl StartConsumerTask {
     /// Runs the task. Starts the consumer and send the appropriate event based on the result to
     /// the [`EventBus`].
     async fn run(self) {
-        match self.consumer.start(self.topic, self.filter) {
+        match self.consumer.start(self.topic, self.seek_to, self.filter) {
             Ok(()) => self.event_bus.send(AppEvent::ConsumerStarted).await,
             Err(e) => self.event_bus.send(AppEvent::ConsumerStartFailure(e)).await,
         };

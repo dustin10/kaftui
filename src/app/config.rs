@@ -24,6 +24,9 @@ pub struct Config {
     pub topic: String,
     /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
     pub group_id: String,
+    /// CSV of color separated pairs of partition and offset that the Kafka consumer will seek to
+    /// before starting to consume records.
+    pub seek_to: Option<String>,
     /// Additional configuration properties that will be applied to the Kafka consumer.
     pub consumer_properties: Option<HashMap<String, String>>,
     /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages

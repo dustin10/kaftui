@@ -12,6 +12,7 @@ use std::{fs::File, io::BufReader};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
+/// A TUI application which can be used to view records published to Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
 #[command()]
 struct Args {
@@ -26,6 +27,10 @@ struct Args {
     /// is executing the application.
     #[arg(short, long)]
     group_id: Option<String>,
+    /// CSV of color separated pairs of partition and offset that the Kafka consumer will seek to
+    /// before starting to consume records.
+    #[arg(long)]
+    seek_to: Option<String>,
     /// JSONPath filter that is applied to a record. Can be used to filter out any
     /// records from the Kafka topic that the end user may not be interested in. A message will
     /// only be presented to the user if it matches the filter. By default no filter is applied.
@@ -70,6 +75,10 @@ impl Source for Args {
 
         if let Some(group_id) = self.group_id.as_ref() {
             cfg.insert(String::from("group_id"), Value::from(group_id.clone()));
+        }
+
+        if let Some(seek_to) = self.seek_to.as_ref() {
+            cfg.insert(String::from("seek_to"), Value::from(seek_to.clone()));
         }
 
         if let Some(filter) = self.filter.as_ref() {

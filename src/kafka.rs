@@ -8,7 +8,7 @@ use rdkafka::{
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
-    ClientConfig, ClientContext, Message, TopicPartitionList,
+    ClientConfig, ClientContext, Message, Offset, TopicPartitionList,
 };
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -120,13 +120,12 @@ impl Consumer {
         })
     }
     /// Starts the consumption of records from the specified topic.
-    pub fn start(&self, topic: String, filter: Option<String>) -> anyhow::Result<()> {
-        let topics = [topic.as_str()];
-
-        self.consumer
-            .subscribe(&topics)
-            .context(format!("subscribe to Kafka topic: {}", topic))?;
-
+    pub fn start(
+        &self,
+        topic: String,
+        seek_to: Vec<(i32, i64)>,
+        filter: Option<String>,
+    ) -> anyhow::Result<()> {
         let topic_metadata = self
             .consumer
             .fetch_metadata(Some(topic.as_str()), Duration::from_secs(10))
@@ -137,6 +136,23 @@ impl Consumer {
             .first()
             .expect("topic metadata exists")
             .partitions();
+
+        let mut assignments_list = TopicPartitionList::with_capacity(topic_partitions.len());
+
+        for partition in topic_partitions.iter() {
+            match seek_to.iter().find(|(p, _)| *p == partition.id()) {
+                Some(s) => assignments_list
+                    .add_partition_offset(topic.as_str(), partition.id(), Offset::Offset(s.1))
+                    .context("add partition offset")?,
+                None => {
+                    let _ = assignments_list.add_partition(topic.as_str(), partition.id());
+                }
+            }
+        }
+
+        self.consumer
+            .assign(&assignments_list)
+            .context("assign partitions to consumer")?;
 
         for partition in topic_partitions.iter() {
             let partition_queue = self
