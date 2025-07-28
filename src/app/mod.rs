@@ -226,6 +226,7 @@ impl App {
                         }
                         AppEvent::SelectPrevRecord => self.on_select_prev_record(),
                         AppEvent::SelectNextRecord => self.on_select_next_record(),
+                        AppEvent::SelectLastRecord => self.on_select_last_record(),
                         AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
                         AppEvent::PauseProcessing => self.on_pause_processing(),
                         AppEvent::ResumeProcessing => self.on_resume_processing(),
@@ -311,6 +312,11 @@ impl App {
                 },
                 'p' => self.event_bus.send(AppEvent::PauseProcessing).await,
                 'r' => self.event_bus.send(AppEvent::ResumeProcessing).await,
+                'G' => {
+                    if SelectableWidget::RecordList == self.state.selected_widget {
+                        self.event_bus.send(AppEvent::SelectLastRecord).await;
+                    }
+                }
                 _ => {}
             },
             _ => {}
@@ -462,6 +468,24 @@ impl App {
         if self.state.record_list_value_scroll.0 >= self.config.scroll_factor {
             self.state.record_list_value_scroll.0 -= self.config.scroll_factor;
         }
+    }
+    /// Handles the select last record event emitted by the [`EventBus`].
+    fn on_select_last_record(&mut self) {
+        tracing::debug!("select last record");
+
+        if self.state.records.is_empty() {
+            return;
+        }
+
+        let last_idx = self.state.records.len() - 1;
+
+        self.state.record_list_state.select(Some(last_idx));
+        self.state.record_list_scroll_state =
+            self.state.record_list_scroll_state.position(last_idx);
+
+        self.state.selected = self.state.records.back().cloned();
+
+        self.state.record_list_value_scroll = (0, 0);
     }
     /// Quits the application.
     fn on_quit(&mut self) {

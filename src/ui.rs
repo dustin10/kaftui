@@ -33,6 +33,9 @@ const KEY_BINDING_NEXT: &str = "(j) next";
 /// Text displayed to the user in the footer for the previous record key binding.
 const KEY_BINDING_PREV: &str = "(k) prev";
 
+/// Text displayed to the user in the footer for the select last record key binding.
+const KEY_BINDING_LAST: &str = "(G) last";
+
 /// Text displayed to the user in the footer for the pause key binding.
 const KEY_BINDING_PAUSE: &str = "(p) pause";
 
@@ -398,6 +401,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         SelectableWidget::RecordList => {
             key_bindings.push(KEY_BINDING_NEXT);
             key_bindings.push(KEY_BINDING_PREV);
+            key_bindings.push(KEY_BINDING_LAST);
         }
         SelectableWidget::RecordValue => {
             key_bindings.push(KEY_BINDING_SCROLL_DOWN);
