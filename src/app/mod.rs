@@ -461,9 +461,6 @@ impl App {
 
             match serde_json::to_string_pretty(&exported_record) {
                 Ok(json) => {
-                    // TODO: configurable export directory
-                    let dir = ".";
-
                     let name = exported_record
                         .key
                         .as_ref()
@@ -471,7 +468,7 @@ impl App {
 
                     let file_path = format!(
                         "{}{}{}-{}.json",
-                        dir,
+                        self.config.export_directory,
                         std::path::MAIN_SEPARATOR,
                         name,
                         Utc::now().timestamp_millis()

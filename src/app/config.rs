@@ -15,6 +15,9 @@ pub const DEFAULT_MAX_RECORDS: usize = 256;
 /// Default value for the scoll factor of the record value text panel.
 const DEFAULT_SCROLL_FACTOR: u16 = 3;
 
+/// Default value for the file export directory.
+const DEFAULT_EXPORT_DIRECTORY: &str = ".";
+
 /// Configuration values which drive the behavior of the application.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -40,6 +43,8 @@ pub struct Config {
     pub scroll_factor: u16,
     /// Color configuration for the UI components of the application.
     pub theme: Theme,
+    /// Directory on the file system where exported files will be saved.
+    pub export_directory: String,
 }
 
 impl Config {
@@ -119,6 +124,11 @@ impl Source for Defaults {
 
         cfg.insert(String::from("theme"), Value::from(Theme::default()));
 
+        cfg.insert(
+            String::from("export_directory"),
+            Value::from(String::from(DEFAULT_EXPORT_DIRECTORY)),
+        );
+
         Ok(cfg)
     }
 }
@@ -151,6 +161,8 @@ struct PersistedConfig {
     max_records: Option<usize>,
     /// Controls how many lines each press of a key scrolls the record value text.
     scroll_factor: Option<u16>,
+    /// Directory on the file system where exported files will be saved.
+    export_directory: Option<String>,
     /// Color configuration for the UI components of the application.
     theme: Option<Theme>,
 }
@@ -173,6 +185,13 @@ impl Source for PersistedConfig {
 
         if let Some(scroll_factor) = self.scroll_factor {
             cfg.insert(String::from("scroll_factor"), Value::from(scroll_factor));
+        }
+
+        if let Some(export_directory) = self.export_directory.as_ref() {
+            cfg.insert(
+                String::from("export_directory"),
+                Value::from(export_directory.clone()),
+            );
         }
 
         if let Some(theme) = self.theme.as_ref() {

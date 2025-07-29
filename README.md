@@ -93,6 +93,7 @@ The JSON below contains is a full example of the set of values which can be used
 ```json
 {
   "scrollFactor": 3,
+  "exportDirectory": ".",
   "profiles": [{
     "name": "local",
     "bootstrapServers": "localhost:9092"
@@ -125,4 +126,5 @@ The JSON below contains is a full example of the set of values which can be used
 Most of the available configuration above was discussed in previous sections. The list below outlines the rest.
 
 * `scrollFactor` - Determines the number of lines to scroll the record value panel with each keypress.
+* `exportDirectory` - Specifies the directory on the file system where exported records should be saved.
 
