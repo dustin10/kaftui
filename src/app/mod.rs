@@ -39,6 +39,52 @@ pub enum SelectableWidget {
     RecordValue,
 }
 
+impl SelectableWidget {
+    /// Takes the appropriate action based on the key pressed and the value of the [`SelectableWidget`]
+    /// that on which the function is being invoked. Returns a value of true if an action was taken
+    /// as a result of the key press, false otherwise.
+    async fn on_key_press(&self, app: &mut App, key: char) -> bool {
+        match self {
+            SelectableWidget::RecordList => match key {
+                'g' => {
+                    match app.buffered_key {
+                        Some('g') => {
+                            app.event_bus.send(AppEvent::SelectFirstRecord).await;
+                            app.buffered_key = None;
+                        }
+                        _ => app.buffered_key = Some('g'),
+                    }
+                    true
+                }
+                'j' => {
+                    app.event_bus.send(AppEvent::SelectNextRecord).await;
+                    true
+                }
+                'k' => {
+                    app.event_bus.send(AppEvent::SelectPrevRecord).await;
+                    true
+                }
+                'G' => {
+                    app.event_bus.send(AppEvent::SelectLastRecord).await;
+                    true
+                }
+                _ => false,
+            },
+            SelectableWidget::RecordValue => match key {
+                'j' => {
+                    app.event_bus.send(AppEvent::ScrollRecordValueDown).await;
+                    true
+                }
+                'k' => {
+                    app.event_bus.send(AppEvent::ScrollRecordValueUp).await;
+                    true
+                }
+                _ => false,
+            },
+        }
+    }
+}
+
 /// Manages the global application state.
 #[derive(Debug)]
 pub struct State {
@@ -298,42 +344,13 @@ impl App {
             KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget).await,
             KeyCode::Char(c) => match c {
                 'e' => self.event_bus.send(AppEvent::ExportSelectedRecord).await,
-                'g' => {
-                    if self.is_record_list_selected() {
-                        match self.buffered_key {
-                            Some('g') => {
-                                self.event_bus.send(AppEvent::SelectFirstRecord).await;
-                                self.buffered_key = None;
-                            }
-                            _ => self.buffered_key = Some('g'),
-                        }
-                    }
-                }
-                'j' => match self.state.selected_widget {
-                    SelectableWidget::RecordList => {
-                        self.event_bus.send(AppEvent::SelectNextRecord).await
-                    }
-                    SelectableWidget::RecordValue => {
-                        self.event_bus.send(AppEvent::ScrollRecordValueDown).await
-                    }
-                },
-                'k' => match self.state.selected_widget {
-                    SelectableWidget::RecordList => {
-                        self.event_bus.send(AppEvent::SelectPrevRecord).await
-                    }
-                    SelectableWidget::RecordValue => {
-                        self.event_bus.send(AppEvent::ScrollRecordValueUp).await
-                    }
-                },
                 'p' => self.event_bus.send(AppEvent::PauseProcessing).await,
                 'r' => self.event_bus.send(AppEvent::ResumeProcessing).await,
-                'G' => {
-                    if self.is_record_list_selected() {
-                        self.event_bus.send(AppEvent::SelectLastRecord).await;
-                    }
-                }
                 _ => {
-                    if self.is_record_list_selected() {
+                    let widget = self.state.selected_widget;
+
+                    // TODO: only buffer when record list selected?
+                    if !widget.on_key_press(self, c).await && self.is_record_list_selected() {
                         // TODO: add TTL so buffered key expires
                         self.buffered_key = Some(c);
                     }
