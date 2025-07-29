@@ -81,13 +81,28 @@ When the record value widget has focus then the following key bindings will be a
 
 ## Filtering
 
-TODO
+A filter can be specified using the `--filter` argument or in a profile, see below, to filter out any records consumed
+from the Kafka topic that the user may not want to see. For example, only records for a specific tenant in the system
+is relevant.
+
+A filter is a JSONPath expression that is used to query the filterable JSON representation of the Kafka record. Below
+are some filtering examples.
+
+```sh
+# only view records from partition 0
+> kaftui --bootstrap-servers localhost:9092 --topic orders --filter "$.info[?(@.partition=='0')]"
+
+# only view records where tenantId header value is 42
+> kaftui --bootstrap-servers localhost:9092 --topic orders --filter "$.headers[?(@.tenantId=='42')]"
+```
 
 ## Profiles
 
 A profile is a grouping of configuration values for the `kaftui` application. A user can setup as many profiles as
-required to describe the default values that should be used when executing the application. The following properties
-are supported in profiles.
+required to describe the default values that should be used when executing the application. Once a profile is configured,
+then the `--profile` argument can be used specified it be loaded at runtime.
+
+The following properties are supported in profiles.
 
 * `name` - Unique name that identifies the profile.
 * `bootstrapServers` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
@@ -97,7 +112,7 @@ are supported in profiles.
 * `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and
 group id. Typically used for configuration authentication, etc.
 
-See the [Persisted Configuration](#PersistedConfiguration) section below for how to configure profiles as well as a
+See the [Persisted Configuration](#Persisted-Configuration) section below for how to configure profiles as well as a
 few examples.
 
 ## Theme
@@ -116,7 +131,8 @@ properties are available to be configured using a theme.
 * `recordHeadersTextColor` - Color of the record headers text in the record headers table.
 * `recordValueTextColor` - Color of the record value text.
 
-> Colors must be specified in RGB format **without** the leading `#`. See the section below for an example.
+> Colors must be specified in RGB format **without** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
+section for an example of a theme.
 
 ## Persisted Configuration
 
