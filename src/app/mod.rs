@@ -8,7 +8,7 @@ use crate::{
 
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     widgets::{ScrollbarState, TableState},
@@ -47,12 +47,12 @@ impl SelectableWidget {
         match self {
             SelectableWidget::RecordList => match key {
                 'g' => {
-                    match app.buffered_key {
-                        Some('g') => {
+                    match app.buffered_key.as_ref().filter(|v| v.is_expired()) {
+                        Some(key_press) if key_press.key == 'g' => {
                             app.event_bus.send(AppEvent::SelectFirstRecord).await;
                             app.buffered_key = None;
                         }
-                        _ => app.buffered_key = Some('g'),
+                        _ => app.buffered_key = Some(BufferedKeyPress::new('g')),
                     }
                     true
                 }
@@ -186,6 +186,32 @@ impl From<Record> for ExportedRecord {
     }
 }
 
+/// Holds data relevant to a key press that is was buffered because it did not directly map to an
+/// action. This is used for a simple implementation of vim-style key bindings, e.g. `gg` is bound
+/// to selecting the first record in the list.
+#[derive(Debug)]
+struct BufferedKeyPress {
+    /// Last key that was pressed that did not map to an action.
+    key: char,
+    /// Time that the buffered key press will expire.
+    ttl: DateTime<Utc>,
+}
+
+impl BufferedKeyPress {
+    /// Creates a new [`BufferedKeyPress`] with the key that was pressed by the user.
+    fn new(key: char) -> Self {
+        Self {
+            key,
+            ttl: Utc::now() + Duration::seconds(1),
+        }
+    }
+    /// Determines if the key press has expired based on the TTL that was set when it was initially
+    /// buffered.
+    fn is_expired(&self) -> bool {
+        Utc::now().timestamp_millis() < self.ttl.timestamp_millis()
+    }
+}
+
 /// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
@@ -204,7 +230,7 @@ pub struct App {
     /// Holds the [`Screen`] the user is currently viewing.
     pub screen: Screen,
     /// If available, contains the last key pressed that did not map to an active key binding.
-    buffered_key: Option<char>,
+    buffered_key: Option<BufferedKeyPress>,
 }
 
 /// Maximum bound on the nunber of messages that can be in the event channel.
@@ -352,7 +378,7 @@ impl App {
                     // TODO: only buffer when record list selected?
                     if !widget.on_key_press(self, c).await && self.is_record_list_selected() {
                         // TODO: add TTL so buffered key expires
-                        self.buffered_key = Some(c);
+                        self.buffered_key = Some(BufferedKeyPress::new(c));
                     }
                 }
             },
