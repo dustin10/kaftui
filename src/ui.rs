@@ -251,6 +251,9 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .key
         .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
 
+    let info_color =
+        color_from_hex_string(&app.config.theme.record_info_color).expect("valid u32 hex");
+
     let info_rows = vec![
         Row::new([
             "Partition".bold().style(label_color),
@@ -266,12 +269,16 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 
     let info_table = Table::new(info_rows, [Constraint::Fill(1), Constraint::Fill(9)])
         .column_spacing(1)
+        .style(info_color)
         .block(info_block);
 
     let headers_block = Block::bordered()
         .title(" Headers ")
         .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
+
+    let headers_color =
+        color_from_hex_string(&app.config.theme.record_headers_color).expect("valid u32 hex");
 
     let header_rows: Vec<Row> = BTreeMap::from_iter(record.headers.iter())
         .into_iter()
@@ -284,6 +291,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
             "Key".bold().style(label_color),
             "Value".bold().style(label_color),
         ]))
+        .style(headers_color)
         .block(headers_block);
 
     let mut value_block = Block::bordered()
@@ -315,9 +323,13 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         }
     };
 
+    let value_color =
+        color_from_hex_string(&app.config.theme.record_value_color).expect("valid u32 hex");
+
     let value_paragraph = Paragraph::new(value)
         .block(value_block)
         .wrap(Wrap { trim: false })
+        .style(value_color)
         .scroll(state.record_list_value_scroll);
 
     frame.render_widget(info_table, info_slice);

@@ -282,6 +282,12 @@ pub struct Theme {
     pub label_color: String,
     /// Color used for the text in the record list. Defaults to white.
     pub record_list_color: String,
+    /// Color used for the text in the record info. Defaults to white.
+    pub record_info_color: String,
+    /// Color used for the text in the record value. Defaults to white.
+    pub record_value_color: String,
+    /// Color used for the text in the record headers. Defaults to white.
+    pub record_headers_color: String,
 }
 
 impl Default for Theme {
@@ -297,6 +303,11 @@ impl Default for Theme {
     /// * Processing Status Text - Green
     /// * Paused Status Text - Red
     /// * Key Bindings Text - White
+    /// * Label Text - White
+    /// * Record List Text - White
+    /// * Record Info Text - White
+    /// * Record Headers Text - White
+    /// * Record Value Text - White
     fn default() -> Self {
         Self {
             panel_border_color: String::from("FFFFFF"),
@@ -306,6 +317,9 @@ impl Default for Theme {
             key_bindings_text_color: String::from("FFFFFF"),
             label_color: String::from("FFFFFF"),
             record_list_color: String::from("FFFFFF"),
+            record_info_color: String::from("FFFFFF"),
+            record_value_color: String::from("FFFFFF"),
+            record_headers_color: String::from("FFFFFF"),
         }
     }
 }
@@ -346,6 +360,21 @@ impl From<Theme> for ValueKind {
         data.insert(
             String::from("recordListColor"),
             Value::from(value.record_list_color),
+        );
+
+        data.insert(
+            String::from("recordInfoColor"),
+            Value::from(value.record_info_color),
+        );
+
+        data.insert(
+            String::from("recordHeadersColor"),
+            Value::from(value.record_headers_color),
+        );
+
+        data.insert(
+            String::from("recordValueColor"),
+            Value::from(value.record_value_color),
         );
 
         Self::Table(data)

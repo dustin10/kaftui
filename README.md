@@ -118,7 +118,10 @@ The JSON below contains is a full example of the set of values which can be used
     "statusTextColorProcessing": "00FF00",
     "keyBindingsTextColor": "FFFFFF",
     "labelColor": "FFFFFF",
-    "recordListColor": "FFFFFF"
+    "recordListColor": "FFFFFF",
+    "recordInfoColor": "FFFFFF",
+    "recordHeadersColor": "FFFFFF",
+    "recordValueColor": "FFFFFF"
   }
 }
 ```
