@@ -1,6 +1,6 @@
 # kaftui
 
-A simple TUI application which can be used to view records published to a [Kafka](https://kafka.apache.org/) topic.
+A TUI application which can be used to view records published to a [Kafka](https://kafka.apache.org/) topic.
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ the application will take precedence over the ones loaded from the profile. See 
 for further details.
 * `--consumer-properties-file` - Path to a `.properties` file containing additional configuration for the Kafka consumer
 other than the bootstrap servers and group id. Typically used for configuration authentication, etc.
-* `--max-records` - Maximum nunber of records that should be held in memory at any given time after being consumed from
+* `--max-records` - Maximum number of records that should be held in memory at any given time after being consumed from
 the Kafka topic. Defaults to `256`.
 * `--help, -h` - Prints the help text for the application to the terminal.
 
@@ -81,14 +81,48 @@ When the record value widget has focus then the following key bindings will be a
 
 ## Filtering
 
+TODO
+
 ## Profiles
+
+A profile is a grouping of configuration values for the `kaftui` application. A user can setup as many profiles as
+required to describe the default values that should be used when executing the application. The following properties
+are supported in profiles.
+
+* `name` - Unique name that identifies the profile.
+* `bootstrapServers` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
+* `topic` - Name of the Kafka topic to consume records from.
+* `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
+* `filter` - JSONPath filter that is applied to a record.
+* `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and
+group id. Typically used for configuration authentication, etc.
+
+See the [Persisted Configuration](#PersistedConfiguration) section below for how to configure profiles as well as a
+few examples.
 
 ## Theme
 
-## Configuration Reference
+The `kaftui` application has support for themes. The theme is specified in the `$HOME/.kaftui.json` file. The following
+properties are available to be configured using a theme.
 
-The JSON below contains is a full example of the set of values which can be used to configure the application using the
-`.kaftui.json` file.
+* `panelBorderColor` - Default border color for a widget.
+* `selectedPanelBorderColor` - Border color for the currently selected widget.
+* `statusTextColorProcessing` - Color of the status text in the footer when the Kafka consumer is processing records.
+* `statusTextColorPaused` - Color of the status text in the footer when the Kafka consumer is paused.
+* `keyBindingsTextColor` - Color of the key bindings text in the footer.
+* `labelColor` - Color of the widget labels, e.g. table header text.
+* `recordListTextColor` - Color of the rows in the record list table.
+* `recordInfoTextColor` - Color of the record properties text in the record info table.
+* `recordHeadersTextColor` - Color of the record headers text in the record headers table.
+* `recordValueTextColor` - Color of the record value text.
+
+> Colors must be specified in RGB format **without** the leading `#`. See the section below for an example.
+
+## Persisted Configuration
+
+To persist configuration across executions of the `kaftui` application, a JSON file can be created in the `$HOME`
+directory which contains the relevant configuration values. The JSON below contains is a full example of the set of
+values which can be used to configure the application using the `.kaftui.json` file.
 
 ```json
 {
@@ -130,4 +164,6 @@ Most of the available configuration above was discussed in previous sections. Th
 
 * `scrollFactor` - Determines the number of lines to scroll the record value panel with each keypress.
 * `exportDirectory` - Specifies the directory on the file system where exported records should be saved.
+* `maxRecords` - Maximum number of records that should be held in memory at any given time after being consumed from
+the Kafka topic.
 
