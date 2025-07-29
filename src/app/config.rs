@@ -281,13 +281,13 @@ pub struct Theme {
     /// Color used for the label text in tables, etc. Defaults to white.
     pub label_color: String,
     /// Color used for the text in the record list. Defaults to white.
-    pub record_list_color: String,
+    pub record_list_text_color: String,
     /// Color used for the text in the record info. Defaults to white.
-    pub record_info_color: String,
+    pub record_info_text_color: String,
     /// Color used for the text in the record value. Defaults to white.
-    pub record_value_color: String,
+    pub record_value_text_color: String,
     /// Color used for the text in the record headers. Defaults to white.
-    pub record_headers_color: String,
+    pub record_headers_text_color: String,
 }
 
 impl Default for Theme {
@@ -316,10 +316,10 @@ impl Default for Theme {
             status_text_color_paused: String::from("FF0000"),
             key_bindings_text_color: String::from("FFFFFF"),
             label_color: String::from("FFFFFF"),
-            record_list_color: String::from("FFFFFF"),
-            record_info_color: String::from("FFFFFF"),
-            record_value_color: String::from("FFFFFF"),
-            record_headers_color: String::from("FFFFFF"),
+            record_list_text_color: String::from("FFFFFF"),
+            record_info_text_color: String::from("FFFFFF"),
+            record_value_text_color: String::from("FFFFFF"),
+            record_headers_text_color: String::from("FFFFFF"),
         }
     }
 }
@@ -358,23 +358,23 @@ impl From<Theme> for ValueKind {
         data.insert(String::from("labelColor"), Value::from(value.label_color));
 
         data.insert(
-            String::from("recordListColor"),
-            Value::from(value.record_list_color),
+            String::from("recordListTextColor"),
+            Value::from(value.record_list_text_color),
         );
 
         data.insert(
-            String::from("recordInfoColor"),
-            Value::from(value.record_info_color),
+            String::from("recordInfoTextColor"),
+            Value::from(value.record_info_text_color),
         );
 
         data.insert(
-            String::from("recordHeadersColor"),
-            Value::from(value.record_headers_color),
+            String::from("recordHeadersTextColor"),
+            Value::from(value.record_headers_text_color),
         );
 
         data.insert(
-            String::from("recordValueColor"),
-            Value::from(value.record_value_color),
+            String::from("recordValueTextColor"),
+            Value::from(value.record_value_text_color),
         );
 
         Self::Table(data)

@@ -143,7 +143,7 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
         color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
 
     let record_list_color =
-        color_from_hex_string(&app.config.theme.record_list_color).expect("valid u32 hex");
+        color_from_hex_string(&app.config.theme.record_list_text_color).expect("valid u32 hex");
 
     let mut record_list_block = Block::bordered()
         .title(" Records ")
@@ -252,7 +252,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
 
     let info_color =
-        color_from_hex_string(&app.config.theme.record_info_color).expect("valid u32 hex");
+        color_from_hex_string(&app.config.theme.record_info_text_color).expect("valid u32 hex");
 
     let info_rows = vec![
         Row::new([
@@ -278,7 +278,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .padding(Padding::new(1, 1, 0, 0));
 
     let headers_color =
-        color_from_hex_string(&app.config.theme.record_headers_color).expect("valid u32 hex");
+        color_from_hex_string(&app.config.theme.record_headers_text_color).expect("valid u32 hex");
 
     let header_rows: Vec<Row> = BTreeMap::from_iter(record.headers.iter())
         .into_iter()
@@ -324,7 +324,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
     };
 
     let value_color =
-        color_from_hex_string(&app.config.theme.record_value_color).expect("valid u32 hex");
+        color_from_hex_string(&app.config.theme.record_value_text_color).expect("valid u32 hex");
 
     let value_paragraph = Paragraph::new(value)
         .block(value_block)
