@@ -43,7 +43,7 @@ of the application. Profiles are stored in the `$HOME/.kaftui.json` file. Any ot
 the application will take precedence over the ones loaded from the profile. See the [Profiles](#Profiles) section below
 for further details.
 * `--consumer-properties-file` - Path to a `.properties` file containing additional configuration for the Kafka consumer
-other than the bootstrap servers and group id. Typically used for configuration authentication, etc.
+other than the bootstrap servers and group id. Typically used for configuring authentication, etc.
 * `--max-records` - Maximum number of records that should be held in memory at any given time after being consumed from
 the Kafka topic. Defaults to `256`.
 * `--help, -h` - Prints the help text for the application to the terminal.
