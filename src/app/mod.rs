@@ -155,10 +155,15 @@ struct ExportedRecord {
 }
 
 impl From<Record> for ExportedRecord {
-    /// Converts the given [`Record`] to an [`ExportedRecord`].
+    /// Converts the instance of a [`Record`] to an [`ExportedRecord`].
     fn from(record: Record) -> Self {
-        // TODO: error handling
-        let json_value = record.value.and_then(|v| serde_json::from_str(&v).ok());
+        let json_value = record.value.and_then(|v| match serde_json::from_str(&v) {
+            Ok(json) => Some(json),
+            Err(e) => {
+                tracing::error!("failed to serialize record value to JSON: {}", e);
+                None
+            }
+        });
 
         Self {
             topic: record.topic,
