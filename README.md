@@ -2,6 +2,8 @@
 
 A TUI application which can be used to view records published to a [Kafka](https://kafka.apache.org/) topic.
 
+![kaftui application running with the default theme](assets/kaftui-default.png)
+
 ## Quick Start
 
 First, install the `kafktui` application using `cargo`.
@@ -133,6 +135,10 @@ properties are available to be configured using a theme.
 
 > Colors must be specified in RGB format **without** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
 section for an example of a theme.
+
+The screenshow below is an example of a `kaftui` theme configuration that is inspired by the Dracual theme.
+
+![kaftui application running with a dracula theme](assets/kaftui-dracula.png)
 
 ## Persisted Configuration
 
