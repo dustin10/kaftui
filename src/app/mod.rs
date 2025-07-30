@@ -1,34 +1,25 @@
 pub mod config;
+pub mod input;
 
 use crate::{
-    app::config::Config,
+    app::{config::Config, input::Input},
     event::{AppEvent, Event, EventBus},
-    kafka::{Consumer, Record},
+    kafka::{Consumer, ConsumerMode, Record},
 };
 
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use ratatui::{
-    crossterm::event::{KeyCode, KeyEvent},
     widgets::{ScrollbarState, TableState},
     DefaultTerminal,
 };
 use serde::Serialize;
-use std::{collections::HashMap, sync::Arc};
+use std::{cell::Cell, collections::HashMap, rc::Rc, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 
 /// Default prefix used for the name of the exported file when no partition key is set.
 const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
-
-/// Enumerates the different states that the Kafka consumer can be in.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum ConsumerMode {
-    /// Consumer is paused and not processing records from the topic.
-    Paused,
-    /// Consumer is processing records from the topic.
-    Processing,
-}
 
 /// Enumeration of the widgets that the user can select.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -37,47 +28,6 @@ pub enum SelectableWidget {
     RecordList,
     /// Text panel that outputs the value of the currently selected record.
     RecordValue,
-}
-
-impl SelectableWidget {
-    /// Takes the appropriate action based on the key pressed and the value of the [`SelectableWidget`]
-    /// that on which the function is being invoked. Returns a value of true if an action was taken
-    /// as a result of the key press, false otherwise.
-    async fn on_key_press(&self, app: &mut App, key: char) -> bool {
-        // TODO: something better than returning bool here?
-        match self {
-            SelectableWidget::RecordList => match key {
-                'g' if app.is_key_buffered('g') => {
-                    app.event_bus.send(AppEvent::SelectFirstRecord).await;
-                    true
-                }
-                'j' => {
-                    app.event_bus.send(AppEvent::SelectNextRecord).await;
-                    true
-                }
-                'k' => {
-                    app.event_bus.send(AppEvent::SelectPrevRecord).await;
-                    true
-                }
-                'G' => {
-                    app.event_bus.send(AppEvent::SelectLastRecord).await;
-                    true
-                }
-                _ => false,
-            },
-            SelectableWidget::RecordValue => match key {
-                'j' => {
-                    app.event_bus.send(AppEvent::ScrollRecordValueDown).await;
-                    true
-                }
-                'k' => {
-                    app.event_bus.send(AppEvent::ScrollRecordValueUp).await;
-                    true
-                }
-                _ => false,
-            },
-        }
-    }
 }
 
 /// Manages the global application state.
@@ -103,11 +53,11 @@ pub struct State {
     /// records are currently being consumed from the topic.
     pub consumer_mode: ConsumerMode,
     /// Stores the widget that the user currently has selected.
-    pub selected_widget: SelectableWidget,
+    pub selected_widget: Rc<Cell<SelectableWidget>>,
 }
 
 impl State {
-    /// Creates a new default [`State`].
+    /// Creates a new [`State`] with the specified dependencies.
     pub fn new(max_records: usize) -> Self {
         Self {
             running: true,
@@ -118,7 +68,7 @@ impl State {
             record_list_value_scroll: (0, 0),
             total_consumed: 0,
             consumer_mode: ConsumerMode::Processing,
-            selected_widget: SelectableWidget::RecordList,
+            selected_widget: Rc::new(Cell::new(SelectableWidget::RecordList)),
         }
     }
 }
@@ -177,43 +127,16 @@ impl From<Record> for ExportedRecord {
     }
 }
 
-/// Holds data relevant to a key press that is was buffered because it did not directly map to an
-/// action. This is used for a simple implementation of vim-style key bindings, e.g. `gg` is bound
-/// to selecting the first record in the list.
-#[derive(Debug)]
-struct BufferedKeyPress {
-    /// Last key that was pressed that did not map to an action.
-    key: char,
-    /// Time that the buffered key press will expire.
-    ttl: DateTime<Utc>,
-}
-
-impl BufferedKeyPress {
-    /// Creates a new [`BufferedKeyPress`] with the key that was pressed by the user.
-    fn new(key: char) -> Self {
-        Self {
-            key,
-            ttl: Utc::now() + Duration::seconds(1),
-        }
-    }
-    /// Determines if the key press matches the specified character. False will always be returned
-    /// if the key press has expired.
-    fn is(&self, key: char) -> bool {
-        !self.is_expired() && self.key == key
-    }
-    /// Determines if the key press has expired based on the TTL that was set when it was initially
-    /// buffered.
-    fn is_expired(&self) -> bool {
-        self.ttl.timestamp_millis() < Utc::now().timestamp_millis()
-    }
-}
-
 /// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
     pub config: Config,
+    /// Holds the [`Screen`] the user is currently viewing.
+    pub screen: Screen,
     /// Contains the current state of the application.
     pub state: State,
+    /// Maps input from the user to application events published on the [`EventBus`].
+    input: Input,
     /// Channel receiver that is used to receive application events that are sent by the
     /// [`EventBus`].
     event_rx: Receiver<Event>,
@@ -223,10 +146,6 @@ pub struct App {
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
     consumer: Arc<Consumer>,
-    /// Holds the [`Screen`] the user is currently viewing.
-    pub screen: Screen,
-    /// If available, contains the last key pressed that did not map to an active key binding.
-    buffered_key: Option<BufferedKeyPress>,
 }
 
 /// Maximum bound on the nunber of messages that can be in the event channel.
@@ -260,15 +179,19 @@ impl App {
 
         let max_records = config.max_records;
 
+        let state = State::new(max_records);
+
+        let input = Input::new(Arc::clone(&event_bus), Rc::clone(&state.selected_widget));
+
         Ok(Self {
             config,
-            state: State::new(max_records),
+            input,
+            state,
             event_rx,
             consumer_rx,
             event_bus,
             consumer: Arc::new(consumer),
             screen: Screen::Initialize,
-            buffered_key: None,
         })
     }
     /// Run the main loop of the application.
@@ -286,7 +209,7 @@ impl App {
                 match event {
                     Event::Crossterm(crossterm_event) => {
                         if let crossterm::event::Event::Key(key_event) = crossterm_event {
-                            self.on_key_event(key_event).await
+                            self.input.on_key_event(key_event).await
                         }
                     }
                     Event::App(app_event) => match app_event {
@@ -358,32 +281,6 @@ impl App {
         tokio::spawn(async move {
             start_consumer_task.run().await;
         });
-    }
-    /// Determines if the last key press that was buffered matches the given character.
-    fn is_key_buffered(&self, key: char) -> bool {
-        self.buffered_key.as_ref().filter(|v| v.is(key)).is_some()
-    }
-    /// Handles key events emitted by the [`EventBus`].
-    async fn on_key_event(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            KeyCode::Esc => self.event_bus.send(AppEvent::Quit).await,
-            KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget).await,
-            KeyCode::Char(c) => match c {
-                'e' => self.event_bus.send(AppEvent::ExportSelectedRecord).await,
-                'p' => self.event_bus.send(AppEvent::PauseProcessing).await,
-                'r' => self.event_bus.send(AppEvent::ResumeProcessing).await,
-                _ => {
-                    let widget = self.state.selected_widget;
-
-                    if widget.on_key_press(self, c).await {
-                        self.buffered_key = None;
-                    } else {
-                        self.buffered_key = Some(BufferedKeyPress::new(c));
-                    }
-                }
-            },
-            _ => {}
-        }
     }
     /// Handles the consumer started event emitted by the [`EventBus`].
     fn on_consumer_started(&mut self) {
@@ -543,14 +440,14 @@ impl App {
     }
     /// Handles the select next widget event emitted by the [`EventBus`].
     fn on_select_next_widget(&mut self) {
-        let selected = match self.state.selected_widget {
+        let selected = match self.state.selected_widget.get() {
             SelectableWidget::RecordList if self.state.selected.is_some() => {
                 SelectableWidget::RecordValue
             }
             _ => SelectableWidget::RecordList,
         };
 
-        self.state.selected_widget = selected;
+        self.state.selected_widget.set(selected);
     }
     /// Handles the scroll record value down event emitted by the [`EventBus`].
     fn on_scroll_record_value_down(&mut self) {

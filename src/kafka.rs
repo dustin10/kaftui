@@ -14,6 +14,15 @@ use serde::Serialize;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::mpsc::Sender;
 
+/// Enumerates the different states that the Kafka consumer can be in.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ConsumerMode {
+    /// Consumer is paused and not processing records from the topic.
+    Paused,
+    /// Consumer is processing records from the topic.
+    Processing,
+}
+
 /// Contains the data in the record consumed from a Kafka topic.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]

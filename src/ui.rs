@@ -1,4 +1,7 @@
-use crate::app::{App, ConsumerMode, Screen, SelectableWidget};
+use crate::{
+    app::{App, Screen, SelectableWidget},
+    kafka::ConsumerMode,
+};
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
@@ -150,7 +153,7 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
         .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
 
-    if state.selected_widget == SelectableWidget::RecordList {
+    if state.selected_widget.get() == SelectableWidget::RecordList {
         let selected_panel_color =
             color_from_hex_string(&app.config.theme.selected_panel_border_color)
                 .expect("valid u32 hex");
@@ -299,7 +302,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
 
-    if state.selected_widget == SelectableWidget::RecordValue {
+    if state.selected_widget.get() == SelectableWidget::RecordValue {
         let selected_panel_color =
             color_from_hex_string(&app.config.theme.selected_panel_border_color)
                 .expect("valid u32 hex");
@@ -417,7 +420,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     let mut key_bindings = Vec::from(STANDARD_KEY_BINDINGS);
 
-    match app.state.selected_widget {
+    match app.state.selected_widget.get() {
         SelectableWidget::RecordList => {
             key_bindings.push(KEY_BINDING_FIRST);
             key_bindings.push(KEY_BINDING_NEXT);
