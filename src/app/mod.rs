@@ -1,25 +1,21 @@
 pub mod config;
+pub mod export;
 pub mod input;
 
 use crate::{
-    app::{config::Config, input::Input},
+    app::{config::Config, export::Exporter, input::Input},
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, ConsumerMode, Record},
 };
 
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
-use chrono::{DateTime, Utc};
 use ratatui::{
     widgets::{ScrollbarState, TableState},
     DefaultTerminal,
 };
-use serde::Serialize;
 use std::{cell::Cell, collections::HashMap, rc::Rc, sync::Arc};
 use tokio::sync::mpsc::Receiver;
-
-/// Default prefix used for the name of the exported file when no partition key is set.
-const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
 
 /// Enumeration of the widgets that the user can select.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -82,51 +78,6 @@ pub enum Screen {
     ConsumeTopic,
 }
 
-/// View of a [`Record`] that is saved to a file in JSON format when the user requests that the
-/// selected record be exported. This allows for better handling of the value field which would
-/// just be rendered as a JSON encoded string otherwise.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ExportedRecord {
-    /// Name of the topic that the record was consumed from.
-    topic: String,
-    /// Partition number the record was assigned in the topic.
-    partition: i32,
-    /// Offset of the record in the topic.
-    offset: i64,
-    /// Partition key for the record if one was set.
-    key: Option<String>,
-    /// Contains any headers from the Kafka record.
-    headers: HashMap<String, String>,
-    /// Value of the Kafka record, if one exists.
-    value: Option<serde_json::Value>,
-    /// UTC timestamp represeting when the event was created.
-    timestamp: DateTime<Utc>,
-}
-
-impl From<Record> for ExportedRecord {
-    /// Converts the instance of a [`Record`] to an [`ExportedRecord`].
-    fn from(record: Record) -> Self {
-        let json_value = record.value.and_then(|v| match serde_json::from_str(&v) {
-            Ok(json) => Some(json),
-            Err(e) => {
-                tracing::error!("failed to serialize record value to JSON: {}", e);
-                None
-            }
-        });
-
-        Self {
-            topic: record.topic,
-            partition: record.partition,
-            offset: record.offset,
-            key: record.key,
-            headers: record.headers,
-            value: json_value,
-            timestamp: record.timestamp,
-        }
-    }
-}
-
 /// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
@@ -146,6 +97,8 @@ pub struct App {
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
     consumer: Arc<Consumer>,
+    /// Responsible for exporting Kafka records to the file system.
+    exporter: Exporter,
 }
 
 /// Maximum bound on the nunber of messages that can be in the event channel.
@@ -183,6 +136,8 @@ impl App {
 
         let input = Input::new(Arc::clone(&event_bus), Rc::clone(&state.selected_widget));
 
+        let exporter = Exporter::new(config.export_directory.clone());
+
         Ok(Self {
             config,
             input,
@@ -192,6 +147,7 @@ impl App {
             event_bus,
             consumer: Arc::new(consumer),
             screen: Screen::Initialize,
+            exporter,
         })
     }
     /// Run the main loop of the application.
@@ -392,29 +348,11 @@ impl App {
     }
     /// Handles the export selected record event emitted by the [`EventBus`].
     fn on_export_selected_record(&self) {
-        if let Some(r) = self.state.selected.clone() {
-            let exported_record = ExportedRecord::from(r);
-
-            match serde_json::to_string_pretty(&exported_record) {
-                Ok(json) => {
-                    let name = exported_record
-                        .key
-                        .as_ref()
-                        .map_or(DEFAULT_EXPORT_FILE_PREFIX, |v| v);
-
-                    let file_path = format!(
-                        "{}{}{}-{}.json",
-                        self.config.export_directory,
-                        std::path::MAIN_SEPARATOR,
-                        name,
-                        Utc::now().timestamp_millis()
-                    );
-
-                    if let Err(e) = std::fs::write(file_path, json) {
-                        tracing::error!("failed to export record to file: {}", e);
-                    }
-                }
-                Err(e) => tracing::error!("unable to export selected record: {}", e),
+        if let Some(record) = self.state.selected.clone() {
+            // TODO: pass by ref instead?
+            if let Err(e) = self.exporter.export_record(record) {
+                // TODO: need a notification system
+                tracing::error!("failed to export record: {}", e);
             }
         }
     }
