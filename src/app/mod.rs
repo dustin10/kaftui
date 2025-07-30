@@ -44,6 +44,7 @@ impl SelectableWidget {
     /// that on which the function is being invoked. Returns a value of true if an action was taken
     /// as a result of the key press, false otherwise.
     async fn on_key_press(&self, app: &mut App, key: char) -> bool {
+        // TODO: something better than returning bool here?
         match self {
             SelectableWidget::RecordList => match key {
                 'g' => {
@@ -153,35 +154,26 @@ struct ExportedRecord {
     key: Option<String>,
     /// Contains any headers from the Kafka record.
     headers: HashMap<String, String>,
-    /// Value of the Kafka record.
-    value: serde_json::Value,
+    /// Value of the Kafka record, if one exists.
+    value: Option<serde_json::Value>,
     /// UTC timestamp represeting when the event was created.
     timestamp: DateTime<Utc>,
 }
 
 impl From<Record> for ExportedRecord {
     /// Converts the given [`Record`] to an [`ExportedRecord`].
-    fn from(value: Record) -> Self {
-        let json_value = if value.value.is_empty() {
-            serde_json::from_str("{}").expect("valid JSON value")
-        } else {
-            match serde_json::from_str(&value.value) {
-                Ok(json_value) => json_value,
-                Err(e) => {
-                    tracing::error!("invalid JSON value: {}", e);
-                    serde_json::from_str("{}").expect("valid json value")
-                }
-            }
-        };
+    fn from(record: Record) -> Self {
+        // TODO: error handling
+        let json_value = record.value.and_then(|v| serde_json::from_str(&v).ok());
 
         Self {
-            topic: value.topic,
-            partition: value.partition,
-            offset: value.offset,
-            key: value.key,
-            headers: value.headers,
+            topic: record.topic,
+            partition: record.partition,
+            offset: record.offset,
+            key: record.key,
+            headers: record.headers,
             value: json_value,
-            timestamp: value.timestamp,
+            timestamp: record.timestamp,
         }
     }
 }
@@ -375,19 +367,13 @@ impl App {
                 _ => {
                     let widget = self.state.selected_widget;
 
-                    // TODO: only buffer when record list selected?
-                    if !widget.on_key_press(self, c).await && self.is_record_list_selected() {
-                        // TODO: add TTL so buffered key expires
+                    if !widget.on_key_press(self, c).await {
                         self.buffered_key = Some(BufferedKeyPress::new(c));
                     }
                 }
             },
             _ => {}
         }
-    }
-    /// Determines if the record list is the currently selected widget.
-    fn is_record_list_selected(&self) -> bool {
-        self.state.selected_widget == SelectableWidget::RecordList
     }
     /// Handles the consumer started event emitted by the [`EventBus`].
     fn on_consumer_started(&mut self) {

@@ -28,8 +28,8 @@ pub struct Record {
     pub key: Option<String>,
     /// Contains any headers from the Kafka record.
     pub headers: HashMap<String, String>,
-    /// Value of the Kafka record.
-    pub value: String,
+    /// Value of the Kafka record, if one exists.
+    pub value: Option<String>,
     /// UTC timestamp represeting when the event was created.
     pub timestamp: DateTime<Utc>,
 }
@@ -172,6 +172,11 @@ impl Consumer {
 
         let task_consumer = Arc::clone(&self.consumer);
 
+        // according to the main StreamConsumer must be awaited periodically, even if all
+        // partitions queues have been split off in order to receive events. See the documentation
+        // linked below for more details.
+        //
+        // https://docs.rs/rdkafka/latest/rdkafka/consumer/stream_consumer/struct.StreamConsumer.html
         tokio::spawn(async move {
             let message = task_consumer.recv().await;
             panic!(
@@ -234,14 +239,13 @@ impl From<&BorrowedMessage<'_>> for Record {
             None => HashMap::new(),
         };
 
-        // TODO: refactor value to Option for null payloads
         let value = match msg.payload_view::<str>() {
-            Some(Ok(data)) => String::from(data),
+            Some(Ok(data)) => Some(String::from(data)),
             Some(Err(e)) => {
                 tracing::error!("non-UTF8 string value in message: {}", e);
-                String::from("")
+                None
             }
-            None => String::from(""),
+            None => None,
         };
 
         let timestamp = DateTime::from_timestamp_millis(
@@ -359,7 +363,7 @@ impl PartitionConsumerTask {
                         serde_json_path::JsonPath::parse(f).expect("valid JSONPath expression");
 
                     if json_path.query(&json_value).is_empty() {
-                        tracing::debug!("ignoring Kafka message based on filter");
+                        tracing::debug!("ignoring Kafka record based on filter");
                         return Ok(());
                     }
                 }

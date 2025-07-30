@@ -309,18 +309,17 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
             .border_style(selected_panel_color);
     }
 
-    let value = if record.value.is_empty() {
-        String::from("")
-    } else {
-        match serde_json::from_str(&record.value)
+    let value = match record.value {
+        Some(v) if !v.is_empty() => match serde_json::from_str(&v)
             .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
         {
             Ok(json) => json,
             Err(e) => {
                 tracing::error!("invalid JSON value: {}", e);
-                record.value
+                v
             }
-        }
+        },
+        _ => String::from(""),
     };
 
     let value_color =
