@@ -4,6 +4,16 @@ A TUI application which can be used to view records published to a [Kafka](https
 
 ![kaftui application running with the default theme](assets/kaftui-default.png)
 
+The `kaftui` application provides the following features to users.
+
+* View records from a topic including headers and payload value in an easy to read format.
+* Pause and resume the Kafka consumer.
+* Export any record to a file on disk.
+* Filter out records the user may not be interested in using a JSONPath filter.
+* Seek to a specific offset on a partition.
+* Configure profiles to easily connect to different Kafka clusters.
+* Theme the application to match any existing terminal color scheme.
+
 ## Quick Start
 
 First, install the `kafktui` application using `cargo`.
@@ -136,7 +146,7 @@ properties are available to be configured using a theme.
 > Colors must be specified in RGB format **without** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
 section for an example of a theme.
 
-The screenshow below is an example of a `kaftui` theme configuration that is inspired by the Dracual theme.
+The screenshow below is an example of a `kaftui` theme configuration that is inspired by the Dracula theme.
 
 ![kaftui application running with a dracula theme](assets/kaftui-dracula.png)
 
