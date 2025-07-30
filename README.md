@@ -160,6 +160,7 @@ values which can be used to configure the application using the `.kaftui.json` f
 {
   "scrollFactor": 3,
   "exportDirectory": ".",
+  "maxRecords": 256,
   "profiles": [{
     "name": "local",
     "bootstrapServers": "localhost:9092"
