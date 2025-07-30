@@ -47,14 +47,8 @@ impl SelectableWidget {
         // TODO: something better than returning bool here?
         match self {
             SelectableWidget::RecordList => match key {
-                'g' => {
-                    match app.buffered_key.as_ref().filter(|v| v.is_expired()) {
-                        Some(key_press) if key_press.key == 'g' => {
-                            app.event_bus.send(AppEvent::SelectFirstRecord).await;
-                            app.buffered_key = None;
-                        }
-                        _ => app.buffered_key = Some(BufferedKeyPress::new('g')),
-                    }
+                'g' if app.is_key_buffered('g') => {
+                    app.event_bus.send(AppEvent::SelectFirstRecord).await;
                     true
                 }
                 'j' => {
@@ -197,10 +191,15 @@ impl BufferedKeyPress {
             ttl: Utc::now() + Duration::seconds(1),
         }
     }
+    /// Determines if the key press matches the specified character. False will always be returned
+    /// if the key press has expired.
+    fn is(&self, key: char) -> bool {
+        !self.is_expired() && self.key == key
+    }
     /// Determines if the key press has expired based on the TTL that was set when it was initially
     /// buffered.
     fn is_expired(&self) -> bool {
-        Utc::now().timestamp_millis() < self.ttl.timestamp_millis()
+        self.ttl.timestamp_millis() < Utc::now().timestamp_millis()
     }
 }
 
@@ -355,6 +354,10 @@ impl App {
             start_consumer_task.run().await;
         });
     }
+    /// Determines if the last key press that was buffered matches the given character.
+    fn is_key_buffered(&self, key: char) -> bool {
+        self.buffered_key.as_ref().filter(|v| v.is(key)).is_some()
+    }
     /// Handles key events emitted by the [`EventBus`].
     async fn on_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
@@ -367,7 +370,9 @@ impl App {
                 _ => {
                     let widget = self.state.selected_widget;
 
-                    if !widget.on_key_press(self, c).await {
+                    if widget.on_key_press(self, c).await {
+                        self.buffered_key = None;
+                    } else {
                         self.buffered_key = Some(BufferedKeyPress::new(c));
                     }
                 }
