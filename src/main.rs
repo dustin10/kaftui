@@ -12,28 +12,30 @@ use std::{fs::File, io::BufReader};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
-/// A TUI application which can be used to view records published to Kafka topic.
+/// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
 #[command()]
 struct Args {
-    /// Kafka bootstrap servers host value that the application will connect to.
+    /// Host value for the Kafka brokers that the application will connect to when consuming
+    /// records.
     #[arg(short, long)]
     bootstrap_servers: Option<String>,
-    /// Name of the Kafka topic to consume records from.
+    /// Name of the Kafka topic which records will be consumed from.
     #[arg(short, long)]
     topic: Option<String>,
-    /// Id of the group that the application will use when consuming records from the Kafka topic.
-    /// By default a group id will be generated from the hostname of the machine that is executing
-    /// the application.
+    /// Id of the consumer group that the application will use when consuming records from the Kafka
+    /// topic. By default a group id will be generated from the hostname of the machine that is
+    /// execting the application.
     #[arg(short, long)]
     group_id: Option<String>,
-    /// CSV of color separated pairs of partition and offset that the Kafka consumer will seek to
+    /// CSV of colon separated pairs of partitions and offsets that the Kafka consumer will seek to
     /// before starting to consume records.
     #[arg(long)]
     seek_to: Option<String>,
-    /// JSONPath filter that is applied to a record. Can be used to filter out any records from the
-    /// Kafka topic that the end user may not be interested in. A record will only be presented to
-    /// the user if it matches the filter. By default no filter is applied.
+    /// JSONPath filter that is applied to a records as they are received from the consumer. Can be
+    /// used to filter out any records from the Kafka topic that the end user may not be interested
+    /// in. A record will only be presented to the user if it matches the filter. By default no
+    /// filter is applied.
     #[arg(short, long)]
     filter: Option<String>,
     /// Specifies the name of pre-configured set of values that will be used as default values for
@@ -45,9 +47,10 @@ struct Args {
     /// Path to a properties file containing additional configuration for the Kafka consumer other
     /// than the bootstrap servers and group id. Typically configuration for authentication, etc.
     #[arg(long)]
-    consumer_properties_file: Option<String>,
-    /// Maximum nunber of records that should be held in memory at any given time after being
-    /// consumed from the Kafka topic. Defaults to 256.
+    consumer_properties: Option<String>,
+    /// Maximum number of records that should be held in memory and displayed in the record table
+    /// at any given time after being consumed from the Kafka topic. Once the number is exceeded
+    /// then older records will be removed as newer ones are inserted. Defaults to 256.
     #[arg(long)]
     max_records: Option<usize>,
 }
@@ -91,7 +94,7 @@ impl Source for Args {
             );
         }
 
-        if let Some(path) = self.consumer_properties_file.as_ref() {
+        if let Some(path) = self.consumer_properties.as_ref() {
             let file = File::open(path).expect("properties file can be opened");
             let consumer_properties =
                 java_properties::read(BufReader::new(file)).expect("properties file can be read");

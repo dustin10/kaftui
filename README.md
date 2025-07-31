@@ -9,10 +9,10 @@ The `kaftui` application provides the following features to users.
 * View records from a topic including headers and payload value in an easy to read format.
 * Pause and resume the Kafka consumer.
 * Export any record to a file on disk.
-* Filter out records the user may not be interested in using a JSONPath filter.
+* [Filter](#Filtering) out records the user may not be interested in using a JSONPath filter.
 * Seek to a specific offset on a partition.
-* Configure profiles to easily connect to different Kafka clusters.
-* Theme the application to match any existing terminal color scheme.
+* Configure [profiles](#Profiles) to easily connect to different Kafka clusters.
+* [Theme](#Theme) the application to match any existing terminal color scheme.
 
 ## Quick Start
 
@@ -54,7 +54,7 @@ and offset `10` on partition `1`.
 of the application. Profiles are stored in the `$HOME/.kaftui.json` file. Any other arguments specified when executing
 the application will take precedence over the ones loaded from the profile. See the [Profiles](#Profiles) section below
 for further details.
-* `--consumer-properties-file` - Path to a `.properties` file containing additional configuration for the Kafka consumer
+* `--consumer-properties` - Path to a `.properties` file containing additional configuration for the Kafka consumer
 other than the bootstrap servers and group id. Typically used for configuring authentication, etc.
 * `--max-records` - Maximum number of records that should be held in memory at any given time after being consumed from
 the Kafka topic. Defaults to `256`.
