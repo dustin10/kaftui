@@ -332,7 +332,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .block(value_block)
         .wrap(Wrap { trim: false })
         .style(value_color)
-        .scroll(state.record_list_value_scroll);
+        .scroll(state.record_value_scroll);
 
     frame.render_widget(info_table, info_slice);
     frame.render_widget(headers_table, headers_slice);

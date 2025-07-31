@@ -3,7 +3,7 @@ pub mod export;
 pub mod input;
 
 use crate::{
-    app::{config::Config, export::Exporter, input::Input},
+    app::{config::Config, export::Exporter, input::InputDispatcher},
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, ConsumerMode, Record},
 };
@@ -42,7 +42,7 @@ pub struct State {
     /// rendered into.
     pub record_list_scroll_state: ScrollbarState,
     /// Contains the current scolling state for the record value text.
-    pub record_list_value_scroll: (u16, u16),
+    pub record_value_scroll: (u16, u16),
     /// Total number of records consumed from the Kafka topic since the application was launched.
     pub total_consumed: u32,
     /// Stores the current [`ConsumerMode`] of the application which controls whether or not
@@ -61,11 +61,124 @@ impl State {
             records: BoundedVecDeque::new(max_records),
             record_list_state: TableState::default(),
             record_list_scroll_state: ScrollbarState::default(),
-            record_list_value_scroll: (0, 0),
+            record_value_scroll: (0, 0),
             total_consumed: 0,
             consumer_mode: ConsumerMode::Processing,
             selected_widget: Rc::new(Cell::new(SelectableWidget::RecordList)),
         }
+    }
+    /// Moves the record value scroll state down by `n` number of lines.
+    fn scroll_record_value_down(&mut self, n: u16) {
+        self.record_value_scroll.0 += n;
+    }
+    /// Moves the record value scroll state up by `n` number of lines.
+    fn scroll_record_value_up(&mut self, n: u16) {
+        if self.record_value_scroll.0 >= n {
+            self.record_value_scroll.0 -= n;
+        }
+    }
+    /// Pushes a new [`Record`] onto the current list when a new one is received from the Kafka
+    /// consumer.
+    fn push_record(&mut self, record: Record) {
+        self.records.push_front(record);
+        self.total_consumed += 1;
+
+        if let Some(i) = self.record_list_state.selected().as_mut() {
+            let new_idx = *i + 1;
+            self.record_list_state.select(Some(new_idx));
+            self.record_list_scroll_state = self.record_list_scroll_state.position(new_idx);
+        }
+    }
+    /// Updates the state such so the first [`Record`] in the list will be selected.
+    fn select_first_record(&mut self) {
+        if self.records.is_empty() {
+            return;
+        }
+
+        self.record_list_state.select(Some(0));
+        self.record_list_scroll_state = self.record_list_scroll_state.position(0);
+
+        self.selected = self.records.front().cloned();
+
+        self.record_value_scroll = (0, 0);
+    }
+    /// Updates the state such so the previous [`Record`] in the list will be selected.
+    fn select_prev_record(&mut self) {
+        if self.records.is_empty() {
+            return;
+        }
+
+        if let Some(i) = self.record_list_state.selected().as_ref() {
+            if *i == 0 {
+                return;
+            }
+
+            let prev = *i - 1;
+
+            self.record_list_state.select(Some(prev));
+            self.record_list_scroll_state = self.record_list_scroll_state.position(prev);
+
+            self.selected = self.records.get(prev).cloned();
+        } else {
+            self.record_list_state.select(Some(0));
+            self.record_list_scroll_state = self.record_list_scroll_state.position(0);
+
+            self.selected = self.records.front().cloned();
+        }
+
+        self.record_value_scroll = (0, 0);
+    }
+    /// Updates the state such so the next [`Record`] in the list will be selected.
+    fn select_next_record(&mut self) {
+        if self.records.is_empty() {
+            return;
+        }
+
+        if let Some(i) = self.record_list_state.selected().as_ref() {
+            if *i == self.records.len() - 1 {
+                return;
+            }
+
+            let next = *i + 1;
+
+            self.record_list_state.select(Some(next));
+            self.record_list_scroll_state = self.record_list_scroll_state.position(next);
+
+            self.selected = self.records.get(next).cloned();
+        } else {
+            self.record_list_state.select(Some(0));
+            self.record_list_scroll_state = self.record_list_scroll_state.position(0);
+
+            self.selected = self.records.front().cloned();
+        }
+
+        self.record_value_scroll = (0, 0);
+    }
+    /// Updates the state such so the last [`Record`] in the list will be selected.
+    fn select_last_record(&mut self) {
+        if self.records.is_empty() {
+            return;
+        }
+
+        let last_idx = self.records.len() - 1;
+
+        self.record_list_state.select(Some(last_idx));
+        self.record_list_scroll_state = self.record_list_scroll_state.position(last_idx);
+
+        self.selected = self.records.back().cloned();
+
+        self.record_value_scroll = (0, 0);
+    }
+    /// Cycles the focus to the next available widget based on the currently selected widget.
+    fn cycle_next_widget(&mut self) {
+        let selected = match self.selected_widget.get() {
+            SelectableWidget::RecordList if self.selected.is_some() => {
+                SelectableWidget::RecordValue
+            }
+            _ => SelectableWidget::RecordList,
+        };
+
+        self.selected_widget.set(selected);
     }
 }
 
@@ -87,7 +200,7 @@ pub struct App {
     /// Contains the current state of the application.
     pub state: State,
     /// Maps input from the user to application events published on the [`EventBus`].
-    input: Input,
+    input_dispatcher: InputDispatcher,
     /// Channel receiver that is used to receive application events that are sent by the
     /// [`EventBus`].
     event_rx: Receiver<Event>,
@@ -134,13 +247,14 @@ impl App {
 
         let state = State::new(max_records);
 
-        let input = Input::new(Arc::clone(&event_bus), Rc::clone(&state.selected_widget));
+        let input_dispatcher =
+            InputDispatcher::new(Arc::clone(&event_bus), Rc::clone(&state.selected_widget));
 
         let exporter = Exporter::new(config.export_directory.clone());
 
         Ok(Self {
             config,
-            input,
+            input_dispatcher,
             state,
             event_rx,
             consumer_rx,
@@ -165,7 +279,7 @@ impl App {
                 match event {
                     Event::Crossterm(crossterm_event) => {
                         if let crossterm::event::Event::Key(key_event) = crossterm_event {
-                            self.input.on_key_event(key_event).await
+                            self.input_dispatcher.on_key_event(key_event).await
                         }
                     }
                     Event::App(app_event) => match app_event {
@@ -242,121 +356,42 @@ impl App {
     fn on_consumer_started(&mut self) {
         self.screen = Screen::ConsumeTopic;
     }
-    /// Handles the record recieved event emitted by the [`EventBus`].
+    /// Invoked when a new [`Record`] is received on the consumer channel.
     fn on_record_received(&mut self, record: Record) {
         tracing::debug!("Kafka record received");
-        self.state.records.push_front(record);
-        self.state.total_consumed += 1;
-
-        if let Some(i) = self.state.record_list_state.selected().as_mut() {
-            let new_idx = *i + 1;
-            self.state.record_list_state.select(Some(new_idx));
-            self.state.record_list_scroll_state =
-                self.state.record_list_scroll_state.position(new_idx);
-        }
+        self.state.push_record(record);
     }
-    /// Handles the select first record event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::SelectFirstRecord`] event emitted by the [`EventBus`].
     fn on_select_first_record(&mut self) {
         tracing::debug!("select first record");
-
-        if self.state.records.is_empty() {
-            return;
-        }
-
-        self.state.record_list_state.select(Some(0));
-        self.state.record_list_scroll_state = self.state.record_list_scroll_state.position(0);
-
-        self.state.selected = self.state.records.front().cloned();
-
-        self.state.record_list_value_scroll = (0, 0);
+        self.state.select_first_record();
     }
-    /// Handles the select previous record event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::SelectPrevRecord`] event emitted by the [`EventBus`].
     fn on_select_prev_record(&mut self) {
         tracing::debug!("select previous record");
-
-        if self.state.records.is_empty() {
-            return;
-        }
-
-        if let Some(i) = self.state.record_list_state.selected().as_ref() {
-            if *i == 0 {
-                return;
-            }
-
-            let prev = *i - 1;
-
-            self.state.record_list_state.select(Some(prev));
-            self.state.record_list_scroll_state =
-                self.state.record_list_scroll_state.position(prev);
-
-            self.state.selected = self.state.records.get(prev).cloned();
-        } else {
-            self.state.record_list_state.select(Some(0));
-            self.state.record_list_scroll_state = self.state.record_list_scroll_state.position(0);
-
-            self.state.selected = self.state.records.front().cloned();
-        }
-
-        self.state.record_list_value_scroll = (0, 0);
+        self.state.select_prev_record();
     }
-    /// Handles the select next record event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::SelectNextRecord`] event emitted by the [`EventBus`].
     fn on_select_next_record(&mut self) {
         tracing::debug!("select next record");
-
-        if self.state.records.is_empty() {
-            return;
-        }
-
-        if let Some(i) = self.state.record_list_state.selected().as_ref() {
-            if *i == self.state.records.len() - 1 {
-                return;
-            }
-
-            let next = *i + 1;
-
-            self.state.record_list_state.select(Some(next));
-            self.state.record_list_scroll_state =
-                self.state.record_list_scroll_state.position(next);
-
-            self.state.selected = self.state.records.get(next).cloned();
-        } else {
-            self.state.record_list_state.select(Some(0));
-            self.state.record_list_scroll_state = self.state.record_list_scroll_state.position(0);
-
-            self.state.selected = self.state.records.front().cloned();
-        }
-
-        self.state.record_list_value_scroll = (0, 0);
+        self.state.select_next_record();
     }
-    /// Handles the select last record event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::SelectLastRecord`] event emitted by the [`EventBus`].
     fn on_select_last_record(&mut self) {
         tracing::debug!("select last record");
-
-        if self.state.records.is_empty() {
-            return;
-        }
-
-        let last_idx = self.state.records.len() - 1;
-
-        self.state.record_list_state.select(Some(last_idx));
-        self.state.record_list_scroll_state =
-            self.state.record_list_scroll_state.position(last_idx);
-
-        self.state.selected = self.state.records.back().cloned();
-
-        self.state.record_list_value_scroll = (0, 0);
+        self.state.select_last_record();
     }
-    /// Handles the export selected record event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::ExportSelectedRecord`] event emitted by the [`EventBus`].
     fn on_export_selected_record(&self) {
         if let Some(record) = self.state.selected.clone() {
             // TODO: pass by ref instead?
             if let Err(e) = self.exporter.export_record(record) {
-                // TODO: need a notification system
+                // TODO: need to present notifications to the user in the UI
                 tracing::error!("failed to export record: {}", e);
             }
         }
     }
-    /// Handles the pause record processing event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::PauseProcessing`] event emitted by the [`EventBus`].
     fn on_pause_processing(&mut self) {
         if self.state.consumer_mode == ConsumerMode::Processing {
             self.state.consumer_mode = ConsumerMode::Paused;
@@ -366,7 +401,7 @@ impl App {
             }
         }
     }
-    /// Handles the resume record processing event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::ResumeProcessing`] event emitted by the [`EventBus`].
     fn on_resume_processing(&mut self) {
         if self.state.consumer_mode == ConsumerMode::Paused {
             self.state.consumer_mode = ConsumerMode::Processing;
@@ -376,28 +411,20 @@ impl App {
             }
         }
     }
-    /// Handles the select next widget event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::SelectNextWidget`] event emitted by the [`EventBus`].
     fn on_select_next_widget(&mut self) {
-        let selected = match self.state.selected_widget.get() {
-            SelectableWidget::RecordList if self.state.selected.is_some() => {
-                SelectableWidget::RecordValue
-            }
-            _ => SelectableWidget::RecordList,
-        };
-
-        self.state.selected_widget.set(selected);
+        self.state.cycle_next_widget();
     }
-    /// Handles the scroll record value down event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::ScrollRecordValueDown`] event emitted by the [`EventBus`].
     fn on_scroll_record_value_down(&mut self) {
-        self.state.record_list_value_scroll.0 += self.config.scroll_factor;
+        self.state
+            .scroll_record_value_down(self.config.scroll_factor);
     }
-    /// Handles the scroll record value up event emitted by the [`EventBus`].
+    /// Handles the [`AppEvent::ScrollRecordValueUp`] event emitted by the [`EventBus`].
     fn on_scroll_record_value_up(&mut self) {
-        if self.state.record_list_value_scroll.0 >= self.config.scroll_factor {
-            self.state.record_list_value_scroll.0 -= self.config.scroll_factor;
-        }
+        self.state.scroll_record_value_up(self.config.scroll_factor);
     }
-    /// Quits the application.
+    /// Handles the [`AppEvent::Quit`] event emitted by the [`EventBus`].
     fn on_quit(&mut self) {
         tracing::debug!("quit application request received");
         self.state.running = false;

@@ -38,10 +38,10 @@ impl BufferedKeyPress {
     }
 }
 
-/// The [`Input`] struct is responsible for mapping key presses that are input by the user to
+/// The [`InputDispatcher`] is responsible for mapping key presses that are input by the user to
 /// actions published on the [`EventBus`].
 #[derive(Debug)]
-pub struct Input {
+pub struct InputDispatcher {
     /// Emits events to be handled by the application.
     event_bus: Arc<EventBus>,
     /// Stores the widget that the user currently has selected.
@@ -50,8 +50,8 @@ pub struct Input {
     buffered_key_press: Option<BufferedKeyPress>,
 }
 
-impl Input {
-    /// Creates a new [`Input`] with the specified dependencies.
+impl InputDispatcher {
+    /// Creates a new [`InputDispatcher`] with the specified dependencies.
     pub fn new(event_bus: Arc<EventBus>, selected_widget: Rc<Cell<SelectableWidget>>) -> Self {
         Self {
             event_bus,
