@@ -181,9 +181,9 @@ impl Consumer {
 
         let task_consumer = Arc::clone(&self.consumer);
 
-        // according to the main StreamConsumer must be awaited periodically, even if all
-        // partitions queues have been split off in order to receive events. See the documentation
-        // linked below for more details.
+        // according to the crate docs main StreamConsumer must be awaited periodically, even if
+        // all partitions queues have been split off in order to receive events. See the
+        // documentation linked below for more details.
         //
         // https://docs.rs/rdkafka/latest/rdkafka/consumer/stream_consumer/struct.StreamConsumer.html
         tokio::spawn(async move {
