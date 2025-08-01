@@ -30,6 +30,9 @@ pub enum SelectableWidget {
     RecordList,
     /// Text panel that outputs the value of the currently selected record.
     RecordValue,
+    /// Table that lists the notifications that have been presented to the user for the duration of
+    /// the application execution.
+    NotificationHistoryList,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -52,38 +55,38 @@ pub struct Notification {
     /// Summary text for the notification. The summary is displayed in the header for a short
     /// period of time.
     pub summary: String,
-    /// Long form text for the notification. The full message will be displayed to the user on the
-    /// notificaiton history screen.
-    pub message: String,
+    /// Detailed text for the notification. The full message details are displayed to the user on
+    /// the notificaiton history screen.
+    pub details: String,
     /// Timestamp when the notification was created by the application.
     pub created: DateTime<Utc>,
 }
 
 impl Notification {
-    /// Creates a new notification for the user with the specified details.
+    /// Creates a new notification for the user with the specified data.
     pub fn new(
         status: NotificationStatus,
         summary: impl Into<String>,
-        message: impl Into<String>,
+        details: impl Into<String>,
     ) -> Self {
         Self {
             status,
             summary: summary.into(),
-            message: message.into(),
+            details: details.into(),
             created: Utc::now(),
         }
     }
-    /// Creates a new success notification for the user with the specified details.
-    pub fn success(summary: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::new(NotificationStatus::Success, summary, message)
+    /// Creates a new success notification for the user with the specified data.
+    pub fn success(summary: impl Into<String>, details: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Success, summary, details)
     }
-    /// Creates a new warn notification for the user with the specified details.
-    pub fn warn(summary: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::new(NotificationStatus::Warn, summary, message)
+    /// Creates a new warn notification for the user with the specified data.
+    pub fn warn(summary: impl Into<String>, details: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Warn, summary, details)
     }
-    /// Creates a new failure notification for the user with the specified details.
-    pub fn failure(summary: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::new(NotificationStatus::Failure, summary, message)
+    /// Creates a new failure notification for the user with the specified data.
+    pub fn failure(summary: impl Into<String>, details: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Failure, summary, details)
     }
     /// Determines if the notification has expired and should no longer be visible.
     pub fn is_expired(&self) -> bool {
@@ -96,6 +99,8 @@ impl Notification {
 pub struct State {
     /// Flag indicating the application is running.
     pub running: bool,
+    /// Holds the [`Screen`] the user is currently viewing.
+    pub screen: Screen,
     /// Currently selected [`Record`] that is being viewed.
     pub selected: Option<Record>,
     /// Collection of the [`Record`]s that have been consumed from the Kafka topic.
@@ -124,6 +129,7 @@ impl State {
     pub fn new(max_records: usize) -> Self {
         Self {
             running: true,
+            screen: Screen::Initialize,
             selected: None,
             records: BoundedVecDeque::new(max_records),
             record_list_state: TableState::default(),
@@ -239,14 +245,20 @@ impl State {
     }
     /// Cycles the focus to the next available widget based on the currently selected widget.
     fn cycle_next_widget(&mut self) {
-        let selected = match self.selected_widget.get() {
-            SelectableWidget::RecordList if self.selected.is_some() => {
-                SelectableWidget::RecordValue
-            }
-            _ => SelectableWidget::RecordList,
+        let next_widget = match self.screen {
+            Screen::Initialize => None,
+            Screen::ConsumeTopic => match self.selected_widget.get() {
+                SelectableWidget::RecordList if self.selected.is_some() => {
+                    Some(SelectableWidget::RecordValue)
+                }
+                _ => Some(SelectableWidget::RecordList),
+            },
+            Screen::NotificationHistory => Some(SelectableWidget::NotificationHistoryList),
         };
 
-        self.selected_widget.set(selected);
+        if let Some(widget) = next_widget {
+            self.selected_widget.set(widget);
+        }
     }
 }
 
@@ -255,18 +267,18 @@ impl State {
 pub enum Screen {
     /// Active when the application is starting up and connecting to the Kafka brokers.
     Initialize,
-    /// Active when the user is viewing messages being consumed from a Kafka topic.
+    /// Active when the user is viewing records being consumed from the Kafka topic.
     ConsumeTopic,
+    /// Active when the user is viewing the notification history.
+    NotificationHistory,
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
     pub config: Config,
-    /// Holds the [`Screen`] the user is currently viewing.
-    pub screen: Screen,
     /// Contains the current state of the application.
-    pub state: State,
+    pub state: State, // TODO: probably need to split up state to be per screen
     /// Maps input from the user to application events published on the [`EventBus`].
     input_dispatcher: InputDispatcher,
     /// Channel receiver that is used to receive application events that are sent by the
@@ -328,7 +340,6 @@ impl App {
             consumer_rx,
             event_bus,
             consumer: Arc::new(consumer),
-            screen: Screen::Initialize,
             exporter,
         })
     }
@@ -366,6 +377,7 @@ impl App {
                         AppEvent::SelectNextWidget => self.on_select_next_widget(),
                         AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
                         AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
+                        AppEvent::SelectScreen(screen) => self.on_select_screen(screen),
                     },
                 }
             }
@@ -422,7 +434,7 @@ impl App {
     }
     /// Handles the consumer started event emitted by the [`EventBus`].
     fn on_consumer_started(&mut self) {
-        self.screen = Screen::ConsumeTopic;
+        self.state.screen = Screen::ConsumeTopic;
     }
     /// Invoked when a new [`Record`] is received on the consumer channel.
     fn on_record_received(&mut self, record: Record) {
@@ -456,10 +468,7 @@ impl App {
             let notification = match self.exporter.export_record(record) {
                 Ok(file_path) => Notification::success(
                     "Record exported successfully",
-                    format!(
-                        "Record succesfully exported to a file at path {}",
-                        file_path
-                    ),
+                    format!("Record succesfully exported to file at {}", file_path),
                 ),
                 Err(e) => {
                     tracing::error!("export record failure: {}", e);
@@ -478,9 +487,21 @@ impl App {
         if self.state.consumer_mode == ConsumerMode::Processing {
             self.state.consumer_mode = ConsumerMode::Paused;
 
-            if let Err(e) = self.consumer.pause() {
-                tracing::error!("failed to pause consumer: {}", e);
-            }
+            let notification = match self.consumer.pause() {
+                Ok(_) => Notification::success(
+                    "Consumer paused successfully",
+                    "Kafka consumer was successfully paused at the request of the user",
+                ),
+                Err(e) => {
+                    tracing::error!("failed to pause consumer: {}", e);
+                    Notification::failure(
+                        "Pause consumer failed",
+                        format!("Failed to pause the Kafka consumer: {}", e),
+                    )
+                }
+            };
+
+            self.state.notification_history.push_front(notification);
         }
     }
     /// Handles the [`AppEvent::ResumeProcessing`] event emitted by the [`EventBus`].
@@ -488,9 +509,21 @@ impl App {
         if self.state.consumer_mode == ConsumerMode::Paused {
             self.state.consumer_mode = ConsumerMode::Processing;
 
-            if let Err(e) = self.consumer.resume() {
-                tracing::error!("failed to resume consumer: {}", e);
-            }
+            let notification = match self.consumer.resume() {
+                Ok(_) => Notification::success(
+                    "Consumer resumed successfully",
+                    "Kafka consumer was successfully resumed at the request of the user",
+                ),
+                Err(e) => {
+                    tracing::error!("failed to resume consumer: {}", e);
+                    Notification::failure(
+                        "Resume consumer failed",
+                        format!("Failed to resume the Kafka consumer: {}", e),
+                    )
+                }
+            };
+
+            self.state.notification_history.push_front(notification);
         }
     }
     /// Handles the [`AppEvent::SelectNextWidget`] event emitted by the [`EventBus`].
@@ -510,6 +543,19 @@ impl App {
     fn on_quit(&mut self) {
         tracing::debug!("quit application request received");
         self.state.running = false;
+    }
+    /// Handles the [`AppEvent::SelectScreen`] event emitted by the [`EventBus`].
+    fn on_select_screen(&mut self, screen: Screen) {
+        self.state.screen = screen;
+
+        match self.state.screen {
+            Screen::Initialize => {}
+            Screen::ConsumeTopic => self.state.selected_widget.set(SelectableWidget::RecordList),
+            Screen::NotificationHistory => self
+                .state
+                .selected_widget
+                .set(SelectableWidget::NotificationHistoryList),
+        }
     }
 }
 

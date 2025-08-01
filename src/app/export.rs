@@ -80,9 +80,10 @@ impl Exporter {
             .map_or(DEFAULT_EXPORT_FILE_PREFIX, |v| v);
 
         let file_path = format!(
-            "{}{}{}-{}.json",
+            "{}{}{}-{}-{}.json",
             self.base_dir,
             std::path::MAIN_SEPARATOR,
+            exported_record.topic,
             name,
             Utc::now().timestamp_millis()
         );

@@ -1,3 +1,5 @@
+use crate::app::Screen;
+
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
 use tokio::sync::mpsc::Sender;
@@ -40,6 +42,8 @@ pub enum AppEvent {
     ScrollRecordValueDown,
     /// Fires when the user wants to scroll the record value widget up.
     ScrollRecordValueUp,
+    /// Fires when the user selects a [`Screen`] to view in the UI.
+    SelectScreen(Screen),
 }
 
 /// The bus over which [`Event`]s are published and consumed.

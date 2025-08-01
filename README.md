@@ -197,8 +197,8 @@ values which can be used to configure the application using the `.kaftui.json` f
     "recordValueTextColor": "F8F8F2",
     "menuItemTextColor": "F8F8F2",
     "selectedMenuItemTextColor": "8BE9FD",
-    "notificationTextColorSuccess": "50FA7B",
-    "notificationTextColorWarn": "FFB86C",
+    "notificationTextColorSuccess": "F8F8F2",
+    "notificationTextColorWarn": "F1FA8C",
     "notificationTextColorFailure": "FF5555"
   }
 }

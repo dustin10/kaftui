@@ -319,7 +319,7 @@ impl Default for Theme {
     /// * Record Value Text - White
     /// * Menu Item Text - White
     /// * Selected Menu Item Text - Yellow
-    /// * Success Notification Text - Green
+    /// * Success Notification Text - White
     /// * Warn Notification Text - Yellow
     /// * Failure Notification Text - Red
     fn default() -> Self {
@@ -336,7 +336,7 @@ impl Default for Theme {
             record_headers_text_color: String::from("FFFFFF"),
             menu_item_text_color: String::from("FFFFFF"),
             selected_menu_item_text_color: String::from("FFFF00"),
-            notification_text_color_success: String::from("00FF00"),
+            notification_text_color_success: String::from("FFFFFF"),
             notification_text_color_warn: String::from("FFFF00"),
             notification_text_color_failure: String::from("FF0000"),
         }

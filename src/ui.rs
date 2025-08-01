@@ -59,9 +59,10 @@ impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {
-        match self.screen {
+        match self.state.screen {
             Screen::Initialize => render_initialize(self, frame),
             Screen::ConsumeTopic => render_consume_topic(self, frame),
+            Screen::NotificationHistory => render_notification_history(self, frame),
         }
     }
 }
@@ -140,7 +141,7 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
         render_record_empty(app, frame, right_panel);
     }
 
-    render_footer(app, frame, footer);
+    render_consume_topic_footer(app, frame, footer);
 }
 
 /// Renders the header panel that contains the key bindings.
@@ -169,17 +170,18 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
-    let navigation_tabs = Tabs::new(["Records [1]"])
+    let selected_menu_item = (app.state.screen as usize) - 1;
+
+    let menu_items = Tabs::new(["Records [1]", "Notifications [2]"])
         .divider("|")
         .style(menu_items_color)
         .highlight_style(Style::default().underlined().fg(selected_menu_item_color))
-        .select(0);
+        .select(selected_menu_item);
 
-    frame.render_widget(navigation_tabs, left_panel);
+    frame.render_widget(menu_items, left_panel);
     frame.render_widget(outer, area);
 
     if let Some(notification) = app.state.notification_history.front() {
-        // TODO: use a timer instead to clear notification?
         if !notification.is_expired() {
             let notification_color = match notification.status {
                 NotificationStatus::Success => {
@@ -199,6 +201,7 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
             let notification_text = Paragraph::new(notification.summary.as_str())
                 .style(notification_color)
                 .right_aligned();
+
             frame.render_widget(notification_text, right_panel);
         }
     }
@@ -439,8 +442,8 @@ fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(no_record_text, no_record_text_area);
 }
 
-/// Renders the footer panel that contains the key bindings.
-fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
+/// Renders the footer panel that contains the key bindings for the consume topic UI.
+fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
     let border_color =
         color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
 
@@ -499,6 +502,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             key_bindings.push(KEY_BINDING_SCROLL_DOWN);
             key_bindings.push(KEY_BINDING_SCROLL_UP);
         }
+        _ => {}
     };
 
     key_bindings.push(consumer_mode_key_binding);
@@ -514,4 +518,122 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(outer, area);
     frame.render_widget(stats, left_panel);
     frame.render_widget(key_bindings_paragraph, right_panel);
+}
+
+/// Renders the UI to the terminal for the [`Screen::NotificationHistory`] screen.
+fn render_notification_history(app: &App, frame: &mut Frame) {
+    let full_screen = frame.area();
+
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(3),
+        ])
+        .split(full_screen);
+
+    let header = outer[0];
+    let history = outer[1];
+    let footer = outer[2];
+
+    render_header(app, frame, header);
+    render_notification_history_table(app, frame, history);
+    render_notification_history_footer(app, frame, footer);
+}
+
+/// Renders the notification history table when the notification history screen is active.
+fn render_notification_history_table(app: &App, frame: &mut Frame, area: Rect) {
+    let border_color =
+        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
+    let label_color = color_from_hex_string(&app.config.theme.label_color).expect("valid u32 hex");
+
+    let success_color = color_from_hex_string(&app.config.theme.notification_text_color_success)
+        .expect("valid u32 hex");
+
+    let warn_color = color_from_hex_string(&app.config.theme.notification_text_color_warn)
+        .expect("valid u32 hex");
+
+    let failure_color = color_from_hex_string(&app.config.theme.notification_text_color_failure)
+        .expect("valid u32 hex");
+
+    let mut table_block = Block::bordered()
+        .title(" Notifications ")
+        .border_style(border_color)
+        .padding(Padding::new(1, 1, 0, 0));
+
+    if app.state.selected_widget.get() == SelectableWidget::NotificationHistoryList {
+        let selected_panel_color =
+            color_from_hex_string(&app.config.theme.selected_panel_border_color)
+                .expect("valid u32 hex");
+
+        table_block = table_block
+            .border_type(BorderType::Thick)
+            .border_style(selected_panel_color);
+    }
+
+    let table_rows: Vec<Row> = app
+        .state
+        .notification_history
+        .iter()
+        .map(|n| {
+            let timestamp = n.created.to_string();
+            let status = format!("{:?}", n.status);
+
+            let color = match n.status {
+                NotificationStatus::Success => success_color,
+                NotificationStatus::Warn => warn_color,
+                NotificationStatus::Failure => failure_color,
+            };
+
+            Row::new([timestamp, status, n.summary.clone(), n.details.clone()]).style(color)
+        })
+        .collect();
+
+    let table = Table::new(
+        table_rows,
+        [
+            Constraint::Fill(2),
+            Constraint::Fill(1),
+            Constraint::Fill(3),
+            Constraint::Fill(8),
+        ],
+    )
+    .column_spacing(1)
+    .header(Row::new([
+        "Timestamp".bold().style(label_color),
+        "Status".bold().style(label_color),
+        "Summary".bold().style(label_color),
+        "Details".bold().style(label_color),
+    ]))
+    .block(table_block);
+
+    // TODO: add table scroll state
+
+    frame.render_widget(table, area);
+}
+
+/// Renders the footer panel that contains the key bindings for the notifications history UI.
+fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) {
+    let border_color =
+        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
+    let outer = Block::bordered()
+        .border_style(border_color)
+        .padding(Padding::new(1, 1, 0, 0));
+
+    let inner_area = outer.inner(area);
+
+    let inner_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner_area);
+
+    let _left_panel = inner_layout[0];
+    let _right_panel = inner_layout[1];
+
+    // TODO: add key bindings for scrolling notification history table
+
+    frame.render_widget(outer, area);
 }

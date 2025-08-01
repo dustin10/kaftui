@@ -1,5 +1,5 @@
 use crate::{
-    app::SelectableWidget,
+    app::{Screen, SelectableWidget},
     event::{AppEvent, EventBus},
 };
 
@@ -65,9 +65,16 @@ impl InputDispatcher {
             KeyCode::Esc => self.event_bus.send(AppEvent::Quit).await,
             KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget).await,
             KeyCode::Char(c) => match c {
-                'e' => self.event_bus.send(AppEvent::ExportSelectedRecord).await,
-                'p' => self.event_bus.send(AppEvent::PauseProcessing).await,
-                'r' => self.event_bus.send(AppEvent::ResumeProcessing).await,
+                '1' => {
+                    self.event_bus
+                        .send(AppEvent::SelectScreen(Screen::ConsumeTopic))
+                        .await
+                }
+                '2' => {
+                    self.event_bus
+                        .send(AppEvent::SelectScreen(Screen::NotificationHistory))
+                        .await
+                }
                 _ => {
                     if self.key_press_on_widget(c).await {
                         self.buffered_key_press = None;
@@ -87,6 +94,18 @@ impl InputDispatcher {
         // TODO: something better than returning bool here?
         match widget {
             SelectableWidget::RecordList => match key {
+                'e' => {
+                    self.event_bus.send(AppEvent::ExportSelectedRecord).await;
+                    true
+                }
+                'p' => {
+                    self.event_bus.send(AppEvent::PauseProcessing).await;
+                    true
+                }
+                'r' => {
+                    self.event_bus.send(AppEvent::ResumeProcessing).await;
+                    true
+                }
                 'g' if self.is_key_buffered('g') => {
                     self.event_bus.send(AppEvent::SelectFirstRecord).await;
                     true
@@ -105,7 +124,21 @@ impl InputDispatcher {
                 }
                 _ => false,
             },
+            // TODO: add scroll to top
+            // TODO: cleanup duplication of e,p and r
             SelectableWidget::RecordValue => match key {
+                'e' => {
+                    self.event_bus.send(AppEvent::ExportSelectedRecord).await;
+                    true
+                }
+                'p' => {
+                    self.event_bus.send(AppEvent::PauseProcessing).await;
+                    true
+                }
+                'r' => {
+                    self.event_bus.send(AppEvent::ResumeProcessing).await;
+                    true
+                }
                 'j' => {
                     self.event_bus.send(AppEvent::ScrollRecordValueDown).await;
                     true
@@ -116,6 +149,8 @@ impl InputDispatcher {
                 }
                 _ => false,
             },
+            // TODO: add key bindings for notification history list
+            SelectableWidget::NotificationHistoryList => false,
         }
     }
     /// Determines if the last key press that was buffered matches the given character.
