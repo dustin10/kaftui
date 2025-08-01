@@ -124,7 +124,6 @@ impl InputDispatcher {
                 }
                 _ => false,
             },
-            // TODO: add scroll to top
             // TODO: cleanup duplication of e,p and r
             SelectableWidget::RecordValue => match key {
                 'e' => {
