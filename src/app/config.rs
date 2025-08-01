@@ -231,7 +231,6 @@ impl Source for Profile {
     /// Collect all configuration properties available from this source into a [`Map`].
     fn collect(&self) -> Result<Map<String, Value>, ConfigError> {
         let mut cfg = Map::new();
-
         if let Some(servers) = self.bootstrap_servers.as_ref() {
             cfg.insert(
                 String::from("bootstrap_servers"),
@@ -288,6 +287,16 @@ pub struct Theme {
     pub record_value_text_color: String,
     /// Color used for the text in the record headers. Defaults to white.
     pub record_headers_text_color: String,
+    /// Color used for the text in the menu items. Defaults to white.
+    pub menu_item_text_color: String,
+    /// Color used for the text in the currently selected menu item. Defaults to yellow.
+    pub selected_menu_item_text_color: String,
+    /// Color used for the text in a successful notification message. Defaults to green.
+    pub notification_text_color_success: String,
+    /// Color used for the text in a warning notification message. Defaults to yellow.
+    pub notification_text_color_warn: String,
+    /// Color used for the text in an unsuccessful notification message. Defaults to red.
+    pub notification_text_color_failure: String,
 }
 
 impl Default for Theme {
@@ -308,6 +317,11 @@ impl Default for Theme {
     /// * Record Info Text - White
     /// * Record Headers Text - White
     /// * Record Value Text - White
+    /// * Menu Item Text - White
+    /// * Selected Menu Item Text - Yellow
+    /// * Success Notification Text - Green
+    /// * Warn Notification Text - Yellow
+    /// * Failure Notification Text - Red
     fn default() -> Self {
         Self {
             panel_border_color: String::from("FFFFFF"),
@@ -320,6 +334,11 @@ impl Default for Theme {
             record_info_text_color: String::from("FFFFFF"),
             record_value_text_color: String::from("FFFFFF"),
             record_headers_text_color: String::from("FFFFFF"),
+            menu_item_text_color: String::from("FFFFFF"),
+            selected_menu_item_text_color: String::from("FFFF00"),
+            notification_text_color_success: String::from("00FF00"),
+            notification_text_color_warn: String::from("FFFF00"),
+            notification_text_color_failure: String::from("FF0000"),
         }
     }
 }
@@ -375,6 +394,31 @@ impl From<Theme> for ValueKind {
         data.insert(
             String::from("recordValueTextColor"),
             Value::from(value.record_value_text_color),
+        );
+
+        data.insert(
+            String::from("menuItemTextColor"),
+            Value::from(value.menu_item_text_color),
+        );
+
+        data.insert(
+            String::from("selectedMenuItemTextColor"),
+            Value::from(value.selected_menu_item_text_color),
+        );
+
+        data.insert(
+            String::from("notificationTextColorSuccess"),
+            Value::from(value.notification_text_color_success),
+        );
+
+        data.insert(
+            String::from("notificationTextColorWarn"),
+            Value::from(value.notification_text_color_warn),
+        );
+
+        data.insert(
+            String::from("notificationTextColorFailure"),
+            Value::from(value.notification_text_color_failure),
         );
 
         Self::Table(data)

@@ -34,7 +34,7 @@ impl BufferedKeyPress {
     /// Determines if the key press has expired based on the TTL that was set when it was initially
     /// buffered.
     fn is_expired(&self) -> bool {
-        self.ttl.timestamp_millis() < Utc::now().timestamp_millis()
+        self.ttl < Utc::now()
     }
 }
 

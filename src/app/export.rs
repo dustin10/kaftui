@@ -68,7 +68,7 @@ impl Exporter {
         Self { base_dir }
     }
     /// Exports the given [`Record`] to the file system in JSON format.
-    pub fn export_record(&self, record: Record) -> anyhow::Result<()> {
+    pub fn export_record(&self, record: Record) -> anyhow::Result<String> {
         let exported_record = ExportedRecord::from(record);
 
         let json =
@@ -87,6 +87,8 @@ impl Exporter {
             Utc::now().timestamp_millis()
         );
 
-        std::fs::write(file_path, json).context("write exported record to file")
+        let _ = std::fs::write(file_path.as_str(), json).context("write exported record to file");
+
+        Ok(file_path)
     }
 }

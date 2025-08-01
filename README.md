@@ -142,6 +142,12 @@ properties are available to be configured using a theme.
 * `recordInfoTextColor` - Color of the record properties text in the record info table.
 * `recordHeadersTextColor` - Color of the record headers text in the record headers table.
 * `recordValueTextColor` - Color of the record value text.
+* `navColor` - Color of the navigation items.
+* `menuItemTextColor` - Color of the selected menu items.
+* `selectedMenuItemTextColor` - Color of the currently selected menu item.
+* `notificationTextColorSuccess` - Color of the notification message text for a successful action.
+* `notificationTextColorWarn` - Color of the notification message text for an action that produces a warning.
+* `notificationTextColorFailure` - Color of the error notification message text for a failed action.
 
 > Colors must be specified in RGB format **without** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
 section for an example of a theme.
@@ -179,16 +185,21 @@ values which can be used to configure the application using the `.kaftui.json` f
     }
   }],
   "theme": {
-    "panelBorderColor": "FFFFFF",
-    "selectedPanelBorderColor": "00FFFF",
-    "statusTextColorPaused": "FF0000",
-    "statusTextColorProcessing": "00FF00",
-    "keyBindingsTextColor": "FFFFFF",
-    "labelColor": "FFFFFF",
-    "recordListTextColor": "FFFFFF",
-    "recordInfoTextColor": "FFFFFF",
-    "recordHeadersTextColor": "FFFFFF",
-    "recordValueTextColor": "FFFFFF"
+    "panelBorderColor": "6272A4",
+    "selectedPanelBorderColor": "BD93F9",
+    "statusTextColorPaused": "FF5555",
+    "statusTextColorProcessing": "50FA7B",
+    "keyBindingsTextColor": "F1FA8C",
+    "labelColor": "FF79C6",
+    "recordListTextColor": "F8F8F2",
+    "recordInfoTextColor": "F8F8F2",
+    "recordHeadersTextColor": "F8F8F2",
+    "recordValueTextColor": "F8F8F2",
+    "menuItemTextColor": "F8F8F2",
+    "selectedMenuItemTextColor": "8BE9FD",
+    "notificationTextColorSuccess": "50FA7B",
+    "notificationTextColorWarn": "FFB86C",
+    "notificationTextColorFailure": "FF5555"
   }
 }
 ```

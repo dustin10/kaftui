@@ -1,5 +1,5 @@
 use crate::{
-    app::{App, Screen, SelectableWidget},
+    app::{App, NotificationStatus, Screen, SelectableWidget},
     kafka::ConsumerMode,
 };
 
@@ -9,7 +9,7 @@ use ratatui::{
     text::ToSpan,
     widgets::{
         Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        Table, Wrap,
+        Table, Tabs, Wrap,
     },
     Frame,
 };
@@ -111,11 +111,16 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(3),
+        ])
         .split(full_screen);
 
-    let view_record = outer[0];
-    let footer = outer[1];
+    let header = outer[0];
+    let view_record = outer[1];
+    let footer = outer[2];
 
     let view_record_inner = Layout::default()
         .direction(Direction::Horizontal)
@@ -124,6 +129,8 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 
     let left_panel = view_record_inner[0];
     let right_panel = view_record_inner[1];
+
+    render_header(app, frame, header);
 
     render_record_list(app, frame, left_panel);
 
@@ -134,6 +141,67 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
     }
 
     render_footer(app, frame, footer);
+}
+
+/// Renders the header panel that contains the key bindings.
+fn render_header(app: &App, frame: &mut Frame, area: Rect) {
+    let border_color =
+        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
+    let menu_items_color =
+        color_from_hex_string(&app.config.theme.menu_item_text_color).expect("valid u32 hex");
+
+    let selected_menu_item_color =
+        color_from_hex_string(&app.config.theme.selected_menu_item_text_color)
+            .expect("valid u32 hex");
+
+    let outer = Block::bordered()
+        .border_style(border_color)
+        .padding(Padding::new(1, 1, 0, 0));
+
+    let inner_area = outer.inner(area);
+
+    let inner_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner_area);
+
+    let left_panel = inner_layout[0];
+    let right_panel = inner_layout[1];
+
+    let navigation_tabs = Tabs::new(["Records [1]"])
+        .divider("|")
+        .style(menu_items_color)
+        .highlight_style(Style::default().underlined().fg(selected_menu_item_color))
+        .select(0);
+
+    frame.render_widget(navigation_tabs, left_panel);
+    frame.render_widget(outer, area);
+
+    if let Some(notification) = app.state.notification.as_ref() {
+        // TODO: use a timer instead to clear notification?
+        if !notification.is_expired() {
+            let notification_color = match notification.status {
+                NotificationStatus::Success => {
+                    color_from_hex_string(&app.config.theme.notification_text_color_success)
+                        .expect("valid u32 hex")
+                }
+                NotificationStatus::Warn => {
+                    color_from_hex_string(&app.config.theme.notification_text_color_warn)
+                        .expect("valid u32 hex")
+                }
+                NotificationStatus::Failure => {
+                    color_from_hex_string(&app.config.theme.notification_text_color_failure)
+                        .expect("valid u32 hex")
+                }
+            };
+
+            let notification_text = Paragraph::new(notification.summary.as_str())
+                .style(notification_color)
+                .right_aligned();
+            frame.render_widget(notification_text, right_panel);
+        }
+    }
 }
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.

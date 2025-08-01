@@ -10,6 +10,7 @@ use crate::{
 
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
+use chrono::{DateTime, Duration, Utc};
 use ratatui::{
     widgets::{ScrollbarState, TableState},
     DefaultTerminal,
@@ -18,12 +19,70 @@ use std::{cell::Cell, collections::HashMap, rc::Rc, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 
 /// Enumeration of the widgets that the user can select.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SelectableWidget {
     /// Table that lists the records that have been consumed from the Kafka topic.
     RecordList,
     /// Text panel that outputs the value of the currently selected record.
     RecordValue,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum NotificationStatus {
+    /// Notification of a successful action.
+    Success,
+    /// Notification is a warning. Usually something didn't work but a default was used instead or
+    /// some other default action was taken.
+    Warn,
+    /// Notification of a failed action.
+    Failure,
+}
+
+/// A [`Notification`] is a message that is presented to the user with the results of either an
+/// action that is taken by them or by the application itself, e.g. the result of exporting a
+/// record to a file.
+#[derive(Debug)]
+pub struct Notification {
+    pub status: NotificationStatus,
+    /// Summary text for the notification. The summary is displayed in the header for a short
+    /// period of time.
+    pub summary: String,
+    /// Long form text for the notification. The full message will be displayed to the user on the
+    /// notificaiton history screen.
+    pub message: String,
+    /// Timestamp when the notification was created by the application.
+    pub created: DateTime<Utc>,
+}
+
+impl Notification {
+    /// Creates a new notification for the user with the specified details.
+    pub fn new(
+        status: NotificationStatus,
+        summary: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            status,
+            summary: summary.into(),
+            message: message.into(),
+            created: Utc::now(),
+        }
+    }
+    /// Creates a new success notification for the user with the specified details.
+    pub fn success(summary: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Success, summary, message)
+    }
+    /// Creates a new warn notification for the user with the specified details.
+    pub fn warn(summary: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Warn, summary, message)
+    }
+    /// Creates a new failure notification for the user with the specified details.
+    pub fn failure(summary: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Failure, summary, message)
+    }
+    pub fn is_expired(&self) -> bool {
+        (self.created + Duration::seconds(3)) < Utc::now()
+    }
 }
 
 /// Manages the global application state.
@@ -50,6 +109,8 @@ pub struct State {
     pub consumer_mode: ConsumerMode,
     /// Stores the widget that the user currently has selected.
     pub selected_widget: Rc<Cell<SelectableWidget>>,
+    /// Notification to show to the user after an action was taken.
+    pub notification: Option<Notification>,
 }
 
 impl State {
@@ -65,6 +126,7 @@ impl State {
             total_consumed: 0,
             consumer_mode: ConsumerMode::Processing,
             selected_widget: Rc::new(Cell::new(SelectableWidget::RecordList)),
+            notification: None,
         }
     }
     /// Moves the record value scroll state down by `n` number of lines.
@@ -183,7 +245,7 @@ impl State {
 }
 
 /// Enumeration of the various screens that the application can display to the end user.
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Screen {
     /// Active when the application is starting up and connecting to the Kafka brokers.
     Initialize,
@@ -382,12 +444,26 @@ impl App {
         self.state.select_last_record();
     }
     /// Handles the [`AppEvent::ExportSelectedRecord`] event emitted by the [`EventBus`].
-    fn on_export_selected_record(&self) {
+    fn on_export_selected_record(&mut self) {
         if let Some(record) = self.state.selected.clone() {
             // TODO: pass by ref instead?
-            if let Err(e) = self.exporter.export_record(record) {
-                // TODO: need to present notifications to the user in the UI
-                tracing::error!("failed to export record: {}", e);
+            match self.exporter.export_record(record) {
+                Ok(file_path) => {
+                    self.state.notification = Some(Notification::success(
+                        "Record exported successfully",
+                        format!(
+                            "Record succesfully exported to a file at path {}",
+                            file_path
+                        ),
+                    ))
+                }
+                Err(e) => {
+                    tracing::error!("export record failure: {}", e);
+                    self.state.notification = Some(Notification::failure(
+                        "Record export failed",
+                        format!("Failed to export the selected record: {}", e),
+                    ))
+                }
             }
         }
     }
