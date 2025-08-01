@@ -85,6 +85,7 @@ impl Notification {
     pub fn failure(summary: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(NotificationStatus::Failure, summary, message)
     }
+    /// Determines if the notification has expired and should no longer be visible.
     pub fn is_expired(&self) -> bool {
         (self.created + Duration::seconds(3)) < Utc::now()
     }
