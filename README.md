@@ -136,7 +136,7 @@ properties are available to be configured using a theme.
 * `notificationTextColorWarn` - Color of the notification message text for an action that produces a warning.
 * `notificationTextColorFailure` - Color of the error notification message text for a failed action.
 
-> Colors must be specified in RGB format **without** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
+> Colors must be specified in RGB format **with** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
 section for an example of a theme.
 
 The screenshow below is an example of a `kaftui` theme configuration that is inspired by the Dracula theme.
@@ -172,21 +172,21 @@ values which can be used to configure the application using the `.kaftui.json` f
     }
   }],
   "theme": {
-    "panelBorderColor": "6272A4",
-    "selectedPanelBorderColor": "BD93F9",
-    "statusTextColorPaused": "FF5555",
-    "statusTextColorProcessing": "50FA7B",
-    "keyBindingsTextColor": "F1FA8C",
-    "labelColor": "FF79C6",
-    "recordListTextColor": "F8F8F2",
-    "recordInfoTextColor": "F8F8F2",
-    "recordHeadersTextColor": "F8F8F2",
-    "recordValueTextColor": "F8F8F2",
-    "menuItemTextColor": "F8F8F2",
-    "selectedMenuItemTextColor": "8BE9FD",
-    "notificationTextColorSuccess": "F8F8F2",
-    "notificationTextColorWarn": "F1FA8C",
-    "notificationTextColorFailure": "FF5555"
+    "panelBorderColor": "#6272A4",
+    "selectedPanelBorderColor": "#BD93F9",
+    "statusTextColorPaused": "#FF5555",
+    "statusTextColorProcessing": "#50FA7B",
+    "keyBindingsTextColor": "#F1FA8C",
+    "labelColor": "#FF79C6",
+    "recordListTextColor": "#F8F8F2",
+    "recordInfoTextColor": "#F8F8F2",
+    "recordHeadersTextColor": "#F8F8F2",
+    "recordValueTextColor": "#F8F8F2",
+    "menuItemTextColor": "#F8F8F2",
+    "selectedMenuItemTextColor": "#8BE9FD",
+    "notificationTextColorSuccess": "#F8F8F2",
+    "notificationTextColorWarn": "#F1FA8C",
+    "notificationTextColorFailure": "#FF5555"
   }
 }
 ```

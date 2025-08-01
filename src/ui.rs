@@ -13,7 +13,7 @@ use ratatui::{
     },
     Frame,
 };
-use std::{collections::BTreeMap, num::ParseIntError};
+use std::{collections::BTreeMap, str::FromStr};
 
 /// Value displayed for the partition key field when one is not present in the Kafka record.
 const EMPTY_PARTITION_KEY: &str = "<empty>";
@@ -78,15 +78,10 @@ impl App {
 
 // TODO: move away from parsing the string to Color on every draw by parsing once at startup
 
-/// Converts a string containing a hex color value into a [`Color`].
-fn color_from_hex_string(hex: &str) -> Result<Color, ParseIntError> {
-    u32::from_str_radix(hex, 16).map(Color::from_u32)
-}
-
 /// Renders the UI to the terminal for the [`Screen::Initialize`] screen.
 fn render_initialize(app: &App, frame: &mut Frame) {
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
@@ -156,14 +151,13 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 /// Renders the header panel that contains the key bindings.
 fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
     let menu_items_color =
-        color_from_hex_string(&app.config.theme.menu_item_text_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.menu_item_text_color).expect("valid RGB color");
 
     let selected_menu_item_color =
-        color_from_hex_string(&app.config.theme.selected_menu_item_text_color)
-            .expect("valid u32 hex");
+        Color::from_str(&app.config.theme.selected_menu_item_text_color).expect("valid RGB color");
 
     let outer = Block::bordered()
         .border_style(border_color)
@@ -194,16 +188,16 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
         if !notification.is_expired() {
             let notification_color = match notification.status {
                 NotificationStatus::Success => {
-                    color_from_hex_string(&app.config.theme.notification_text_color_success)
-                        .expect("valid u32 hex")
+                    Color::from_str(&app.config.theme.notification_text_color_success)
+                        .expect("valid RGB color")
                 }
                 NotificationStatus::Warn => {
-                    color_from_hex_string(&app.config.theme.notification_text_color_warn)
-                        .expect("valid u32 hex")
+                    Color::from_str(&app.config.theme.notification_text_color_warn)
+                        .expect("valid RGB color")
                 }
                 NotificationStatus::Failure => {
-                    color_from_hex_string(&app.config.theme.notification_text_color_failure)
-                        .expect("valid u32 hex")
+                    Color::from_str(&app.config.theme.notification_text_color_failure)
+                        .expect("valid RGB color")
                 }
             };
 
@@ -220,13 +214,13 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
 fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
     let state = &mut app.state;
 
-    let label_color = color_from_hex_string(&app.config.theme.label_color).expect("valid u32 hex");
+    let label_color = Color::from_str(&app.config.theme.label_color).expect("valid RGB color");
 
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
     let record_list_color =
-        color_from_hex_string(&app.config.theme.record_list_text_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.record_list_text_color).expect("valid RGB color");
 
     let mut record_list_block = Block::bordered()
         .title(" Records ")
@@ -234,9 +228,8 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
         .padding(Padding::new(1, 1, 0, 0));
 
     if state.selected_widget.get() == SelectableWidget::RecordList {
-        let selected_panel_color =
-            color_from_hex_string(&app.config.theme.selected_panel_border_color)
-                .expect("valid u32 hex");
+        let selected_panel_color = Color::from_str(&app.config.theme.selected_panel_border_color)
+            .expect("valid RGB color");
 
         record_list_block = record_list_block
             .border_type(BorderType::Thick)
@@ -308,9 +301,9 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
     let record = state.selected.clone().expect("selected record exists");
 
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
-    let label_color = color_from_hex_string(&app.config.theme.label_color).expect("valid u32 hex");
+    let label_color = Color::from_str(&app.config.theme.label_color).expect("valid RGB color");
 
     let layout_slices = Layout::default()
         .direction(Direction::Vertical)
@@ -335,7 +328,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
 
     let info_color =
-        color_from_hex_string(&app.config.theme.record_info_text_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.record_info_text_color).expect("valid RGB color");
 
     let info_rows = vec![
         Row::new([
@@ -361,7 +354,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .padding(Padding::new(1, 1, 0, 0));
 
     let headers_color =
-        color_from_hex_string(&app.config.theme.record_headers_text_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.record_headers_text_color).expect("valid RGB color");
 
     let header_rows: Vec<Row> = BTreeMap::from_iter(record.headers.iter())
         .into_iter()
@@ -383,9 +376,8 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .padding(Padding::new(1, 1, 0, 0));
 
     if state.selected_widget.get() == SelectableWidget::RecordValue {
-        let selected_panel_color =
-            color_from_hex_string(&app.config.theme.selected_panel_border_color)
-                .expect("valid u32 hex");
+        let selected_panel_color = Color::from_str(&app.config.theme.selected_panel_border_color)
+            .expect("valid RGB color");
 
         value_block = value_block
             .border_type(BorderType::Thick)
@@ -406,7 +398,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
     };
 
     let value_color =
-        color_from_hex_string(&app.config.theme.record_value_text_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.record_value_text_color).expect("valid RGB color");
 
     let value_paragraph = Paragraph::new(value)
         .block(value_block)
@@ -422,7 +414,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
 /// Renders the record details panel when no active [`Record`] set.
 fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
@@ -454,17 +446,16 @@ fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
 /// Renders the footer panel that contains the key bindings for the consume topic UI.
 fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
     let status_text_processing_color =
-        color_from_hex_string(&app.config.theme.status_text_color_processing)
-            .expect("valid u32 hex");
+        Color::from_str(&app.config.theme.status_text_color_processing).expect("valid RGB color");
 
     let status_text_color_paused =
-        color_from_hex_string(&app.config.theme.status_text_color_paused).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.status_text_color_paused).expect("valid RGB color");
 
     let key_bindings_text_color =
-        color_from_hex_string(&app.config.theme.key_bindings_text_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.key_bindings_text_color).expect("valid RGB color");
 
     let outer = Block::bordered()
         .border_style(border_color)
@@ -555,18 +546,18 @@ fn render_notification_history(app: &mut App, frame: &mut Frame) {
 /// Renders the notification history table when the notification history screen is active.
 fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rect) {
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
-    let label_color = color_from_hex_string(&app.config.theme.label_color).expect("valid u32 hex");
+    let label_color = Color::from_str(&app.config.theme.label_color).expect("valid RGB color");
 
-    let success_color = color_from_hex_string(&app.config.theme.notification_text_color_success)
-        .expect("valid u32 hex");
+    let success_color = Color::from_str(&app.config.theme.notification_text_color_success)
+        .expect("valid RGB color");
 
-    let warn_color = color_from_hex_string(&app.config.theme.notification_text_color_warn)
-        .expect("valid u32 hex");
+    let warn_color =
+        Color::from_str(&app.config.theme.notification_text_color_warn).expect("valid RGB color");
 
-    let failure_color = color_from_hex_string(&app.config.theme.notification_text_color_failure)
-        .expect("valid u32 hex");
+    let failure_color = Color::from_str(&app.config.theme.notification_text_color_failure)
+        .expect("valid RGB color");
 
     let mut table_block = Block::bordered()
         .title(" Notifications ")
@@ -574,9 +565,8 @@ fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rec
         .padding(Padding::new(1, 1, 0, 0));
 
     if app.state.selected_widget.get() == SelectableWidget::NotificationHistoryList {
-        let selected_panel_color =
-            color_from_hex_string(&app.config.theme.selected_panel_border_color)
-                .expect("valid u32 hex");
+        let selected_panel_color = Color::from_str(&app.config.theme.selected_panel_border_color)
+            .expect("valid RGB color");
 
         table_block = table_block
             .border_type(BorderType::Thick)
@@ -645,14 +635,13 @@ fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rec
 /// Renders the footer panel that contains the key bindings for the notifications history UI.
 fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) {
     let border_color =
-        color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
     let key_bindings_text_color =
-        color_from_hex_string(&app.config.theme.key_bindings_text_color).expect("valid u32 hex");
+        Color::from_str(&app.config.theme.key_bindings_text_color).expect("valid RGB color");
 
     let status_text_processing_color =
-        color_from_hex_string(&app.config.theme.status_text_color_processing)
-            .expect("valid u32 hex");
+        Color::from_str(&app.config.theme.status_text_color_processing).expect("valid RGB color");
 
     let outer = Block::bordered()
         .border_style(border_color)

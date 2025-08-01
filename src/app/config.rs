@@ -335,21 +335,21 @@ impl Default for Theme {
     /// * Failure Notification Text - Red
     fn default() -> Self {
         Self {
-            panel_border_color: String::from("FFFFFF"),
-            selected_panel_border_color: String::from("00FFFF"),
-            status_text_color_processing: String::from("00FF00"),
-            status_text_color_paused: String::from("FF0000"),
-            key_bindings_text_color: String::from("FFFFFF"),
-            label_color: String::from("FFFFFF"),
-            record_list_text_color: String::from("FFFFFF"),
-            record_info_text_color: String::from("FFFFFF"),
-            record_value_text_color: String::from("FFFFFF"),
-            record_headers_text_color: String::from("FFFFFF"),
-            menu_item_text_color: String::from("FFFFFF"),
-            selected_menu_item_text_color: String::from("FFFF00"),
-            notification_text_color_success: String::from("FFFFFF"),
-            notification_text_color_warn: String::from("FFFF00"),
-            notification_text_color_failure: String::from("FF0000"),
+            panel_border_color: String::from("#FFFFFF"),
+            selected_panel_border_color: String::from("#00FFFF"),
+            status_text_color_processing: String::from("#00FF00"),
+            status_text_color_paused: String::from("#FF0000"),
+            key_bindings_text_color: String::from("#FFFFFF"),
+            label_color: String::from("#FFFFFF"),
+            record_list_text_color: String::from("#FFFFFF"),
+            record_info_text_color: String::from("#FFFFFF"),
+            record_value_text_color: String::from("#FFFFFF"),
+            record_headers_text_color: String::from("#FFFFFF"),
+            menu_item_text_color: String::from("#FFFFFF"),
+            selected_menu_item_text_color: String::from("#FFFF00"),
+            notification_text_color_success: String::from("#FFFFFF"),
+            notification_text_color_warn: String::from("#FFFF00"),
+            notification_text_color_failure: String::from("#FF0000"),
         }
     }
 }
