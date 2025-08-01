@@ -155,6 +155,10 @@ impl State {
             notification_history_scroll_state: ScrollbarState::default(),
         }
     }
+    /// Moves the record value scroll state to the top.
+    fn scroll_record_value_top(&mut self) {
+        self.record_value_scroll.0 = 0;
+    }
     /// Moves the record value scroll state down by `n` number of lines.
     fn scroll_record_value_down(&mut self, n: u16) {
         self.record_value_scroll.0 += n;
@@ -458,6 +462,7 @@ impl App {
                         AppEvent::PauseProcessing => self.on_pause_processing(),
                         AppEvent::ResumeProcessing => self.on_resume_processing(),
                         AppEvent::SelectNextWidget => self.on_select_next_widget(),
+                        AppEvent::ScrollRecordValueTop => self.on_scroll_record_value_top(),
                         AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
                         AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
                         AppEvent::SelectScreen(screen) => self.on_select_screen(screen),
@@ -632,6 +637,11 @@ impl App {
     fn on_select_next_widget(&mut self) {
         tracing::debug!("cycling focus to next widget");
         self.state.cycle_next_widget();
+    }
+    /// Handles the [`AppEvent::ScrollRecordValueTop`] event emitted by the [`EventBus`].
+    fn on_scroll_record_value_top(&mut self) {
+        tracing::debug!("scroll record value to top");
+        self.state.scroll_record_value_top();
     }
     /// Handles the [`AppEvent::ScrollRecordValueDown`] event emitted by the [`EventBus`].
     fn on_scroll_record_value_down(&mut self) {

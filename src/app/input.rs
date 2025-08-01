@@ -139,6 +139,10 @@ impl InputDispatcher {
                     self.event_bus.send(AppEvent::ResumeProcessing).await;
                     true
                 }
+                'g' if self.is_key_buffered('g') => {
+                    self.event_bus.send(AppEvent::ScrollRecordValueTop).await;
+                    true
+                }
                 'j' => {
                     self.event_bus.send(AppEvent::ScrollRecordValueDown).await;
                     true

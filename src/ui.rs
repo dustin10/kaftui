@@ -508,6 +508,7 @@ fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
             key_bindings.push(KEY_BINDING_BOTTOM);
         }
         SelectableWidget::RecordValue => {
+            key_bindings.push(KEY_BINDING_TOP);
             key_bindings.push(KEY_BINDING_SCROLL_DOWN);
             key_bindings.push(KEY_BINDING_SCROLL_UP);
         }

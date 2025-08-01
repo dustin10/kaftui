@@ -38,6 +38,8 @@ pub enum AppEvent {
     PauseProcessing,
     /// Fires when the user wants to select a different widget.
     SelectNextWidget,
+    /// Fires when the user wants to scroll the record value widget to the top.
+    ScrollRecordValueTop,
     /// Fires when the user wants to scroll the record value widget down.
     ScrollRecordValueDown,
     /// Fires when the user wants to scroll the record value widget up.

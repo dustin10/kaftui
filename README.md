@@ -63,33 +63,15 @@ the Kafka topic. Defaults to `256`.
 ## Key Bindings
 
 There are some key bindings for the `kaftui` application which are global while others are dependent upon the currently
-active widget. The currently active key bindings will always be displayed in the UI on the right side of the footer.
-
-### Global
-
-The following key bindings apply no matter which widget is currently selected.
+active widget.The following key bindings apply no matter which widget is currently selected.
 
 * `esc` - Exits the `kaftui` application.
 * `tab` - Changes focus from the current widget to the next available one.
-* `p` - Pause consumption of records from the Kafka topic.
-* `r` - Resume consumption of records from the Kafka topic.
-* `e` - Exports the currently selected record to a JSON file.
+* `1` - View the `Records` screen.
+* `2` - View the `Notification History` screen.
 
-### Record List
-
-When the record list is the widget with focus then the following key bindings will be active.
-
-* `gg` - Select the first record in the list.
-* `j` - Select the next record in the list.
-* `k` - Select the previous record in the list.
-* `G` - Select the last record in the list.
-
-### Record Value
-
-When the record value widget has focus then the following key bindings will be active.
-
-* `j` - Scrolls the text in the panel down.
-* `k` - Scrolls the text in the panel up.
+The active key bindings will be displayed in the UI on the right side of the footer and will vary depending on the 
+screen that is currently being viewed within the application.
 
 ## Filtering
 
