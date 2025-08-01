@@ -25,7 +25,11 @@ pub struct Config {
     pub bootstrap_servers: String,
     /// Name of the Kafka topic to consume messages from.
     pub topic: String,
-    /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
+    /// CSV of partitions numbers that the consumer should be assigned. If none, all of the
+    /// partitions which make up the topic will be assigned.
+    pub partitions: Option<String>,
+    /// Id of the consumer group that the application will use when consuming messages from the
+    /// Kafka topic.
     pub group_id: String,
     /// CSV of color separated pairs of partition and offset that the Kafka consumer will seek to
     /// before starting to consume records.
@@ -48,8 +52,8 @@ pub struct Config {
 }
 
 impl Config {
-    /// Initializes the configuration for the application. Uses values from the any specified profile
-    /// as defaults and then overlays arguments on top.
+    /// Initializes the configuration for the application. Uses values from the any specified
+    /// profile as defaults and then overlays arguments on top.
     ///
     /// Configuration precedence is applied as follows where 1 is the highest:
     ///
@@ -213,7 +217,10 @@ struct Profile {
     bootstrap_servers: Option<String>,
     /// Name of the Kafka topic to consume messages from.
     topic: Option<String>,
-    /// Id of the consumer group that the application will use when consuming messages from the Kafka topic.
+    /// CSV of partitions numbers that the consumer should be assigned.
+    partitions: Option<String>,
+    /// Id of the consumer group that the application will use when consuming messages from the
+    /// Kafka topic.
     group_id: Option<String>,
     /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
     /// from the Kafka topic that the end user may not be interested in. A message will only be
@@ -240,6 +247,10 @@ impl Source for Profile {
 
         if let Some(topic) = self.topic.as_ref() {
             cfg.insert(String::from("topic"), Value::from(topic.clone()));
+        }
+
+        if let Some(partitions) = self.partitions.as_ref() {
+            cfg.insert(String::from("partitions"), Value::from(partitions.clone()));
         }
 
         if let Some(group_id) = self.group_id.as_ref() {

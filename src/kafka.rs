@@ -132,29 +132,36 @@ impl Consumer {
     pub fn start(
         &self,
         topic: String,
+        mut partitions: Vec<i32>,
         seek_to: Vec<(i32, i64)>,
         filter: Option<String>,
     ) -> anyhow::Result<()> {
-        let topic_metadata = self
-            .consumer
-            .fetch_metadata(Some(topic.as_str()), Duration::from_secs(10))
-            .context("fetch topic metadata from broker")?;
+        if partitions.is_empty() {
+            let topic_metadata = self
+                .consumer
+                .fetch_metadata(Some(topic.as_str()), Duration::from_secs(10))
+                .context("fetch topic metadata from broker")?;
 
-        let topic_partitions = topic_metadata
-            .topics()
-            .first()
-            .expect("topic metadata exists")
-            .partitions();
+            let topic_partitions = topic_metadata
+                .topics()
+                .first()
+                .expect("topic metadata exists")
+                .partitions()
+                .iter()
+                .map(|mp| mp.id());
 
-        let mut assignments_list = TopicPartitionList::with_capacity(topic_partitions.len());
+            partitions.extend(topic_partitions);
+        }
 
-        for partition in topic_partitions.iter() {
-            match seek_to.iter().find(|(p, _)| *p == partition.id()) {
+        let mut assignments_list = TopicPartitionList::with_capacity(partitions.len());
+
+        for partition in partitions.iter() {
+            match seek_to.iter().find(|(p, _)| *p == *partition) {
                 Some(s) => assignments_list
-                    .add_partition_offset(topic.as_str(), partition.id(), Offset::Offset(s.1))
+                    .add_partition_offset(topic.as_str(), *partition, Offset::Offset(s.1))
                     .context("add partition offset")?,
                 None => {
-                    let _ = assignments_list.add_partition(topic.as_str(), partition.id());
+                    let _ = assignments_list.add_partition(topic.as_str(), *partition);
                 }
             }
         }
@@ -163,10 +170,10 @@ impl Consumer {
             .assign(&assignments_list)
             .context("assign partitions to consumer")?;
 
-        for partition in topic_partitions.iter() {
+        for partition in partitions.iter() {
             let partition_queue = self
                 .consumer
-                .split_partition_queue(topic.as_str(), partition.id())
+                .split_partition_queue(topic.as_str(), *partition)
                 .expect("partition queue created");
 
             let task = PartitionConsumerTask::new(

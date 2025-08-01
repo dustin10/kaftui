@@ -23,6 +23,11 @@ struct Args {
     /// Name of the Kafka topic which records will be consumed from.
     #[arg(short, long)]
     topic: Option<String>,
+    /// CSV of the partition numbers that the consumer should be assigned. This argument is used to
+    /// restrict the set of partitions that will be consumed. If not specified, all partitions will
+    /// be assigned.
+    #[arg(short)]
+    partitions: Option<String>,
     /// Id of the consumer group that the application will use when consuming records from the Kafka
     /// topic. By default a group id will be generated from the hostname of the machine that is
     /// execting the application.
@@ -73,6 +78,13 @@ impl Source for Args {
 
         if let Some(topic) = self.topic.as_ref() {
             cfg.insert(String::from("topic"), config::Value::from(topic.clone()));
+        }
+
+        if let Some(partitions) = self.partitions.as_ref() {
+            cfg.insert(
+                String::from("partitions"),
+                config::Value::from(partitions.clone()),
+            );
         }
 
         if let Some(group_id) = self.group_id.as_ref() {

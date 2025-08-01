@@ -8,9 +8,10 @@ The `kaftui` application provides the following features to users.
 
 * View records from a topic including headers and payload value in an easy to read format.
 * Pause and resume the Kafka consumer.
-* Export any record to a file on disk.
+* Assign all or specific partitions of the topic to the Kafka consumer.
+* Seek to a specific offset on a single or multiple partitions of the topic.
+* Export any record consumed to a file on disk.
 * [Filter](#Filtering) out records the user may not be interested in using a JSONPath filter.
-* Seek to a specific offset on a partition.
 * Configure [profiles](#Profiles) to easily connect to different Kafka clusters.
 * [Theme](#Theme) the application to match any existing terminal color scheme.
 
@@ -42,14 +43,17 @@ To use a custom group id for the consumer simply specify it using the `--group-i
 
 * `--bootstrap-servers, -b` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
 * `--topic, -t` - Name of the Kafka topic to consume records from.
+* `--partitions` - CSV of the partition numbers that the consumer should be assigned. This argument is used to restrict
+the set of partitions that will be consumed. If not specified, all partitions will be assigned. For example, `0,2`
+would cause only partitions `0` and `2` to be assigned to the Kafka consumer.
+* `--seek-to` - CSV of colon separated pairs of partition and offset values that the Kafka consumer will seek to before
+starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition `0`
+and offset `10` on partition `1`.
 * `--group-id, -g` - Id of the group that the application will use when consuming messages from the Kafka topic. By
 default a group id will be generated from the hostname of the machine that is executing the application.
 * `--filter, -f` - JSONPath filter that is applied to a record. Can be used to filter out any records from the Kafka
 topic that the end user may not be interested in. A message will only be presented to the user if it matches the filter.
 By default no filter is applied. See the [Filtering](#Filtering) section below for further details.
-* `--seek-to` - CSV of colon separated pairs of partition and offset values that the Kafka consumer will seek to before
-starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition `0`
-and offset `10` on partition `1`.
 * `--profile, -p` - Specifies the name of pre-configured set of values that will be used as defaults for the execution
 of the application. Profiles are stored in the `$HOME/.kaftui.json` file. Any other arguments specified when executing
 the application will take precedence over the ones loaded from the profile. See the [Profiles](#Profiles) section below
@@ -101,6 +105,7 @@ The following properties are supported in profiles.
 * `name` - Unique name that identifies the profile.
 * `bootstrapServers` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
 * `topic` - Name of the Kafka topic to consume records from.
+* `partitions` - CSV of partition numbers of the topic that should be assigned to the Kafka consumer.
 * `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
 * `filter` - JSONPath filter that is applied to a record.
 * `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and

@@ -45,6 +45,7 @@ pub enum NotificationStatus {
     Success,
     /// Notification is a warning. Usually something didn't work but a default was used instead or
     /// some other default action was taken.
+    #[allow(dead_code)]
     Warn,
     /// Notification of a failed action.
     Failure,
@@ -85,6 +86,7 @@ impl Notification {
         Self::new(NotificationStatus::Success, summary, details)
     }
     /// Creates a new warn notification for the user with the specified data.
+    #[allow(dead_code)]
     pub fn warn(summary: impl Into<String>, details: impl Into<String>) -> Self {
         Self::new(NotificationStatus::Warn, summary, details)
     }
@@ -494,6 +496,17 @@ impl App {
     /// Starts the consumer asynchronously. The result of the consumer startup is sent back to the
     /// application through the [`EventBus`].
     fn start_consumer_async(&self) {
+        let partitions = self
+            .config
+            .partitions
+            .as_ref()
+            .map(|csv| csv.split(","))
+            .map(|ps| {
+                ps.map(|p| p.parse::<i32>().expect("valid partition value"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         // TODO: clean this up
         let seek_to: Vec<(i32, i64)> = self
             .config
@@ -523,6 +536,7 @@ impl App {
         let start_consumer_task = StartConsumerTask {
             consumer: Arc::clone(&self.consumer),
             topic: self.config.topic.clone(),
+            partitions,
             seek_to,
             filter: self.config.filter.clone(),
             event_bus: Arc::clone(&self.event_bus),
@@ -702,12 +716,14 @@ struct StartConsumerTask {
     consumer: Arc<Consumer>,
     /// Topic to consume records from.
     topic: String,
-    /// Vec of partition and offset pairs that the Kafka consumer will seek to before starting to
-    /// consumer records.
+    /// Vec of partitions that should be assigned to the Kafka consumer.
+    partitions: Vec<i32>,
+    /// Vec of partition and offset pairs that the Kafka consumer should seek to before starting to
+    /// consume records.
     seek_to: Vec<(i32, i64)>,
-    /// Any filter to apply to the consumed records.
+    /// JSONPath filter to apply to the consumed records.
     filter: Option<String>,
-    /// [`EventBus`] on which the results of the startup will be sent.
+    /// [`EventBus`] on which the results of the startup task will be published.
     event_bus: Arc<EventBus>,
 }
 
@@ -715,7 +731,10 @@ impl StartConsumerTask {
     /// Runs the task. Starts the consumer and send the appropriate event based on the result to
     /// the [`EventBus`].
     async fn run(self) {
-        match self.consumer.start(self.topic, self.seek_to, self.filter) {
+        match self
+            .consumer
+            .start(self.topic, self.partitions, self.seek_to, self.filter)
+        {
             Ok(()) => self.event_bus.send(AppEvent::ConsumerStarted).await,
             Err(e) => self.event_bus.send(AppEvent::ConsumerStartFailure(e)).await,
         };
