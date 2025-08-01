@@ -649,6 +649,10 @@ fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) 
     let key_bindings_text_color =
         color_from_hex_string(&app.config.theme.key_bindings_text_color).expect("valid u32 hex");
 
+    let status_text_processing_color =
+        color_from_hex_string(&app.config.theme.status_text_color_processing)
+            .expect("valid u32 hex");
+
     let outer = Block::bordered()
         .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
@@ -660,13 +664,17 @@ fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) 
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(inner_area);
 
-    let _left_panel = inner_layout[0];
+    let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
+
+    let total = Paragraph::new(format!("Total: {}", app.state.total_notifications))
+        .style(status_text_processing_color);
 
     let key_bindings = Paragraph::new(NOTIFICATION_HISTORY_KEY_BINDINGS.join(" | "))
         .style(key_bindings_text_color)
         .right_aligned();
 
     frame.render_widget(outer, area);
+    frame.render_widget(total, left_panel);
     frame.render_widget(key_bindings, right_panel);
 }

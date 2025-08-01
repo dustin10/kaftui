@@ -124,6 +124,8 @@ pub struct State {
     pub consumer_mode: ConsumerMode,
     /// Stores the widget that the user currently has selected.
     pub selected_widget: Rc<Cell<SelectableWidget>>,
+    /// Total number of notifications displayed to the user since the application was launched.
+    pub total_notifications: u32,
     /// Stores the history of [`Notification`]s displayed to the user.
     pub notification_history: BoundedVecDeque<Notification>,
     /// [`TableState`] for the table that notifications from the history list are rendered into.
@@ -147,6 +149,7 @@ impl State {
             total_consumed: 0,
             consumer_mode: ConsumerMode::Processing,
             selected_widget: Rc::new(Cell::new(SelectableWidget::RecordList)),
+            total_notifications: 0,
             notification_history: BoundedVecDeque::new(NOTIFICATION_HISTORY_MAX_LEN),
             notification_history_state: TableState::default(),
             notification_history_scroll_state: ScrollbarState::default(),
@@ -331,6 +334,7 @@ impl State {
     /// Pushes a new [`Notification`] onto the current list when a new one is generated.
     fn push_notification(&mut self, notification: Notification) {
         self.notification_history.push_front(notification);
+        self.total_notifications += 1;
 
         if let Some(i) = self.notification_history_state.selected().as_mut() {
             let new_idx = *i + 1;
