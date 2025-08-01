@@ -18,6 +18,11 @@ use ratatui::{
 use std::{cell::Cell, collections::HashMap, rc::Rc, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 
+/// Maximum number of notifications that will be stored in memory to be displayed in the
+/// notification history table. Once the limit is reacahed, as new notifications are added the
+/// older ones are removed.
+const NOTIFICATION_HISTORY_MAX_LEN: usize = 1024;
+
 /// Enumeration of the widgets that the user can select.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SelectableWidget {
@@ -109,8 +114,8 @@ pub struct State {
     pub consumer_mode: ConsumerMode,
     /// Stores the widget that the user currently has selected.
     pub selected_widget: Rc<Cell<SelectableWidget>>,
-    /// Notification to show to the user after an action was taken.
-    pub notification: Option<Notification>,
+    /// Stores the history of [`Notification`]s displayed to the user.
+    pub notification_history: BoundedVecDeque<Notification>,
 }
 
 impl State {
@@ -126,7 +131,7 @@ impl State {
             total_consumed: 0,
             consumer_mode: ConsumerMode::Processing,
             selected_widget: Rc::new(Cell::new(SelectableWidget::RecordList)),
-            notification: None,
+            notification_history: BoundedVecDeque::new(NOTIFICATION_HISTORY_MAX_LEN),
         }
     }
     /// Moves the record value scroll state down by `n` number of lines.
@@ -447,24 +452,24 @@ impl App {
     fn on_export_selected_record(&mut self) {
         if let Some(record) = self.state.selected.clone() {
             // TODO: pass by ref instead?
-            match self.exporter.export_record(record) {
-                Ok(file_path) => {
-                    self.state.notification = Some(Notification::success(
-                        "Record exported successfully",
-                        format!(
-                            "Record succesfully exported to a file at path {}",
-                            file_path
-                        ),
-                    ))
-                }
+            let notification = match self.exporter.export_record(record) {
+                Ok(file_path) => Notification::success(
+                    "Record exported successfully",
+                    format!(
+                        "Record succesfully exported to a file at path {}",
+                        file_path
+                    ),
+                ),
                 Err(e) => {
                     tracing::error!("export record failure: {}", e);
-                    self.state.notification = Some(Notification::failure(
+                    Notification::failure(
                         "Record export failed",
                         format!("Failed to export the selected record: {}", e),
-                    ))
+                    )
                 }
-            }
+            };
+
+            self.state.notification_history.push_front(notification);
         }
     }
     /// Handles the [`AppEvent::PauseProcessing`] event emitted by the [`EventBus`].

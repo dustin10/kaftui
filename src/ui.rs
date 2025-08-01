@@ -178,7 +178,7 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(navigation_tabs, left_panel);
     frame.render_widget(outer, area);
 
-    if let Some(notification) = app.state.notification.as_ref() {
+    if let Some(notification) = app.state.notification_history.front() {
         // TODO: use a timer instead to clear notification?
         if !notification.is_expired() {
             let notification_color = match notification.status {
