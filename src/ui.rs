@@ -22,7 +22,7 @@ const EMPTY_PARTITION_KEY: &str = "<empty>";
 const KEY_BINDING_QUIT: &str = "(esc) quit";
 
 /// Text displayed to the user in the footer for the cycle widget key binding.
-const KEY_BINDING_CHANGE_FOCUS: &str = "(tab) change focus";
+const KEY_BINDING_CHANGE_FOCUS: &str = "(tab) cycle focus";
 
 /// Text displayed to the user in the footer for the scroll down key binding.
 const KEY_BINDING_SCROLL_DOWN: &str = "(j) down";
@@ -30,8 +30,8 @@ const KEY_BINDING_SCROLL_DOWN: &str = "(j) down";
 /// Text displayed to the user in the footer for the scroll up key binding.
 const KEY_BINDING_SCROLL_UP: &str = "(k) up";
 
-/// Text displayed to the user in the footer for the first record key binding.
-const KEY_BINDING_FIRST: &str = "(gg) first";
+/// Text displayed to the user in the footer for the move to top key binding.
+const KEY_BINDING_TOP: &str = "(gg) top";
 
 /// Text displayed to the user in the footer for the next record key binding.
 const KEY_BINDING_NEXT: &str = "(j) next";
@@ -39,8 +39,8 @@ const KEY_BINDING_NEXT: &str = "(j) next";
 /// Text displayed to the user in the footer for the previous record key binding.
 const KEY_BINDING_PREV: &str = "(k) prev";
 
-/// Text displayed to the user in the footer for the select last record key binding.
-const KEY_BINDING_LAST: &str = "(G) last";
+/// Text displayed to the user in the footer for the move to bottom key binding.
+const KEY_BINDING_BOTTOM: &str = "(G) bottom";
 
 /// Text displayed to the user in the footer for the pause key binding.
 const KEY_BINDING_PAUSE: &str = "(p) pause";
@@ -52,8 +52,17 @@ const KEY_BINDING_RESUME: &str = "(r) resume";
 const KEY_BINDING_EXPORT: &str = "(e) export";
 
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
-/// the application is.
+/// the application is when viewing the consume topic screen.
 const STANDARD_KEY_BINDINGS: [&str; 2] = [KEY_BINDING_QUIT, KEY_BINDING_CHANGE_FOCUS];
+
+/// Key bindings that are displayed to the user in the footer when viewing the notification history
+/// screen.
+const NOTIFICATION_HISTORY_KEY_BINDINGS: [&str; 4] = [
+    KEY_BINDING_TOP,
+    KEY_BINDING_SCROLL_DOWN,
+    KEY_BINDING_SCROLL_UP,
+    KEY_BINDING_BOTTOM,
+];
 
 impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
@@ -493,10 +502,10 @@ fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     match app.state.selected_widget.get() {
         SelectableWidget::RecordList => {
-            key_bindings.push(KEY_BINDING_FIRST);
+            key_bindings.push(KEY_BINDING_TOP);
             key_bindings.push(KEY_BINDING_NEXT);
             key_bindings.push(KEY_BINDING_PREV);
-            key_bindings.push(KEY_BINDING_LAST);
+            key_bindings.push(KEY_BINDING_BOTTOM);
         }
         SelectableWidget::RecordValue => {
             key_bindings.push(KEY_BINDING_SCROLL_DOWN);
@@ -521,7 +530,7 @@ fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 /// Renders the UI to the terminal for the [`Screen::NotificationHistory`] screen.
-fn render_notification_history(app: &App, frame: &mut Frame) {
+fn render_notification_history(app: &mut App, frame: &mut Frame) {
     let full_screen = frame.area();
 
     let outer = Layout::default()
@@ -543,7 +552,7 @@ fn render_notification_history(app: &App, frame: &mut Frame) {
 }
 
 /// Renders the notification history table when the notification history screen is active.
-fn render_notification_history_table(app: &App, frame: &mut Frame, area: Rect) {
+fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rect) {
     let border_color =
         color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
 
@@ -607,17 +616,38 @@ fn render_notification_history_table(app: &App, frame: &mut Frame, area: Rect) {
         "Summary".bold().style(label_color),
         "Details".bold().style(label_color),
     ]))
+    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .block(table_block);
 
-    // TODO: add table scroll state
+    frame.render_stateful_widget(table, area, &mut app.state.notification_history_state);
 
-    frame.render_widget(table, area);
+    app.state.notification_history_scroll_state = app
+        .state
+        .notification_history_scroll_state
+        .content_length(app.state.notification_history.len());
+
+    let scrollbar = Scrollbar::default()
+        .orientation(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(None)
+        .end_symbol(None);
+
+    frame.render_stateful_widget(
+        scrollbar,
+        area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        }),
+        &mut app.state.notification_history_scroll_state,
+    );
 }
 
 /// Renders the footer panel that contains the key bindings for the notifications history UI.
 fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) {
     let border_color =
         color_from_hex_string(&app.config.theme.panel_border_color).expect("valid u32 hex");
+
+    let key_bindings_text_color =
+        color_from_hex_string(&app.config.theme.key_bindings_text_color).expect("valid u32 hex");
 
     let outer = Block::bordered()
         .border_style(border_color)
@@ -631,9 +661,12 @@ fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) 
         .split(inner_area);
 
     let _left_panel = inner_layout[0];
-    let _right_panel = inner_layout[1];
+    let right_panel = inner_layout[1];
 
-    // TODO: add key bindings for scrolling notification history table
+    let key_bindings = Paragraph::new(NOTIFICATION_HISTORY_KEY_BINDINGS.join(" | "))
+        .style(key_bindings_text_color)
+        .right_aligned();
 
     frame.render_widget(outer, area);
+    frame.render_widget(key_bindings, right_panel);
 }

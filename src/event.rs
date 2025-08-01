@@ -44,6 +44,14 @@ pub enum AppEvent {
     ScrollRecordValueUp,
     /// Fires when the user selects a [`Screen`] to view in the UI.
     SelectScreen(Screen),
+    /// Fires when the user wants to scroll to the top of notification history list.
+    ScrollNotificationHistoryTop,
+    /// Fires when the user wants to scroll the notification history list up.
+    ScrollNotificationHistoryUp,
+    /// Fires when the user wants to scroll the notification history list down.
+    ScrollNotificationHistoryDown,
+    /// Fires when the user wants to scroll to the bottom of notification history list.
+    ScrollNotificationHistoryBottom,
 }
 
 /// The bus over which [`Event`]s are published and consumed.

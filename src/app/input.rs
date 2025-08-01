@@ -149,8 +149,33 @@ impl InputDispatcher {
                 }
                 _ => false,
             },
-            // TODO: add key bindings for notification history list
-            SelectableWidget::NotificationHistoryList => false,
+            SelectableWidget::NotificationHistoryList => match key {
+                'g' if self.is_key_buffered('g') => {
+                    self.event_bus
+                        .send(AppEvent::ScrollNotificationHistoryTop)
+                        .await;
+                    true
+                }
+                'j' => {
+                    self.event_bus
+                        .send(AppEvent::ScrollNotificationHistoryDown)
+                        .await;
+                    true
+                }
+                'k' => {
+                    self.event_bus
+                        .send(AppEvent::ScrollNotificationHistoryUp)
+                        .await;
+                    true
+                }
+                'G' => {
+                    self.event_bus
+                        .send(AppEvent::ScrollNotificationHistoryBottom)
+                        .await;
+                    true
+                }
+                _ => false,
+            },
         }
     }
     /// Determines if the last key press that was buffered matches the given character.

@@ -122,6 +122,11 @@ pub struct State {
     pub selected_widget: Rc<Cell<SelectableWidget>>,
     /// Stores the history of [`Notification`]s displayed to the user.
     pub notification_history: BoundedVecDeque<Notification>,
+    /// [`TableState`] for the table that notifications from the history list are rendered into.
+    pub notification_history_state: TableState,
+    /// [`ScrollbarState`] for the table that notifications from the history list are rendered
+    /// into.
+    pub notification_history_scroll_state: ScrollbarState,
 }
 
 impl State {
@@ -139,6 +144,8 @@ impl State {
             consumer_mode: ConsumerMode::Processing,
             selected_widget: Rc::new(Cell::new(SelectableWidget::RecordList)),
             notification_history: BoundedVecDeque::new(NOTIFICATION_HISTORY_MAX_LEN),
+            notification_history_state: TableState::default(),
+            notification_history_scroll_state: ScrollbarState::default(),
         }
     }
     /// Moves the record value scroll state down by `n` number of lines.
@@ -260,6 +267,74 @@ impl State {
             self.selected_widget.set(widget);
         }
     }
+    /// Moves the notification history scroll state to the top.
+    fn scroll_notification_history_list_top(&mut self) {
+        self.notification_history_state.select(Some(0));
+        self.notification_history_scroll_state = self.notification_history_scroll_state.position(0);
+    }
+    /// Moves the record value scroll state up by `n` number of lines.
+    fn scroll_notification_history_list_up(&mut self, n: usize) {
+        if self.notification_history.is_empty() {
+            return;
+        }
+
+        if let Some(i) = self.notification_history_state.selected().as_ref() {
+            if *i < n {
+                return;
+            }
+
+            let prev = *i - n;
+
+            self.notification_history_state.select(Some(prev));
+            self.notification_history_scroll_state =
+                self.notification_history_scroll_state.position(prev);
+        } else {
+            self.notification_history_state.select(Some(0));
+            self.notification_history_scroll_state =
+                self.notification_history_scroll_state.position(0);
+        }
+    }
+    /// Moves the notification history scroll state down by `n` number of lines.
+    fn scroll_notification_history_list_down(&mut self, n: usize) {
+        if self.notification_history.is_empty() {
+            return;
+        }
+
+        if let Some(i) = self.notification_history_state.selected().as_ref() {
+            if *i + n > self.records.len() - 1 {
+                return;
+            }
+
+            let next = *i + n;
+
+            self.notification_history_state.select(Some(next));
+            self.notification_history_scroll_state =
+                self.notification_history_scroll_state.position(next);
+        } else {
+            self.notification_history_state.select(Some(0));
+            self.notification_history_scroll_state =
+                self.notification_history_scroll_state.position(0);
+        }
+    }
+    /// Moves the notification history scroll state to the bottom.
+    fn scroll_notification_history_list_bottom(&mut self) {
+        let bottom = self.notification_history.len() - 1;
+
+        self.notification_history_state.select(Some(bottom));
+        self.notification_history_scroll_state =
+            self.notification_history_scroll_state.position(bottom);
+    }
+    /// Pushes a new [`Notification`] onto the current list when a new one is generated.
+    fn push_notification(&mut self, notification: Notification) {
+        self.notification_history.push_front(notification);
+
+        if let Some(i) = self.notification_history_state.selected().as_mut() {
+            let new_idx = *i + 1;
+            self.notification_history_state.select(Some(new_idx));
+            self.notification_history_scroll_state =
+                self.notification_history_scroll_state.position(new_idx);
+        }
+    }
 }
 
 /// Enumeration of the various screens that the application can display to the end user.
@@ -378,6 +453,18 @@ impl App {
                         AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
                         AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
                         AppEvent::SelectScreen(screen) => self.on_select_screen(screen),
+                        AppEvent::ScrollNotificationHistoryTop => {
+                            self.on_scroll_notification_history_top()
+                        }
+                        AppEvent::ScrollNotificationHistoryUp => {
+                            self.on_scroll_notification_history_up()
+                        }
+                        AppEvent::ScrollNotificationHistoryDown => {
+                            self.on_scroll_notification_history_down()
+                        }
+                        AppEvent::ScrollNotificationHistoryBottom => {
+                            self.on_scroll_notification_history_bottom()
+                        }
                     },
                 }
             }
@@ -464,6 +551,8 @@ impl App {
     /// Handles the [`AppEvent::ExportSelectedRecord`] event emitted by the [`EventBus`].
     fn on_export_selected_record(&mut self) {
         if let Some(record) = self.state.selected.clone() {
+            tracing::debug!("exporting selected record");
+
             // TODO: pass by ref instead?
             let notification = match self.exporter.export_record(record) {
                 Ok(file_path) => Notification::success(
@@ -479,12 +568,14 @@ impl App {
                 }
             };
 
-            self.state.notification_history.push_front(notification);
+            self.state.push_notification(notification);
         }
     }
     /// Handles the [`AppEvent::PauseProcessing`] event emitted by the [`EventBus`].
     fn on_pause_processing(&mut self) {
         if self.state.consumer_mode == ConsumerMode::Processing {
+            tracing::debug!("pausing Kafka consumer");
+
             self.state.consumer_mode = ConsumerMode::Paused;
 
             let notification = match self.consumer.pause() {
@@ -501,12 +592,14 @@ impl App {
                 }
             };
 
-            self.state.notification_history.push_front(notification);
+            self.state.push_notification(notification);
         }
     }
     /// Handles the [`AppEvent::ResumeProcessing`] event emitted by the [`EventBus`].
     fn on_resume_processing(&mut self) {
         if self.state.consumer_mode == ConsumerMode::Paused {
+            tracing::debug!("resuming Kafka consumer");
+
             self.state.consumer_mode = ConsumerMode::Processing;
 
             let notification = match self.consumer.resume() {
@@ -523,20 +616,23 @@ impl App {
                 }
             };
 
-            self.state.notification_history.push_front(notification);
+            self.state.push_notification(notification);
         }
     }
     /// Handles the [`AppEvent::SelectNextWidget`] event emitted by the [`EventBus`].
     fn on_select_next_widget(&mut self) {
+        tracing::debug!("cycling focus to next widget");
         self.state.cycle_next_widget();
     }
     /// Handles the [`AppEvent::ScrollRecordValueDown`] event emitted by the [`EventBus`].
     fn on_scroll_record_value_down(&mut self) {
+        tracing::debug!("scroll record value down");
         self.state
             .scroll_record_value_down(self.config.scroll_factor);
     }
     /// Handles the [`AppEvent::ScrollRecordValueUp`] event emitted by the [`EventBus`].
     fn on_scroll_record_value_up(&mut self) {
+        tracing::debug!("scroll record value up");
         self.state.scroll_record_value_up(self.config.scroll_factor);
     }
     /// Handles the [`AppEvent::Quit`] event emitted by the [`EventBus`].
@@ -546,6 +642,8 @@ impl App {
     }
     /// Handles the [`AppEvent::SelectScreen`] event emitted by the [`EventBus`].
     fn on_select_screen(&mut self, screen: Screen) {
+        tracing::debug!("select screen: {:?}", screen);
+
         self.state.screen = screen;
 
         match self.state.screen {
@@ -556,6 +654,26 @@ impl App {
                 .selected_widget
                 .set(SelectableWidget::NotificationHistoryList),
         }
+    }
+    /// Handles the [`AppEvent::ScrollNotificationHistoryTop`] event emitted by the [`EventBus`].
+    fn on_scroll_notification_history_top(&mut self) {
+        tracing::debug!("scroll notification history list to top");
+        self.state.scroll_notification_history_list_top();
+    }
+    /// Handles the [`AppEvent::ScrollNotificationHistoryUp`] event emitted by the [`EventBus`].
+    fn on_scroll_notification_history_up(&mut self) {
+        tracing::debug!("scroll notification history list up");
+        self.state.scroll_notification_history_list_up(1);
+    }
+    /// Handles the [`AppEvent::ScrollNotificationHistoryUp`] event emitted by the [`EventBus`].
+    fn on_scroll_notification_history_down(&mut self) {
+        tracing::debug!("scroll notification history list down");
+        self.state.scroll_notification_history_list_down(1);
+    }
+    /// Handles the [`AppEvent::ScrollNotificationHistoryBottom`] event emitted by the [`EventBus`].
+    fn on_scroll_notification_history_bottom(&mut self) {
+        tracing::debug!("scroll notification history list to bottom");
+        self.state.scroll_notification_history_list_bottom();
     }
 }
 
