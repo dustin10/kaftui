@@ -53,7 +53,7 @@ const KEY_BINDING_EXPORT: &str = "(e) export";
 
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
 /// the application is when viewing the consume topic screen.
-const STANDARD_KEY_BINDINGS: [&str; 2] = [KEY_BINDING_QUIT, KEY_BINDING_CHANGE_FOCUS];
+const CONSUME_TOPIC_STANDARD_KEY_BINDINGS: [&str; 2] = [KEY_BINDING_QUIT, KEY_BINDING_CHANGE_FOCUS];
 
 /// Key bindings that are displayed to the user in the footer when viewing the notification history
 /// screen.
@@ -498,7 +498,7 @@ fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
     ))
     .style(stats_color);
 
-    let mut key_bindings = Vec::from(STANDARD_KEY_BINDINGS);
+    let mut key_bindings = Vec::from(CONSUME_TOPIC_STANDARD_KEY_BINDINGS);
 
     match app.state.selected_widget.get() {
         SelectableWidget::RecordList => {

@@ -21,7 +21,11 @@ use tokio::sync::mpsc::Receiver;
 /// Maximum number of notifications that will be stored in memory to be displayed in the
 /// notification history table. Once the limit is reacahed, as new notifications are added the
 /// older ones are removed.
-const NOTIFICATION_HISTORY_MAX_LEN: usize = 1024;
+const NOTIFICATION_HISTORY_MAX_LEN: usize = 512;
+
+/// Number of notification seconds after a [`Notification`] is created that it should not be
+/// eligible to visible to the user any longer.
+const NOTIFICATION_EXPIRATION_SECS: i64 = 3;
 
 /// Enumeration of the widgets that the user can select.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -90,7 +94,7 @@ impl Notification {
     }
     /// Determines if the notification has expired and should no longer be visible.
     pub fn is_expired(&self) -> bool {
-        (self.created + Duration::seconds(3)) < Utc::now()
+        (self.created + Duration::seconds(NOTIFICATION_EXPIRATION_SECS)) < Utc::now()
     }
 }
 
@@ -521,6 +525,7 @@ impl App {
     }
     /// Handles the consumer started event emitted by the [`EventBus`].
     fn on_consumer_started(&mut self) {
+        tracing::debug!("consumer started");
         self.state.screen = Screen::ConsumeTopic;
     }
     /// Invoked when a new [`Record`] is received on the consumer channel.
