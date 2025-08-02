@@ -168,7 +168,7 @@ impl RecordState {
             return;
         }
 
-        self.list_state.select(Some(0));
+        self.list_state.select_first();
         self.list_scroll_state = self.list_scroll_state.position(0);
 
         self.selected = self.records.front().cloned();
@@ -181,23 +181,12 @@ impl RecordState {
             return;
         }
 
-        if let Some(i) = self.list_state.selected().as_ref() {
-            if *i == 0 {
-                return;
-            }
+        self.list_state.select_previous();
 
-            let prev = *i - 1;
+        let idx = self.list_state.selected().expect("record selected");
 
-            self.list_state.select(Some(prev));
-            self.list_scroll_state = self.list_scroll_state.position(prev);
-
-            self.selected = self.records.get(prev).cloned();
-        } else {
-            self.list_state.select(Some(0));
-            self.list_scroll_state = self.list_scroll_state.position(0);
-
-            self.selected = self.records.front().cloned();
-        }
+        self.list_scroll_state = self.list_scroll_state.position(idx);
+        self.selected = self.records.get(idx).cloned();
 
         self.value_scroll = (0, 0);
     }
@@ -207,23 +196,18 @@ impl RecordState {
             return;
         }
 
-        if let Some(i) = self.list_state.selected().as_ref() {
-            if *i == self.records.len() - 1 {
+        if let Some(curr_idx) = self.list_state.selected() {
+            if curr_idx == self.records.len() - 1 {
                 return;
             }
-
-            let next = *i + 1;
-
-            self.list_state.select(Some(next));
-            self.list_scroll_state = self.list_scroll_state.position(next);
-
-            self.selected = self.records.get(next).cloned();
-        } else {
-            self.list_state.select(Some(0));
-            self.list_scroll_state = self.list_scroll_state.position(0);
-
-            self.selected = self.records.front().cloned();
         }
+
+        self.list_state.select_next();
+
+        let idx = self.list_state.selected().expect("record selected");
+
+        self.list_scroll_state = self.list_scroll_state.position(idx);
+        self.selected = self.records.get(idx).cloned();
 
         self.value_scroll = (0, 0);
     }
@@ -233,11 +217,11 @@ impl RecordState {
             return;
         }
 
-        let last_idx = self.records.len() - 1;
+        self.list_state.select_last();
 
-        self.list_state.select(Some(last_idx));
-        self.list_scroll_state = self.list_scroll_state.position(last_idx);
+        let idx = self.list_state.selected().expect("record selected");
 
+        self.list_scroll_state = self.list_scroll_state.position(idx);
         self.selected = self.records.back().cloned();
 
         self.value_scroll = (0, 0);
@@ -279,48 +263,38 @@ impl NotificationState {
     }
     /// Moves the notification history scroll state to the top.
     fn scroll_list_top(&mut self) {
-        self.list_state.select(Some(0));
+        self.list_state.select_first();
         self.list_scroll_state = self.list_scroll_state.position(0);
     }
     /// Moves the record value scroll state up by `n` number of lines.
-    fn scroll_list_up(&mut self, n: usize) {
+    fn scroll_list_up(&mut self) {
         if self.history.is_empty() {
             return;
         }
 
-        if let Some(i) = self.list_state.selected().as_ref() {
-            if *i < n {
-                return;
-            }
+        self.list_state.select_previous();
 
-            let prev = *i - n;
+        let idx = self.list_state.selected().expect("notification selected");
 
-            self.list_state.select(Some(prev));
-            self.list_scroll_state = self.list_scroll_state.position(prev);
-        } else {
-            self.list_state.select(Some(0));
-            self.list_scroll_state = self.list_scroll_state.position(0);
-        }
+        self.list_scroll_state = self.list_scroll_state.position(idx);
     }
     /// Moves the notification history scroll state down by `n` number of lines.
-    fn scroll_list_down(&mut self, n: usize) {
+    fn scroll_list_down(&mut self) {
         if self.history.is_empty() {
             return;
         }
 
-        if let Some(i) = self.list_state.selected().as_ref() {
-            if *i + n > self.history.len() - 1 {
+        if let Some(curr_idx) = self.list_state.selected() {
+            if curr_idx == self.history.len() - 1 {
                 return;
             }
-
-            let next = *i + n;
-
-            self.list_state.select(Some(next));
-            self.list_scroll_state = self.list_scroll_state.position(next);
-        } else {
-            self.list_state.select(Some(0));
-            self.list_scroll_state = self.list_scroll_state.position(0);
         }
+
+        self.list_state.select_next();
+
+        let idx = self.list_state.selected().expect("notification selected");
+
+        self.list_scroll_state = self.list_scroll_state.position(idx);
     }
     /// Moves the notification history scroll state to the bottom.
     fn scroll_list_bottom(&mut self) {
@@ -721,12 +695,12 @@ impl App {
     /// Handles the [`AppEvent::ScrollNotificationHistoryUp`] event emitted by the [`EventBus`].
     fn on_scroll_notification_history_up(&mut self) {
         tracing::debug!("scroll notification history list up");
-        self.notification_state.scroll_list_up(1);
+        self.notification_state.scroll_list_up();
     }
     /// Handles the [`AppEvent::ScrollNotificationHistoryUp`] event emitted by the [`EventBus`].
     fn on_scroll_notification_history_down(&mut self) {
         tracing::debug!("scroll notification history list down");
-        self.notification_state.scroll_list_down(1);
+        self.notification_state.scroll_list_down();
     }
     /// Handles the [`AppEvent::ScrollNotificationHistoryBottom`] event emitted by the [`EventBus`].
     fn on_scroll_notification_history_bottom(&mut self) {
