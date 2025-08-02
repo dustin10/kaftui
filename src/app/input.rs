@@ -7,7 +7,7 @@ use chrono::{DateTime, Duration, Utc};
 use crossterm::event::{KeyCode, KeyEvent};
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
-/// Holds data relevant to a key press that is was buffered because it did not directly map to an
+/// Holds data relevant to a key press that was buffered because it did not directly map to an
 /// action. This is used for a simple implementation of vim-style key bindings, e.g. `gg` is bound
 /// to selecting the first record in the list.
 #[derive(Debug)]
