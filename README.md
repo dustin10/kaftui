@@ -80,18 +80,24 @@ screen that is currently being viewed within the application.
 ## Filtering
 
 A filter can be specified using the `--filter` argument or in a profile, see below, to filter out any records consumed
-from the Kafka topic that the user may not want to see. For example, only records for a specific tenant in the system
-is relevant.
+from the Kafka topic that the user may not want to see. A filter is a JSONPath expression that is used to query the
+filterable JSON representation of the Kafka record.
 
-A filter is a JSONPath expression that is used to query the filterable JSON representation of the Kafka record. Below
-are some filtering examples.
+For example, the user may only want to view records for a specific tenant's data in the topic. If the `tenantId` is
+specified as a header then the following command would accomplish this.
+
+```sh
+# only view records where tenantId header value is 42
+> kaftui --bootstrap-servers localhost:9092 --topic orders --filter "$.headers[?(@.tenantId=='42')]"
+```
+
+As another example, the user may only want to view records that are on partition `0` of the topic. One way to do this
+would be to use the `--filter` argument as shown below. A better way to accomplish this would be to use the `--partitions`
+argument instead. See the [CLI Arguments](#CLI-Arguments) section for more details on that argument.
 
 ```sh
 # only view records from partition 0
 > kaftui --bootstrap-servers localhost:9092 --topic orders --filter "$.info[?(@.partition=='0')]"
-
-# only view records where tenantId header value is 42
-> kaftui --bootstrap-servers localhost:9092 --topic orders --filter "$.headers[?(@.tenantId=='42')]"
 ```
 
 ## Profiles

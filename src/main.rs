@@ -26,7 +26,7 @@ struct Args {
     /// CSV of the partition numbers that the consumer should be assigned. This argument is used to
     /// restrict the set of partitions that will be consumed. If not specified, all partitions will
     /// be assigned.
-    #[arg(short)]
+    #[arg(long)]
     partitions: Option<String>,
     /// Id of the consumer group that the application will use when consuming records from the Kafka
     /// topic. By default a group id will be generated from the hostname of the machine that is
