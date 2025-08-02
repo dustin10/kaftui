@@ -139,7 +139,7 @@ fn render_consume_topic(app: &mut App, frame: &mut Frame) {
 
     render_record_list(app, frame, left_panel);
 
-    if app.state.selected.is_some() {
+    if app.record_state.is_record_selected() {
         render_record_details(app, frame, right_panel);
     } else {
         render_record_empty(app, frame, right_panel);
@@ -184,7 +184,7 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(menu_items, left_panel);
     frame.render_widget(outer, area);
 
-    if let Some(notification) = app.state.notification_history.front() {
+    if let Some(notification) = app.notification_state.history.front() {
         if !notification.is_expired() {
             let notification_color = match notification.status {
                 NotificationStatus::Success => {
@@ -212,7 +212,8 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
 
 /// Renders the table that contains the [`Record`]s that have been consumed from the topic.
 fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
-    let state = &mut app.state;
+    let app_state = &mut app.state;
+    let record_state = &mut app.record_state;
 
     let label_color = Color::from_str(&app.config.theme.label_color).expect("valid RGB color");
 
@@ -227,7 +228,7 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
         .border_style(border_color)
         .padding(Padding::new(1, 1, 0, 0));
 
-    if state.selected_widget.get() == SelectableWidget::RecordList {
+    if app_state.selected_widget.get() == SelectableWidget::RecordList {
         let selected_panel_color = Color::from_str(&app.config.theme.selected_panel_border_color)
             .expect("valid RGB color");
 
@@ -236,7 +237,7 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
             .border_style(selected_panel_color);
     }
 
-    let records_rows = state.records.iter().map(|r| {
+    let records_rows = record_state.records.iter().map(|r| {
         let offset = r.offset.to_string();
 
         let key = r
@@ -271,12 +272,12 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .block(record_list_block);
 
-    frame.render_stateful_widget(records_table, area, &mut state.record_list_state);
+    frame.render_stateful_widget(records_table, area, &mut record_state.list_state);
 
-    if state.selected.is_some() {
-        state.record_list_scroll_state = state
-            .record_list_scroll_state
-            .content_length(state.records.len());
+    if record_state.selected.is_some() {
+        record_state.list_scroll_state = record_state
+            .list_scroll_state
+            .content_length(record_state.records.len());
 
         let scrollbar = Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
@@ -289,7 +290,7 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
                 horizontal: 1,
                 vertical: 1,
             }),
-            &mut state.record_list_scroll_state,
+            &mut record_state.list_scroll_state,
         );
     }
 }
@@ -297,8 +298,12 @@ fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
 /// Renders the record details panel when there is an active [`Record`] set.
 fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
     let state = &app.state;
+    let record_state = &app.record_state;
 
-    let record = state.selected.clone().expect("selected record exists");
+    let record = record_state
+        .selected
+        .clone()
+        .expect("selected record exists");
 
     let border_color =
         Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
@@ -404,7 +409,7 @@ fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
         .block(value_block)
         .wrap(Wrap { trim: false })
         .style(value_color)
-        .scroll(state.record_value_scroll);
+        .scroll(record_state.value_scroll);
 
     frame.render_widget(info_table, info_slice);
     frame.render_widget(headers_table, headers_slice);
@@ -485,7 +490,7 @@ fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     let stats = Paragraph::new(format!(
         "Topic: {} | Consumed: {} | {:?}{}",
-        app.config.topic, app.state.total_consumed, app.state.consumer_mode, filter_text,
+        app.config.topic, app.record_state.total_consumed, app.state.consumer_mode, filter_text,
     ))
     .style(stats_color);
 
@@ -508,7 +513,7 @@ fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     key_bindings.push(consumer_mode_key_binding);
 
-    if app.state.selected.is_some() {
+    if app.record_state.is_record_selected() {
         key_bindings.push(KEY_BINDING_EXPORT);
     }
 
@@ -545,6 +550,8 @@ fn render_notification_history(app: &mut App, frame: &mut Frame) {
 
 /// Renders the notification history table when the notification history screen is active.
 fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rect) {
+    let notification_state = &mut app.notification_state;
+
     let border_color =
         Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
@@ -573,9 +580,8 @@ fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rec
             .border_style(selected_panel_color);
     }
 
-    let table_rows: Vec<Row> = app
-        .state
-        .notification_history
+    let table_rows: Vec<Row> = notification_state
+        .history
         .iter()
         .map(|n| {
             let timestamp = n.created.to_string();
@@ -610,12 +616,11 @@ fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rec
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .block(table_block);
 
-    frame.render_stateful_widget(table, area, &mut app.state.notification_history_state);
+    frame.render_stateful_widget(table, area, &mut notification_state.list_state);
 
-    app.state.notification_history_scroll_state = app
-        .state
-        .notification_history_scroll_state
-        .content_length(app.state.notification_history.len());
+    notification_state.list_scroll_state = notification_state
+        .list_scroll_state
+        .content_length(notification_state.history.len());
 
     let scrollbar = Scrollbar::default()
         .orientation(ScrollbarOrientation::VerticalRight)
@@ -628,7 +633,7 @@ fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rec
             horizontal: 1,
             vertical: 1,
         }),
-        &mut app.state.notification_history_scroll_state,
+        &mut notification_state.list_scroll_state,
     );
 }
 
@@ -657,7 +662,7 @@ fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) 
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
-    let total = Paragraph::new(format!("Total: {}", app.state.total_notifications))
+    let total = Paragraph::new(format!("Total: {}", app.notification_state.total))
         .style(status_text_processing_color);
 
     let key_bindings = Paragraph::new(NOTIFICATION_HISTORY_KEY_BINDINGS.join(" | "))
