@@ -30,23 +30,26 @@ struct ExportedRecord {
     timestamp: DateTime<Utc>,
 }
 
-impl From<Record> for ExportedRecord {
-    /// Converts the instance of a [`Record`] to an [`ExportedRecord`].
-    fn from(record: Record) -> Self {
-        let json_value = record.value.and_then(|v| match serde_json::from_str(&v) {
-            Ok(json) => Some(json),
-            Err(e) => {
-                tracing::error!("failed to serialize record value to JSON: {}", e);
-                None
-            }
-        });
+impl From<&Record> for ExportedRecord {
+    /// Converts a reference to a [`Record`] to an [`ExportedRecord`].
+    fn from(record: &Record) -> Self {
+        let json_value = record
+            .value
+            .as_ref()
+            .and_then(|v| match serde_json::from_str(v) {
+                Ok(json) => Some(json),
+                Err(e) => {
+                    tracing::error!("failed to serialize record value to JSON: {}", e);
+                    None
+                }
+            });
 
         Self {
-            topic: record.topic,
+            topic: record.topic.clone(),
             partition: record.partition,
             offset: record.offset,
-            key: record.key,
-            headers: record.headers,
+            key: record.key.clone(),
+            headers: record.headers.clone(),
             value: json_value,
             timestamp: record.timestamp,
         }
@@ -68,7 +71,7 @@ impl Exporter {
         Self { base_dir }
     }
     /// Exports the given [`Record`] to the file system in JSON format.
-    pub fn export_record(&self, record: Record) -> anyhow::Result<String> {
+    pub fn export_record(&self, record: &Record) -> anyhow::Result<String> {
         let exported_record = ExportedRecord::from(record);
 
         let json =

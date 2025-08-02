@@ -623,10 +623,9 @@ impl App {
     }
     /// Handles the [`AppEvent::ExportSelectedRecord`] event emitted by the [`EventBus`].
     fn on_export_selected_record(&mut self) {
-        if let Some(record) = self.record_state.selected.clone() {
+        if let Some(record) = self.record_state.selected.as_ref() {
             tracing::debug!("exporting selected record");
 
-            // TODO: pass by ref instead?
             let notification = match self.exporter.export_record(record) {
                 Ok(file_path) => Notification::success(
                     "Record exported successfully",
