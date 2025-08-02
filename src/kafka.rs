@@ -23,6 +23,60 @@ pub enum ConsumerMode {
     Processing,
 }
 
+/// A tuple struct that contains a partition and an offset.
+#[derive(Debug)]
+pub struct PartitionOffset {
+    /// Partition number.
+    partition: i32,
+    /// Offset on the partition.
+    offset: i64,
+}
+
+impl From<&str> for PartitionOffset {
+    /// Converts a string slice to a [`PartitionOffset`].
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string is not of the correct format.
+    fn from(value: &str) -> Self {
+        let mut pair_itr = value.split(":");
+
+        let partition = pair_itr
+            .next()
+            .map(|p| p.parse::<i32>().expect("valid partition value"))
+            .expect("partition value set");
+
+        let offset = pair_itr
+            .next()
+            .map(|o| o.parse::<i64>().expect("valid offset value"))
+            .expect("offset value set");
+
+        Self { partition, offset }
+    }
+}
+
+impl From<&String> for PartitionOffset {
+    /// Converts a reference to a [`String`] to a [`PartitionOffset`].
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string is not of the correct format.
+    fn from(value: &String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+impl From<String> for PartitionOffset {
+    /// Converts a [`String`] to a [`PartitionOffset`].
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string is not of the correct format.
+    fn from(value: String) -> Self {
+        Self::from(&value)
+    }
+}
+
 /// Contains the data in the record consumed from a Kafka topic.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,7 +187,7 @@ impl Consumer {
         &self,
         topic: String,
         mut partitions: Vec<i32>,
-        seek_to: Vec<(i32, i64)>,
+        seek_to: Vec<PartitionOffset>,
         filter: Option<String>,
     ) -> anyhow::Result<()> {
         if partitions.is_empty() {
@@ -156,9 +210,9 @@ impl Consumer {
         let mut assignments_list = TopicPartitionList::with_capacity(partitions.len());
 
         for partition in partitions.iter() {
-            match seek_to.iter().find(|(p, _)| *p == *partition) {
-                Some(s) => assignments_list
-                    .add_partition_offset(topic.as_str(), *partition, Offset::Offset(s.1))
+            match seek_to.iter().find(|po| po.partition == *partition) {
+                Some(po) => assignments_list
+                    .add_partition_offset(topic.as_str(), *partition, Offset::Offset(po.offset))
                     .context("add partition offset")?,
                 None => {
                     let _ = assignments_list.add_partition(topic.as_str(), *partition);

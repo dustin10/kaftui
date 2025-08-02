@@ -5,7 +5,7 @@ pub mod input;
 use crate::{
     app::{config::Config, export::Exporter, input::InputMapper},
     event::{AppEvent, Event, EventBus},
-    kafka::{Consumer, ConsumerMode, Record},
+    kafka::{Consumer, ConsumerMode, PartitionOffset, Record},
 };
 
 use anyhow::Context;
@@ -535,30 +535,11 @@ impl App {
             })
             .unwrap_or_default();
 
-        // TODO: clean this up
-        let seek_to: Vec<(i32, i64)> = self
+        let seek_to = self
             .config
             .seek_to
             .as_ref()
-            .map(|csv| {
-                csv.split(",")
-                    .map(|pair| {
-                        let mut pair_itr = pair.split(":");
-
-                        let p = pair_itr
-                            .next()
-                            .map(|p| p.parse::<i32>().expect("valid partition value"))
-                            .expect("partition value set");
-
-                        let o = pair_itr
-                            .next()
-                            .map(|o| o.parse::<i64>().expect("valid offset value"))
-                            .expect("offset value set");
-
-                        (p, o)
-                    })
-                    .collect()
-            })
+            .map(|csv| csv.split(",").map(Into::into).collect())
             .unwrap_or_default();
 
         let start_consumer_task = StartConsumerTask {
@@ -764,7 +745,7 @@ struct StartConsumerTask {
     partitions: Vec<i32>,
     /// Vec of partition and offset pairs that the Kafka consumer should seek to before starting to
     /// consume records.
-    seek_to: Vec<(i32, i64)>,
+    seek_to: Vec<PartitionOffset>,
     /// JSONPath filter to apply to the consumed records.
     filter: Option<String>,
     /// [`EventBus`] on which the results of the startup task will be published.
