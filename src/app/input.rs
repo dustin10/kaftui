@@ -1,11 +1,11 @@
 use crate::{
     app::{Screen, SelectableWidget},
-    event::{AppEvent, EventBus},
+    event::AppEvent,
 };
 
 use chrono::{DateTime, Duration, Utc};
 use crossterm::event::{KeyCode, KeyEvent};
-use std::{cell::Cell, rc::Rc, sync::Arc};
+use std::{cell::Cell, rc::Rc};
 
 /// Holds data relevant to a key press that was buffered because it did not directly map to an
 /// action. This is used for a simple implementation of vim-style key bindings, e.g. `gg` is bound
@@ -38,146 +38,79 @@ impl BufferedKeyPress {
     }
 }
 
-/// The [`InputDispatcher`] is responsible for mapping key presses that are input by the user to
-/// actions published on the [`EventBus`].
+/// The [`InputMapper`] is responsible for mapping key presses that are input by the user to
+/// [`AppEvent`]s to publish on the [`EventBus`].
 #[derive(Debug)]
-pub struct InputDispatcher {
-    /// Emits events to be handled by the application.
-    event_bus: Arc<EventBus>,
+pub struct InputMapper {
     /// Stores the widget that the user currently has selected.
     selected_widget: Rc<Cell<SelectableWidget>>,
     /// If available, contains the last key pressed that did not map to an active key binding.
     buffered_key_press: Option<BufferedKeyPress>,
 }
 
-impl InputDispatcher {
-    /// Creates a new [`InputDispatcher`] with the specified dependencies.
-    pub fn new(event_bus: Arc<EventBus>, selected_widget: Rc<Cell<SelectableWidget>>) -> Self {
+impl InputMapper {
+    /// Creates a new [`InputMapper`] with the specified dependencies.
+    pub fn new(selected_widget: Rc<Cell<SelectableWidget>>) -> Self {
         Self {
-            event_bus,
             selected_widget,
             buffered_key_press: None,
         }
     }
-    /// Handles key events emitted by the [`EventBus`].
-    pub async fn on_key_event(&mut self, key_event: KeyEvent) {
+    /// Handles key events emitted by the [`EventBus`]. Returns an [`AppEvent`] if an action was
+    /// mapped for the key press.
+    pub fn on_key_event(&mut self, key_event: KeyEvent) -> Option<AppEvent> {
         match key_event.code {
-            KeyCode::Esc => self.event_bus.send(AppEvent::Quit).await,
-            KeyCode::Tab => self.event_bus.send(AppEvent::SelectNextWidget).await,
+            KeyCode::Esc => Some(AppEvent::Quit),
+            KeyCode::Tab => Some(AppEvent::SelectNextWidget),
             KeyCode::Char(c) => match c {
-                '1' => {
-                    self.event_bus
-                        .send(AppEvent::SelectScreen(Screen::ConsumeTopic))
-                        .await
-                }
-                '2' => {
-                    self.event_bus
-                        .send(AppEvent::SelectScreen(Screen::NotificationHistory))
-                        .await
-                }
+                '1' => Some(AppEvent::SelectScreen(Screen::ConsumeTopic)),
+                '2' => Some(AppEvent::SelectScreen(Screen::NotificationHistory)),
                 _ => {
-                    if self.key_press_on_widget(c).await {
+                    let event = self.key_press_on_widget(c);
+
+                    if event.is_some() {
                         self.buffered_key_press = None;
                     } else {
                         self.buffered_key_press = Some(BufferedKeyPress::new(c));
                     }
+
+                    event
                 }
             },
-            _ => {}
+            _ => None,
         }
     }
-    /// Attempts to map a key press to an action based on the currently active widget. Returns true
-    /// if an action was mapped for the key press, false otherwise.
-    async fn key_press_on_widget(&self, key: char) -> bool {
+    /// Attempts to map a key press to an action based on the currently selected widget.
+    fn key_press_on_widget(&self, key: char) -> Option<AppEvent> {
         let widget = self.selected_widget.get();
 
-        // TODO: something better than returning bool here?
         match widget {
             SelectableWidget::RecordList => match key {
-                'e' => {
-                    self.event_bus.send(AppEvent::ExportSelectedRecord).await;
-                    true
-                }
-                'p' => {
-                    self.event_bus.send(AppEvent::PauseProcessing).await;
-                    true
-                }
-                'r' => {
-                    self.event_bus.send(AppEvent::ResumeProcessing).await;
-                    true
-                }
-                'g' if self.is_key_buffered('g') => {
-                    self.event_bus.send(AppEvent::SelectFirstRecord).await;
-                    true
-                }
-                'j' => {
-                    self.event_bus.send(AppEvent::SelectNextRecord).await;
-                    true
-                }
-                'k' => {
-                    self.event_bus.send(AppEvent::SelectPrevRecord).await;
-                    true
-                }
-                'G' => {
-                    self.event_bus.send(AppEvent::SelectLastRecord).await;
-                    true
-                }
-                _ => false,
+                'e' => Some(AppEvent::ExportSelectedRecord),
+                'p' => Some(AppEvent::PauseProcessing),
+                'r' => Some(AppEvent::ResumeProcessing),
+                'g' if self.is_key_buffered('g') => Some(AppEvent::SelectFirstRecord),
+                'j' => Some(AppEvent::SelectNextRecord),
+                'k' => Some(AppEvent::SelectPrevRecord),
+                'G' => Some(AppEvent::SelectLastRecord),
+                _ => None,
             },
             // TODO: cleanup duplication of e,p and r
             SelectableWidget::RecordValue => match key {
-                'e' => {
-                    self.event_bus.send(AppEvent::ExportSelectedRecord).await;
-                    true
-                }
-                'p' => {
-                    self.event_bus.send(AppEvent::PauseProcessing).await;
-                    true
-                }
-                'r' => {
-                    self.event_bus.send(AppEvent::ResumeProcessing).await;
-                    true
-                }
-                'g' if self.is_key_buffered('g') => {
-                    self.event_bus.send(AppEvent::ScrollRecordValueTop).await;
-                    true
-                }
-                'j' => {
-                    self.event_bus.send(AppEvent::ScrollRecordValueDown).await;
-                    true
-                }
-                'k' => {
-                    self.event_bus.send(AppEvent::ScrollRecordValueUp).await;
-                    true
-                }
-                _ => false,
+                'e' => Some(AppEvent::ExportSelectedRecord),
+                'p' => Some(AppEvent::PauseProcessing),
+                'r' => Some(AppEvent::ResumeProcessing),
+                'g' if self.is_key_buffered('g') => Some(AppEvent::ScrollRecordValueTop),
+                'j' => Some(AppEvent::ScrollRecordValueDown),
+                'k' => Some(AppEvent::ScrollRecordValueUp),
+                _ => None,
             },
             SelectableWidget::NotificationHistoryList => match key {
-                'g' if self.is_key_buffered('g') => {
-                    self.event_bus
-                        .send(AppEvent::ScrollNotificationHistoryTop)
-                        .await;
-                    true
-                }
-                'j' => {
-                    self.event_bus
-                        .send(AppEvent::ScrollNotificationHistoryDown)
-                        .await;
-                    true
-                }
-                'k' => {
-                    self.event_bus
-                        .send(AppEvent::ScrollNotificationHistoryUp)
-                        .await;
-                    true
-                }
-                'G' => {
-                    self.event_bus
-                        .send(AppEvent::ScrollNotificationHistoryBottom)
-                        .await;
-                    true
-                }
-                _ => false,
+                'g' if self.is_key_buffered('g') => Some(AppEvent::ScrollNotificationHistoryTop),
+                'j' => Some(AppEvent::ScrollNotificationHistoryDown),
+                'k' => Some(AppEvent::ScrollNotificationHistoryUp),
+                'G' => Some(AppEvent::ScrollNotificationHistoryBottom),
+                _ => None,
             },
         }
     }

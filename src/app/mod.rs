@@ -3,7 +3,7 @@ pub mod export;
 pub mod input;
 
 use crate::{
-    app::{config::Config, export::Exporter, input::InputDispatcher},
+    app::{config::Config, export::Exporter, input::InputMapper},
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, ConsumerMode, Record},
 };
@@ -394,7 +394,7 @@ pub struct App {
     /// Contains the current state of the notifications.
     pub notification_state: NotificationState,
     /// Maps input from the user to application events published on the [`EventBus`].
-    input_dispatcher: InputDispatcher,
+    input_mapper: InputMapper,
     /// Channel receiver that is used to receive application events that are sent by the
     /// [`EventBus`].
     event_rx: Receiver<Event>,
@@ -441,14 +441,13 @@ impl App {
 
         let state = State::new();
 
-        let input_dispatcher =
-            InputDispatcher::new(Arc::clone(&event_bus), Rc::clone(&state.selected_widget));
+        let input_mapper = InputMapper::new(Rc::clone(&state.selected_widget));
 
         let exporter = Exporter::new(config.export_directory.clone());
 
         Ok(Self {
             config,
-            input_dispatcher,
+            input_mapper,
             state,
             record_state: RecordState::new(max_records),
             notification_state: NotificationState::new(),
@@ -474,7 +473,9 @@ impl App {
                 match event {
                     Event::Crossterm(crossterm_event) => {
                         if let crossterm::event::Event::Key(key_event) = crossterm_event {
-                            self.input_dispatcher.on_key_event(key_event).await
+                            if let Some(app_event) = self.input_mapper.on_key_event(key_event) {
+                                self.event_bus.send(app_event).await;
+                            }
                         }
                     }
                     Event::App(app_event) => match app_event {
