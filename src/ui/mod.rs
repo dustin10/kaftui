@@ -1,22 +1,22 @@
+mod notifications;
+mod records;
+
+pub use crate::ui::notifications::{Notifications, NotificationsConfig};
+pub use crate::ui::records::{Records, RecordsConfig};
+
 use crate::{
-    app::{App, NotificationStatus, Screen, SelectableWidget},
-    kafka::ConsumerMode,
+    app::{App, BufferedKeyPress, NotificationStatus},
+    event::AppEvent,
 };
 
+use crossterm::event::KeyEvent;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Margin, Rect},
-    style::{Color, Modifier, Style, Stylize},
-    text::ToSpan,
-    widgets::{
-        Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        Table, Tabs, Wrap,
-    },
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style, Stylize},
+    widgets::{Block, Borders, Padding, Paragraph, Tabs},
     Frame,
 };
-use std::{collections::BTreeMap, str::FromStr};
-
-/// Value displayed for the partition key field when one is not present in the Kafka record.
-const EMPTY_PARTITION_KEY: &str = "<empty>";
+use std::str::FromStr;
 
 /// Text displayed to the user in the footer for the quit key binding.
 const KEY_BINDING_QUIT: &str = "(esc) quit";
@@ -42,41 +42,64 @@ const KEY_BINDING_PREV: &str = "(k) prev";
 /// Text displayed to the user in the footer for the move to bottom key binding.
 const KEY_BINDING_BOTTOM: &str = "(G) bottom";
 
-/// Text displayed to the user in the footer for the pause key binding.
-const KEY_BINDING_PAUSE: &str = "(p) pause";
-
-/// Text displayed to the user in the footer for the resume key binding.
-const KEY_BINDING_RESUME: &str = "(r) resume";
-
-/// Text displayed to the user in the footer for the export key binding.
-const KEY_BINDING_EXPORT: &str = "(e) export";
-
-/// Key bindings that are displayed to the user in the footer no matter what the current state of
-/// the application is when viewing the consume topic screen.
-const CONSUME_TOPIC_STANDARD_KEY_BINDINGS: [&str; 2] = [KEY_BINDING_QUIT, KEY_BINDING_CHANGE_FOCUS];
-
-/// Key bindings that are displayed to the user in the footer when viewing the notification history
-/// screen.
-const NOTIFICATION_HISTORY_KEY_BINDINGS: [&str; 4] = [
-    KEY_BINDING_TOP,
-    KEY_BINDING_SCROLL_DOWN,
-    KEY_BINDING_SCROLL_UP,
-    KEY_BINDING_BOTTOM,
-];
+/// A [`Component`] represents a top-level screen in the application that the user can view and
+/// interact with. Each [`Component`] that is created and added to the [`App`] can be selected by
+/// the user using the menu items.
+pub trait Component {
+    /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
+    fn name(&self) -> &'static str;
+    /// Returns a [`Paragraph`] that will be used to render the current status line.
+    fn status_line(&self) -> Paragraph;
+    /// Returns a [`Paragraph`] that will be used to render the active key bindings.
+    fn key_bindings(&self) -> Paragraph;
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
+    /// for processing.
+    fn map_key_event(
+        &self,
+        event: KeyEvent,
+        buffered: Option<&BufferedKeyPress>,
+    ) -> Option<AppEvent>;
+    /// Allows the component to handle any [`AppEvent`] that was not handled by the main
+    /// application.
+    fn on_app_event(&mut self, event: &AppEvent);
+    /// Renders the component-specific widgets to the terminal.
+    fn render(&mut self, frame: &mut Frame, area: Rect);
+}
 
 impl App {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {
-        match self.state.screen {
-            Screen::Initialize => render_initialize(self, frame),
-            Screen::ConsumeTopic => render_consume_topic(self, frame),
-            Screen::NotificationHistory => render_notification_history(self, frame),
+        if self.state.initializing {
+            render_initialize(self, frame);
+        } else {
+            let full_screen = frame.area();
+
+            let outer = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(3),
+                    Constraint::Min(1),
+                    Constraint::Length(3),
+                ])
+                .split(full_screen);
+
+            let header_area = outer[0];
+            let component_area = outer[1];
+            let footer_area = outer[2];
+
+            render_header(self, frame, header_area);
+
+            let mut component = self.state.active_component.borrow_mut();
+            component.render(frame, component_area);
+
+            let status_line = component.status_line();
+            let key_bindings = component.key_bindings();
+
+            render_footer(self, status_line, key_bindings, frame, footer_area);
         }
     }
 }
-
-// TODO: move away from parsing the string to Color on every draw by parsing once at startup
 
 /// Renders the UI to the terminal for the [`Screen::Initialize`] screen.
 fn render_initialize(app: &App, frame: &mut Frame) {
@@ -110,44 +133,6 @@ fn render_initialize(app: &App, frame: &mut Frame) {
     frame.render_widget(no_record_text, initializing_text_area);
 }
 
-/// Renders the UI to the terminal for the [`Screen::ConsumeTopic`] screen.
-fn render_consume_topic(app: &mut App, frame: &mut Frame) {
-    let full_screen = frame.area();
-
-    let outer = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(1),
-            Constraint::Length(3),
-        ])
-        .split(full_screen);
-
-    let header = outer[0];
-    let view_record = outer[1];
-    let footer = outer[2];
-
-    let view_record_inner = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(view_record);
-
-    let left_panel = view_record_inner[0];
-    let right_panel = view_record_inner[1];
-
-    render_header(app, frame, header);
-
-    render_record_list(app, frame, left_panel);
-
-    if app.record_state.is_record_selected() {
-        render_record_details(app, frame, right_panel);
-    } else {
-        render_record_empty(app, frame, right_panel);
-    }
-
-    render_consume_topic_footer(app, frame, footer);
-}
-
 /// Renders the header panel that contains the key bindings.
 fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     let border_color =
@@ -173,18 +158,33 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
-    let selected_menu_item = (app.state.screen as usize) - 1;
+    let mut selected_menu_item = 0;
 
-    let menu_items = Tabs::new(["Records [1]", "Notifications [2]"])
+    let mut menu_items = Vec::new();
+    for i in 0..app.components.len() {
+        let component = app.components.get(i).expect("valid index");
+
+        if component
+            .borrow()
+            .name()
+            .eq(app.state.active_component.borrow().name())
+        {
+            selected_menu_item = i;
+        }
+
+        menu_items.push(format!("{} [{}]", component.borrow().name(), i + 1));
+    }
+
+    let menu = Tabs::new(menu_items)
         .divider("|")
         .style(menu_items_color)
         .highlight_style(Style::default().underlined().fg(selected_menu_item_color))
         .select(selected_menu_item);
 
-    frame.render_widget(menu_items, left_panel);
+    frame.render_widget(menu, left_panel);
     frame.render_widget(outer, area);
 
-    if let Some(notification) = app.notification_state.history.front() {
+    if let Some(notification) = app.state.notification_history.borrow().front() {
         if !notification.is_expired() {
             let notification_color = match notification.status {
                 NotificationStatus::Success => {
@@ -210,257 +210,10 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     }
 }
 
-/// Renders the table that contains the [`Record`]s that have been consumed from the topic.
-fn render_record_list(app: &mut App, frame: &mut Frame, area: Rect) {
-    let app_state = &mut app.state;
-    let record_state = &mut app.record_state;
-
-    let label_color = Color::from_str(&app.config.theme.label_color).expect("valid RGB color");
-
+/// Renders the footer widgets using the status and key bindings from the active [`Component`].
+fn render_footer(app: &App, status: Paragraph, keys: Paragraph, frame: &mut Frame, area: Rect) {
     let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
-
-    let record_list_color =
-        Color::from_str(&app.config.theme.record_list_text_color).expect("valid RGB color");
-
-    let mut record_list_block = Block::bordered()
-        .title(" Records ")
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
-
-    if app_state.selected_widget.get() == SelectableWidget::RecordList {
-        let selected_panel_color = Color::from_str(&app.config.theme.selected_panel_border_color)
-            .expect("valid RGB color");
-
-        record_list_block = record_list_block
-            .border_type(BorderType::Thick)
-            .border_style(selected_panel_color);
-    }
-
-    let records_rows = record_state.records.iter().map(|r| {
-        let offset = r.offset.to_string();
-
-        let key = r
-            .key
-            .clone()
-            .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
-
-        let partition = r.partition.to_string();
-
-        let timestamp = r.timestamp.to_string();
-
-        Row::new([partition, offset, key, timestamp])
-    });
-
-    let records_table = Table::new(
-        records_rows,
-        [
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-            Constraint::Fill(6),
-            Constraint::Fill(2),
-        ],
-    )
-    .column_spacing(1)
-    .header(Row::new([
-        "Partition".bold().style(label_color),
-        "Offset".bold().style(label_color),
-        "Key".bold().style(label_color),
-        "Timestamp".bold().style(label_color),
-    ]))
-    .style(record_list_color)
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-    .block(record_list_block);
-
-    frame.render_stateful_widget(records_table, area, &mut record_state.list_state);
-
-    if record_state.selected.is_some() {
-        record_state.list_scroll_state = record_state
-            .list_scroll_state
-            .content_length(record_state.records.len());
-
-        let scrollbar = Scrollbar::default()
-            .orientation(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None)
-            .end_symbol(None);
-
-        frame.render_stateful_widget(
-            scrollbar,
-            area.inner(Margin {
-                horizontal: 1,
-                vertical: 1,
-            }),
-            &mut record_state.list_scroll_state,
-        );
-    }
-}
-
-/// Renders the record details panel when there is an active [`Record`] set.
-fn render_record_details(app: &App, frame: &mut Frame, area: Rect) {
-    let state = &app.state;
-    let record_state = &app.record_state;
-
-    let record = record_state
-        .selected
-        .clone()
-        .expect("selected record exists");
-
-    let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
-
-    let label_color = Color::from_str(&app.config.theme.label_color).expect("valid RGB color");
-
-    let layout_slices = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Fill(1),
-            Constraint::Fill(3),
-            Constraint::Fill(7),
-        ])
-        .split(area);
-
-    let info_slice = layout_slices[0];
-    let headers_slice = layout_slices[1];
-    let value_slice = layout_slices[2];
-
-    let info_block = Block::bordered()
-        .title(" Info ")
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
-
-    let key_value = record
-        .key
-        .unwrap_or_else(|| String::from(EMPTY_PARTITION_KEY));
-
-    let info_color =
-        Color::from_str(&app.config.theme.record_info_text_color).expect("valid RGB color");
-
-    let info_rows = vec![
-        Row::new([
-            "Partition".bold().style(label_color),
-            record.partition.to_span(),
-        ]),
-        Row::new(["Offset".bold().style(label_color), record.offset.to_span()]),
-        Row::new(["Key".bold().style(label_color), key_value.to_span()]),
-        Row::new([
-            "Timestamp".bold().style(label_color),
-            record.timestamp.to_span(),
-        ]),
-    ];
-
-    let info_table = Table::new(info_rows, [Constraint::Fill(1), Constraint::Fill(9)])
-        .column_spacing(1)
-        .style(info_color)
-        .block(info_block);
-
-    let headers_block = Block::bordered()
-        .title(" Headers ")
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
-
-    let headers_color =
-        Color::from_str(&app.config.theme.record_headers_text_color).expect("valid RGB color");
-
-    let header_rows: Vec<Row> = BTreeMap::from_iter(record.headers.iter())
-        .into_iter()
-        .map(|(k, v)| Row::new([k.as_str(), v.as_str()]))
-        .collect();
-
-    let headers_table = Table::new(header_rows, [Constraint::Min(1), Constraint::Fill(3)])
-        .column_spacing(1)
-        .header(Row::new([
-            "Key".bold().style(label_color),
-            "Value".bold().style(label_color),
-        ]))
-        .style(headers_color)
-        .block(headers_block);
-
-    let mut value_block = Block::bordered()
-        .title(" Value ")
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
-
-    if state.selected_widget.get() == SelectableWidget::RecordValue {
-        let selected_panel_color = Color::from_str(&app.config.theme.selected_panel_border_color)
-            .expect("valid RGB color");
-
-        value_block = value_block
-            .border_type(BorderType::Thick)
-            .border_style(selected_panel_color);
-    }
-
-    let value = match record.value {
-        Some(v) if !v.is_empty() => match serde_json::from_str(&v)
-            .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
-        {
-            Ok(json) => json,
-            Err(e) => {
-                tracing::error!("invalid JSON value: {}", e);
-                v
-            }
-        },
-        _ => String::from(""),
-    };
-
-    let value_color =
-        Color::from_str(&app.config.theme.record_value_text_color).expect("valid RGB color");
-
-    let value_paragraph = Paragraph::new(value)
-        .block(value_block)
-        .wrap(Wrap { trim: false })
-        .style(value_color)
-        .scroll(record_state.value_scroll);
-
-    frame.render_widget(info_table, info_slice);
-    frame.render_widget(headers_table, headers_slice);
-    frame.render_widget(value_paragraph, value_slice);
-}
-
-/// Renders the record details panel when no active [`Record`] set.
-fn render_record_empty(app: &App, frame: &mut Frame, area: Rect) {
-    let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
-
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
-    let empty_area = layout[0];
-    let no_record_text_area = layout[1];
-
-    let empty_text = Paragraph::default().block(
-        Block::default()
-            .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-            .border_style(border_color),
-    );
-
-    let no_record_text = Paragraph::new("No Record Selected")
-        .style(border_color)
-        .block(
-            Block::default()
-                .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-                .border_style(border_color),
-        )
-        .centered();
-
-    frame.render_widget(empty_text, empty_area);
-    frame.render_widget(no_record_text, no_record_text_area);
-}
-
-/// Renders the footer panel that contains the key bindings for the consume topic UI.
-fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
-    let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
-
-    let status_text_processing_color =
-        Color::from_str(&app.config.theme.status_text_color_processing).expect("valid RGB color");
-
-    let status_text_color_paused =
-        Color::from_str(&app.config.theme.status_text_color_paused).expect("valid RGB color");
-
-    let key_bindings_text_color =
-        Color::from_str(&app.config.theme.key_bindings_text_color).expect("valid RGB color");
+        Color::from_str(app.config.theme.panel_border_color.as_str()).expect("valid RGB color");
 
     let outer = Block::bordered()
         .border_style(border_color)
@@ -476,200 +229,7 @@ fn render_consume_topic_footer(app: &App, frame: &mut Frame, area: Rect) {
     let left_panel = inner_layout[0];
     let right_panel = inner_layout[1];
 
-    let (consumer_mode_key_binding, stats_color) = match app.state.consumer_mode {
-        ConsumerMode::Processing => (KEY_BINDING_PAUSE, status_text_processing_color),
-        ConsumerMode::Paused => (KEY_BINDING_RESUME, status_text_color_paused),
-    };
-
-    let filter_text = app
-        .config
-        .filter
-        .as_ref()
-        .map(|f| format!(" (Filter: {})", f))
-        .unwrap_or_default();
-
-    let stats = Paragraph::new(format!(
-        "Topic: {} | Consumed: {} | {:?}{}",
-        app.config.topic, app.record_state.total_consumed, app.state.consumer_mode, filter_text,
-    ))
-    .style(stats_color);
-
-    let mut key_bindings = Vec::from(CONSUME_TOPIC_STANDARD_KEY_BINDINGS);
-
-    match app.state.selected_widget.get() {
-        SelectableWidget::RecordList => {
-            key_bindings.push(KEY_BINDING_TOP);
-            key_bindings.push(KEY_BINDING_NEXT);
-            key_bindings.push(KEY_BINDING_PREV);
-            key_bindings.push(KEY_BINDING_BOTTOM);
-        }
-        SelectableWidget::RecordValue => {
-            key_bindings.push(KEY_BINDING_TOP);
-            key_bindings.push(KEY_BINDING_SCROLL_DOWN);
-            key_bindings.push(KEY_BINDING_SCROLL_UP);
-        }
-        _ => {}
-    };
-
-    key_bindings.push(consumer_mode_key_binding);
-
-    if app.record_state.is_record_selected() {
-        key_bindings.push(KEY_BINDING_EXPORT);
-    }
-
-    let key_bindings_paragraph = Paragraph::new(key_bindings.join(" | "))
-        .style(key_bindings_text_color)
-        .right_aligned();
-
     frame.render_widget(outer, area);
-    frame.render_widget(stats, left_panel);
-    frame.render_widget(key_bindings_paragraph, right_panel);
-}
-
-/// Renders the UI to the terminal for the [`Screen::NotificationHistory`] screen.
-fn render_notification_history(app: &mut App, frame: &mut Frame) {
-    let full_screen = frame.area();
-
-    let outer = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(1),
-            Constraint::Length(3),
-        ])
-        .split(full_screen);
-
-    let header = outer[0];
-    let history = outer[1];
-    let footer = outer[2];
-
-    render_header(app, frame, header);
-    render_notification_history_table(app, frame, history);
-    render_notification_history_footer(app, frame, footer);
-}
-
-/// Renders the notification history table when the notification history screen is active.
-fn render_notification_history_table(app: &mut App, frame: &mut Frame, area: Rect) {
-    let notification_state = &mut app.notification_state;
-
-    let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
-
-    let label_color = Color::from_str(&app.config.theme.label_color).expect("valid RGB color");
-
-    let success_color = Color::from_str(&app.config.theme.notification_text_color_success)
-        .expect("valid RGB color");
-
-    let warn_color =
-        Color::from_str(&app.config.theme.notification_text_color_warn).expect("valid RGB color");
-
-    let failure_color = Color::from_str(&app.config.theme.notification_text_color_failure)
-        .expect("valid RGB color");
-
-    let mut table_block = Block::bordered()
-        .title(" Notifications ")
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
-
-    if app.state.selected_widget.get() == SelectableWidget::NotificationHistoryList {
-        let selected_panel_color = Color::from_str(&app.config.theme.selected_panel_border_color)
-            .expect("valid RGB color");
-
-        table_block = table_block
-            .border_type(BorderType::Thick)
-            .border_style(selected_panel_color);
-    }
-
-    let table_rows: Vec<Row> = notification_state
-        .history
-        .iter()
-        .map(|n| {
-            let timestamp = n.created.to_string();
-            let status = format!("{:?}", n.status);
-
-            let color = match n.status {
-                NotificationStatus::Success => success_color,
-                NotificationStatus::Warn => warn_color,
-                NotificationStatus::Failure => failure_color,
-            };
-
-            Row::new([timestamp, status, n.summary.clone(), n.details.clone()]).style(color)
-        })
-        .collect();
-
-    let table = Table::new(
-        table_rows,
-        [
-            Constraint::Fill(2),
-            Constraint::Fill(1),
-            Constraint::Fill(3),
-            Constraint::Fill(8),
-        ],
-    )
-    .column_spacing(1)
-    .header(Row::new([
-        "Timestamp".bold().style(label_color),
-        "Status".bold().style(label_color),
-        "Summary".bold().style(label_color),
-        "Details".bold().style(label_color),
-    ]))
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-    .block(table_block);
-
-    frame.render_stateful_widget(table, area, &mut notification_state.list_state);
-
-    notification_state.list_scroll_state = notification_state
-        .list_scroll_state
-        .content_length(notification_state.history.len());
-
-    let scrollbar = Scrollbar::default()
-        .orientation(ScrollbarOrientation::VerticalRight)
-        .begin_symbol(None)
-        .end_symbol(None);
-
-    frame.render_stateful_widget(
-        scrollbar,
-        area.inner(Margin {
-            horizontal: 1,
-            vertical: 1,
-        }),
-        &mut notification_state.list_scroll_state,
-    );
-}
-
-/// Renders the footer panel that contains the key bindings for the notifications history UI.
-fn render_notification_history_footer(app: &App, frame: &mut Frame, area: Rect) {
-    let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
-
-    let key_bindings_text_color =
-        Color::from_str(&app.config.theme.key_bindings_text_color).expect("valid RGB color");
-
-    let status_text_processing_color =
-        Color::from_str(&app.config.theme.status_text_color_processing).expect("valid RGB color");
-
-    let outer = Block::bordered()
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
-
-    let inner_area = outer.inner(area);
-
-    let inner_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(inner_area);
-
-    let left_panel = inner_layout[0];
-    let right_panel = inner_layout[1];
-
-    let total = Paragraph::new(format!("Total: {}", app.notification_state.total))
-        .style(status_text_processing_color);
-
-    let key_bindings = Paragraph::new(NOTIFICATION_HISTORY_KEY_BINDINGS.join(" | "))
-        .style(key_bindings_text_color)
-        .right_aligned();
-
-    frame.render_widget(outer, area);
-    frame.render_widget(total, left_panel);
-    frame.render_widget(key_bindings, right_panel);
+    frame.render_widget(status, left_panel);
+    frame.render_widget(keys, right_panel);
 }

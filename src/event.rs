@@ -1,4 +1,4 @@
-use crate::app::Screen;
+use crate::{app::Notification, kafka::Record};
 
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
@@ -22,6 +22,8 @@ pub enum AppEvent {
     ConsumerStarted,
     /// Fires when the Kafka consumer startup failed.
     ConsumerStartFailure(anyhow::Error),
+    /// Fires when the Kafka consumer receives a new [`Record`].
+    RecordReceived(Record),
     /// Fires when the user wants to select the first record in the list.
     SelectFirstRecord,
     /// Fires when the user wants to select the previous record in the list.
@@ -30,8 +32,8 @@ pub enum AppEvent {
     SelectNextRecord,
     /// Fires when the user wants to select the last record in the list.
     SelectLastRecord,
-    /// Fires when the user wants to export the selected record to a file.
-    ExportSelectedRecord,
+    /// Fires when the user wants to export a [`Record`] to a file.
+    ExportRecord(Record),
     /// Fires when the user wants to continue processing records.
     ResumeProcessing,
     /// Fires when the user wants to pause record consumption.
@@ -44,8 +46,10 @@ pub enum AppEvent {
     ScrollRecordValueDown,
     /// Fires when the user wants to scroll the record value widget up.
     ScrollRecordValueUp,
-    /// Fires when the user selects a [`Screen`] to view in the UI.
-    SelectScreen(Screen),
+    /// Fires when the user selects a [`crate::ui::Component`] to view in the UI.
+    SelectComponent(usize),
+    /// Fires when a new [`Notification`] should be displayed to the user.
+    DisplayNotification(Notification),
     /// Fires when the user wants to scroll to the top of notification history list.
     ScrollNotificationHistoryTop,
     /// Fires when the user wants to scroll the notification history list up.

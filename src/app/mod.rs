@@ -1,44 +1,62 @@
 pub mod config;
 pub mod export;
-pub mod input;
 
 use crate::{
-    app::{config::Config, export::Exporter, input::InputMapper},
+    app::{config::Config, export::Exporter},
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, ConsumerMode, PartitionOffset, Record},
+    ui::{Component, Notifications, NotificationsConfig, Records, RecordsConfig},
 };
 
 use anyhow::Context;
 use bounded_vec_deque::BoundedVecDeque;
 use chrono::{DateTime, Duration, Utc};
-use ratatui::{
-    widgets::{ScrollbarState, TableState},
-    DefaultTerminal,
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::DefaultTerminal;
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+    sync::Arc,
 };
-use std::{cell::Cell, collections::HashMap, rc::Rc, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 
-/// Maximum number of notifications that will be stored in memory to be displayed in the
-/// notification history table. Once the limit is reacahed, as new notifications are added the
-/// older ones are removed.
-const NOTIFICATION_HISTORY_MAX_LEN: usize = 512;
+/// Holds data relevant to a key press that was buffered because it did not directly map to an
+/// action. This is used for a simple implementation of vim-style key bindings, e.g. `gg` is bound
+/// to selecting the first record in the list.
+#[derive(Debug)]
+pub struct BufferedKeyPress {
+    /// Last key that was pressed that did not map to an action.
+    key: char,
+    /// Time that the buffered key press will expire.
+    ttl: DateTime<Utc>,
+}
+
+impl BufferedKeyPress {
+    /// Creates a new [`BufferedKeyPress`] with the key that was pressed by the user.
+    fn new(key: char) -> Self {
+        Self {
+            key,
+            ttl: Utc::now() + Duration::seconds(1),
+        }
+    }
+    /// Determines if the key press matches the specified character. False will always be returned
+    /// if the key press has expired.
+    pub fn is(&self, key: char) -> bool {
+        !self.is_expired() && self.key == key
+    }
+    /// Determines if the key press has expired based on the TTL that was set when it was initially
+    /// buffered.
+    fn is_expired(&self) -> bool {
+        self.ttl < Utc::now()
+    }
+}
 
 /// Number of notification seconds after a [`Notification`] is created that it should not be
 /// eligible to visible to the user any longer.
 const NOTIFICATION_EXPIRATION_SECS: i64 = 3;
 
-/// Enumeration of the widgets that the user can select.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum SelectableWidget {
-    /// Table that lists the records that have been consumed from the Kafka topic.
-    RecordList,
-    /// Text panel that outputs the value of the currently selected record.
-    RecordValue,
-    /// Table that lists the notifications that have been presented to the user for the duration of
-    /// the application execution.
-    NotificationHistoryList,
-}
-
+/// Enumeration of the available status values that a [`Notification`] can have.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum NotificationStatus {
     /// Notification of a successful action.
@@ -54,8 +72,9 @@ pub enum NotificationStatus {
 /// A [`Notification`] is a message that is presented to the user with the results of either an
 /// action that is taken by them or by the application itself, e.g. the result of exporting a
 /// record to a file.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Notification {
+    /// Status of the notification.
     pub status: NotificationStatus,
     /// Summary text for the notification. The summary is displayed in the header for a short
     /// period of time.
@@ -100,261 +119,36 @@ impl Notification {
     }
 }
 
-/// Manages state related to records consumed from the Kafka topic and the UI around them.
-#[derive(Debug)]
-pub struct RecordState {
-    /// Currently selected [`Record`] that is being viewed.
-    pub selected: Option<Record>,
-    /// Collection of the [`Record`]s that have been consumed from the Kafka topic.
-    pub records: BoundedVecDeque<Record>,
-    /// [`TableState`] for the table that the records consumed from the Kafka topic are rendered
-    /// into.
-    pub list_state: TableState,
-    /// [`ScrollbarState`] for the table that the records consumed from the Kafka topic are
-    /// rendered into.
-    pub list_scroll_state: ScrollbarState,
-    /// Contains the current scolling state for the record value text.
-    pub value_scroll: (u16, u16),
-    /// Total number of records consumed from the Kafka topic since the application was launched.
-    pub total_consumed: u32,
-}
-
-impl RecordState {
-    /// Creates a new [`RecordState`] using the specified value for the maximum number of records
-    /// that an be cached in memory.
-    fn new(max_records: usize) -> Self {
-        Self {
-            selected: None,
-            records: BoundedVecDeque::new(max_records),
-            list_state: TableState::default(),
-            list_scroll_state: ScrollbarState::default(),
-            value_scroll: (0, 0),
-            total_consumed: 0,
-        }
-    }
-    /// Determines if there is a [`Record`] currently selected.
-    pub fn is_record_selected(&self) -> bool {
-        self.selected.is_some()
-    }
-    /// Moves the record value scroll state to the top.
-    fn scroll_value_top(&mut self) {
-        self.value_scroll.0 = 0;
-    }
-    /// Moves the record value scroll state down by `n` number of lines.
-    fn scroll_value_down(&mut self, n: u16) {
-        self.value_scroll.0 += n;
-    }
-    /// Moves the record value scroll state up by `n` number of lines.
-    fn scroll_value_up(&mut self, n: u16) {
-        if self.value_scroll.0 >= n {
-            self.value_scroll.0 -= n;
-        }
-    }
-    /// Pushes a new [`Record`] onto the current list when a new one is received from the Kafka
-    /// consumer.
-    fn push_record(&mut self, record: Record) {
-        self.records.push_front(record);
-        self.total_consumed += 1;
-
-        if let Some(i) = self.list_state.selected().as_mut() {
-            let new_idx = *i + 1;
-            self.list_state.select(Some(new_idx));
-            self.list_scroll_state = self.list_scroll_state.position(new_idx);
-        }
-    }
-    /// Updates the state such so the first [`Record`] in the list will be selected.
-    fn select_first(&mut self) {
-        if self.records.is_empty() {
-            return;
-        }
-
-        self.list_state.select_first();
-        self.list_scroll_state = self.list_scroll_state.position(0);
-
-        self.selected = self.records.front().cloned();
-
-        self.value_scroll = (0, 0);
-    }
-    /// Updates the state such so the previous [`Record`] in the list will be selected.
-    fn select_prev(&mut self) {
-        if self.records.is_empty() {
-            return;
-        }
-
-        self.list_state.select_previous();
-
-        let idx = self.list_state.selected().expect("record selected");
-
-        self.list_scroll_state = self.list_scroll_state.position(idx);
-        self.selected = self.records.get(idx).cloned();
-
-        self.value_scroll = (0, 0);
-    }
-    /// Updates the state such so the next [`Record`] in the list will be selected.
-    fn select_next(&mut self) {
-        if self.records.is_empty() {
-            return;
-        }
-
-        if let Some(curr_idx) = self.list_state.selected() {
-            if curr_idx == self.records.len() - 1 {
-                return;
-            }
-        }
-
-        self.list_state.select_next();
-
-        let idx = self.list_state.selected().expect("record selected");
-
-        self.list_scroll_state = self.list_scroll_state.position(idx);
-        self.selected = self.records.get(idx).cloned();
-
-        self.value_scroll = (0, 0);
-    }
-    /// Updates the state such so the last [`Record`] in the list will be selected.
-    fn select_last(&mut self) {
-        if self.records.is_empty() {
-            return;
-        }
-
-        self.list_state.select_last();
-
-        let idx = self.list_state.selected().expect("record selected");
-
-        self.list_scroll_state = self.list_scroll_state.position(idx);
-        self.selected = self.records.back().cloned();
-
-        self.value_scroll = (0, 0);
-    }
-}
-
-/// Manages state related to notifications displayed to the user and the UI around them.
-#[derive(Debug)]
-pub struct NotificationState {
-    /// Total number of notifications displayed to the user since the application was launched.
-    pub total: u32,
-    /// Stores the history of [`Notification`]s displayed to the user.
-    pub history: BoundedVecDeque<Notification>,
-    /// [`TableState`] for the table that notifications from the history list are rendered into.
-    pub list_state: TableState,
-    /// [`ScrollbarState`] for the table that notifications from the history list are rendered
-    /// into.
-    pub list_scroll_state: ScrollbarState,
-}
-
 /// Manages the global application state.
-#[derive(Debug)]
 pub struct State {
     /// Flag indicating the application is running.
     pub running: bool,
-    /// Holds the [`Screen`] the user is currently viewing.
-    pub screen: Screen,
+    /// Flag that indicates whether the application is initializing.
+    pub initializing: bool,
     /// Stores the current [`ConsumerMode`] of the application which controls whether or not
     /// records are currently being consumed from the topic.
-    pub consumer_mode: ConsumerMode,
-    /// Stores the widget that the user currently has selected.
-    pub selected_widget: Rc<Cell<SelectableWidget>>,
-}
-
-impl NotificationState {
-    /// Creates a new default instance of [`NotificationState`].
-    fn new() -> Self {
-        Self::default()
-    }
-    /// Moves the notification history scroll state to the top.
-    fn scroll_list_top(&mut self) {
-        self.list_state.select_first();
-        self.list_scroll_state = self.list_scroll_state.position(0);
-    }
-    /// Moves the record value scroll state up by `n` number of lines.
-    fn scroll_list_up(&mut self) {
-        if self.history.is_empty() {
-            return;
-        }
-
-        self.list_state.select_previous();
-
-        let idx = self.list_state.selected().expect("notification selected");
-
-        self.list_scroll_state = self.list_scroll_state.position(idx);
-    }
-    /// Moves the notification history scroll state down by `n` number of lines.
-    fn scroll_list_down(&mut self) {
-        if self.history.is_empty() {
-            return;
-        }
-
-        if let Some(curr_idx) = self.list_state.selected() {
-            if curr_idx == self.history.len() - 1 {
-                return;
-            }
-        }
-
-        self.list_state.select_next();
-
-        let idx = self.list_state.selected().expect("notification selected");
-
-        self.list_scroll_state = self.list_scroll_state.position(idx);
-    }
-    /// Moves the notification history scroll state to the bottom.
-    fn scroll_list_bottom(&mut self) {
-        let bottom = self.history.len() - 1;
-
-        self.list_state.select(Some(bottom));
-        self.list_scroll_state = self.list_scroll_state.position(bottom);
-    }
-    /// Pushes a new [`Notification`] onto the current list when a new one is generated.
-    fn push_notification(&mut self, notification: Notification) {
-        self.history.push_front(notification);
-        self.total += 1;
-
-        if let Some(i) = self.list_state.selected().as_mut() {
-            let new_idx = *i + 1;
-            self.list_state.select(Some(new_idx));
-            self.list_scroll_state = self.list_scroll_state.position(new_idx);
-        }
-    }
-}
-
-impl Default for NotificationState {
-    /// Creates a new [`NotificationState`] initialized with default values.
-    fn default() -> Self {
-        Self {
-            total: 0,
-            history: BoundedVecDeque::new(NOTIFICATION_HISTORY_MAX_LEN),
-            list_state: TableState::default(),
-            list_scroll_state: ScrollbarState::default(),
-        }
-    }
+    pub consumer_mode: Rc<Cell<ConsumerMode>>,
+    /// [`Component`] that the user is curently viewing and interacting with.
+    pub active_component: Rc<RefCell<dyn Component>>,
+    /// Stores the history of [`Notification`]s displayed to the user.
+    pub notification_history: Rc<RefCell<BoundedVecDeque<Notification>>>,
 }
 
 impl State {
-    /// Creates a new [`State`] with the specified dependencies.
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
+    /// Creates a new [`State`] with the given dependencies.
+    pub fn new(
+        consumer_mode: Rc<Cell<ConsumerMode>>,
+        notification_history: Rc<RefCell<BoundedVecDeque<Notification>>>,
+        active_component: Rc<RefCell<dyn Component>>,
+    ) -> Self {
         Self {
             running: true,
-            screen: Screen::Initialize,
-            consumer_mode: ConsumerMode::Processing,
-            selected_widget: Rc::new(Cell::new(SelectableWidget::RecordList)),
+            initializing: true,
+            consumer_mode,
+            active_component,
+            notification_history,
         }
     }
-}
-
-/// Enumeration of the various screens that the application can display to the end user.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Screen {
-    /// Active when the application is starting up and connecting to the Kafka brokers.
-    Initialize,
-    /// Active when the user is viewing records being consumed from the Kafka topic.
-    ConsumeTopic,
-    /// Active when the user is viewing the notification history.
-    NotificationHistory,
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
@@ -363,12 +157,10 @@ pub struct App {
     pub config: Config,
     /// Contains the current state of the application.
     pub state: State,
-    /// Contains the current state of the records.
-    pub record_state: RecordState,
-    /// Contains the current state of the notifications.
-    pub notification_state: NotificationState,
-    /// Maps input from the user to application events published on the [`EventBus`].
-    input_mapper: InputMapper,
+    /// All [`Component`]s available to the user.
+    pub components: Vec<Rc<RefCell<dyn Component>>>,
+    /// If available, contains the last key pressed that did not map to an active key binding.
+    buffered_key_press: Option<BufferedKeyPress>,
     /// Channel receiver that is used to receive application events that are sent by the
     /// [`EventBus`].
     event_rx: Receiver<Event>,
@@ -411,25 +203,47 @@ impl App {
 
         let consumer = Consumer::new(consumer_config, consumer_tx).context("create consumer")?;
 
-        let max_records = config.max_records;
-
-        let state = State::new();
-
-        let input_mapper = InputMapper::new(Rc::clone(&state.selected_widget));
-
         let exporter = Exporter::new(config.export_directory.clone());
+
+        let consumer_mode = Rc::new(Cell::new(ConsumerMode::Processing));
+
+        let records_component = Rc::new(RefCell::new(Records::new(
+            RecordsConfig::builder()
+                .consumer_mode(Rc::clone(&consumer_mode))
+                .topic(config.topic.clone())
+                .filter(config.filter.clone())
+                .theme(&config.theme)
+                .scroll_factor(config.scroll_factor)
+                .max_records(config.max_records)
+                .build()
+                .expect("valid Records config"),
+        )));
+
+        let notification_history = Rc::new(RefCell::new(BoundedVecDeque::new(512)));
+
+        let notifications_component = Rc::new(RefCell::new(Notifications::new(
+            NotificationsConfig::builder()
+                .history(Rc::clone(&notification_history))
+                .theme(&config.theme)
+                .build()
+                .expect("valid Notifications config"),
+        )));
+
+        let components: Vec<Rc<RefCell<dyn Component>>> =
+            vec![records_component.clone(), notifications_component];
+
+        let state = State::new(consumer_mode, notification_history, records_component);
 
         Ok(Self {
             config,
-            input_mapper,
             state,
-            record_state: RecordState::new(max_records),
-            notification_state: NotificationState::new(),
             event_rx,
             consumer_rx,
             event_bus,
             consumer: Arc::new(consumer),
             exporter,
+            components,
+            buffered_key_press: None,
         })
     }
     /// Run the main loop of the application.
@@ -447,9 +261,7 @@ impl App {
                 match event {
                     Event::Crossterm(crossterm_event) => {
                         if let crossterm::event::Event::Key(key_event) = crossterm_event {
-                            if let Some(app_event) = self.input_mapper.on_key_event(key_event) {
-                                self.event_bus.send(app_event).await;
-                            }
+                            self.on_key_event(key_event).await;
                         }
                     }
                     Event::App(app_event) => match app_event {
@@ -458,36 +270,23 @@ impl App {
                         AppEvent::ConsumerStartFailure(e) => {
                             anyhow::bail!("failed to start Kafka consumer: {}", e)
                         }
-                        AppEvent::SelectFirstRecord => self.on_select_first_record(),
-                        AppEvent::SelectPrevRecord => self.on_select_prev_record(),
-                        AppEvent::SelectNextRecord => self.on_select_next_record(),
-                        AppEvent::SelectLastRecord => self.on_select_last_record(),
-                        AppEvent::ExportSelectedRecord => self.on_export_selected_record(),
-                        AppEvent::PauseProcessing => self.on_pause_processing(),
-                        AppEvent::ResumeProcessing => self.on_resume_processing(),
-                        AppEvent::SelectNextWidget => self.on_select_next_widget(),
-                        AppEvent::ScrollRecordValueTop => self.on_scroll_record_value_top(),
-                        AppEvent::ScrollRecordValueDown => self.on_scroll_record_value_down(),
-                        AppEvent::ScrollRecordValueUp => self.on_scroll_record_value_up(),
-                        AppEvent::SelectScreen(screen) => self.on_select_screen(screen),
-                        AppEvent::ScrollNotificationHistoryTop => {
-                            self.on_scroll_notification_history_top()
-                        }
-                        AppEvent::ScrollNotificationHistoryUp => {
-                            self.on_scroll_notification_history_up()
-                        }
-                        AppEvent::ScrollNotificationHistoryDown => {
-                            self.on_scroll_notification_history_down()
-                        }
-                        AppEvent::ScrollNotificationHistoryBottom => {
-                            self.on_scroll_notification_history_bottom()
+                        AppEvent::SelectComponent(idx) => self.on_select_component(idx),
+                        AppEvent::ExportRecord(record) => self.on_export_record(record).await,
+                        AppEvent::PauseProcessing => self.on_pause_processing().await,
+                        AppEvent::ResumeProcessing => self.on_resume_processing().await,
+                        _ => {
+                            // TODO: give precedence to active component and stop when handled? if
+                            // not then change to using tokio::sync::broadcast?
+                            self.components
+                                .iter()
+                                .for_each(|c| c.borrow_mut().on_app_event(&app_event));
                         }
                     },
                 }
             }
 
             if let Ok(record) = self.consumer_rx.try_recv() {
-                self.on_record_received(record);
+                self.on_record_received(record).await;
             }
         }
 
@@ -529,81 +328,87 @@ impl App {
             start_consumer_task.run().await;
         });
     }
-    /// Cycles the focus to the next available widget based on the currently selected widget.
-    fn cycle_next_widget(&mut self) {
-        let next_widget = match self.state.screen {
-            Screen::Initialize => None,
-            Screen::ConsumeTopic => match self.state.selected_widget.get() {
-                SelectableWidget::RecordList if self.record_state.selected.is_some() => {
-                    Some(SelectableWidget::RecordValue)
-                }
-                _ => Some(SelectableWidget::RecordList),
-            },
-            Screen::NotificationHistory => Some(SelectableWidget::NotificationHistoryList),
-        };
-
-        if let Some(widget) = next_widget {
-            self.state.selected_widget.set(widget);
-        }
-    }
     /// Handles the consumer started event emitted by the [`EventBus`].
     fn on_consumer_started(&mut self) {
         tracing::debug!("consumer started");
-        self.state.screen = Screen::ConsumeTopic;
+        self.state.initializing = false;
     }
     /// Invoked when a new [`Record`] is received on the consumer channel.
-    fn on_record_received(&mut self, record: Record) {
+    async fn on_record_received(&mut self, record: Record) {
         tracing::debug!("Kafka record received");
-        self.record_state.push_record(record);
+        self.event_bus.send(AppEvent::RecordReceived(record)).await;
     }
-    /// Handles the [`AppEvent::SelectFirstRecord`] event emitted by the [`EventBus`].
-    fn on_select_first_record(&mut self) {
-        tracing::debug!("select first record");
-        self.record_state.select_first();
-    }
-    /// Handles the [`AppEvent::SelectPrevRecord`] event emitted by the [`EventBus`].
-    fn on_select_prev_record(&mut self) {
-        tracing::debug!("select previous record");
-        self.record_state.select_prev();
-    }
-    /// Handles the [`AppEvent::SelectNextRecord`] event emitted by the [`EventBus`].
-    fn on_select_next_record(&mut self) {
-        tracing::debug!("select next record");
-        self.record_state.select_next();
-    }
-    /// Handles the [`AppEvent::SelectLastRecord`] event emitted by the [`EventBus`].
-    fn on_select_last_record(&mut self) {
-        tracing::debug!("select last record");
-        self.record_state.select_last();
-    }
-    /// Handles the [`AppEvent::ExportSelectedRecord`] event emitted by the [`EventBus`].
-    fn on_export_selected_record(&mut self) {
-        if let Some(record) = self.record_state.selected.as_ref() {
-            tracing::debug!("exporting selected record");
+    /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
+    /// application level action and then defers to the active [`Component`].
+    async fn on_key_event(&mut self, key_event: KeyEvent) {
+        // TODO: cleanup if possible and probably move to struct property so we arent recomputing
+        // on every event.
+        let mut menu_items = Vec::new();
+        for i in 0..self.components.len() {
+            let index = u8::try_from(i).expect("valid char") + 1;
+            let item = (index + b'0') as char;
 
-            let notification = match self.exporter.export_record(record) {
-                Ok(file_path) => Notification::success(
-                    "Record exported successfully",
-                    format!("Record succesfully exported to file at {}", file_path),
-                ),
-                Err(e) => {
-                    tracing::error!("export record failure: {}", e);
-                    Notification::failure(
-                        "Record export failed",
-                        format!("Failed to export the selected record: {}", e),
-                    )
+            menu_items.push(item);
+        }
+
+        let app_event = match key_event.code {
+            KeyCode::Esc => Some(AppEvent::Quit),
+            KeyCode::Tab => Some(AppEvent::SelectNextWidget),
+            KeyCode::Char(c) if menu_items.contains(&c) => {
+                let digit = c.to_digit(10).expect("valid digit") - 1;
+                let selected = digit as usize;
+
+                Some(AppEvent::SelectComponent(selected))
+            }
+            _ => {
+                let event = self
+                    .state
+                    .active_component
+                    .borrow()
+                    .map_key_event(key_event, self.buffered_key_press.as_ref());
+
+                if event.is_some() {
+                    self.buffered_key_press = None;
+                } else if let KeyCode::Char(c) = key_event.code {
+                    self.buffered_key_press = Some(BufferedKeyPress::new(c));
                 }
-            };
 
-            self.notification_state.push_notification(notification);
+                event
+            }
+        };
+
+        if let Some(e) = app_event {
+            self.event_bus.send(e).await;
         }
     }
+    /// Handles the [`AppEvent::ExportRecord`] event emitted by the [`EventBus`].
+    async fn on_export_record(&mut self, record: Record) {
+        tracing::debug!("exporting selected record");
+
+        let notification = match self.exporter.export_record(&record) {
+            Ok(file_path) => Notification::success(
+                "Record exported successfully",
+                format!("Record succesfully exported to file at {}", file_path),
+            ),
+            Err(e) => {
+                tracing::error!("export record failure: {}", e);
+                Notification::failure(
+                    "Record export failed",
+                    format!("Failed to export the selected record: {}", e),
+                )
+            }
+        };
+
+        self.event_bus
+            .send(AppEvent::DisplayNotification(notification))
+            .await;
+    }
     /// Handles the [`AppEvent::PauseProcessing`] event emitted by the [`EventBus`].
-    fn on_pause_processing(&mut self) {
-        if self.state.consumer_mode == ConsumerMode::Processing {
+    async fn on_pause_processing(&mut self) {
+        if self.state.consumer_mode.get() == ConsumerMode::Processing {
             tracing::debug!("pausing Kafka consumer");
 
-            self.state.consumer_mode = ConsumerMode::Paused;
+            self.state.consumer_mode.set(ConsumerMode::Paused);
 
             let notification = match self.consumer.pause() {
                 Ok(_) => Notification::success(
@@ -619,15 +424,17 @@ impl App {
                 }
             };
 
-            self.notification_state.push_notification(notification);
+            self.event_bus
+                .send(AppEvent::DisplayNotification(notification))
+                .await;
         }
     }
     /// Handles the [`AppEvent::ResumeProcessing`] event emitted by the [`EventBus`].
-    fn on_resume_processing(&mut self) {
-        if self.state.consumer_mode == ConsumerMode::Paused {
+    async fn on_resume_processing(&mut self) {
+        if self.state.consumer_mode.get() == ConsumerMode::Paused {
             tracing::debug!("resuming Kafka consumer");
 
-            self.state.consumer_mode = ConsumerMode::Processing;
+            self.state.consumer_mode.set(ConsumerMode::Processing);
 
             let notification = match self.consumer.resume() {
                 Ok(_) => Notification::success(
@@ -643,69 +450,23 @@ impl App {
                 }
             };
 
-            self.notification_state.push_notification(notification);
+            self.event_bus
+                .send(AppEvent::DisplayNotification(notification))
+                .await;
         }
-    }
-    /// Handles the [`AppEvent::SelectNextWidget`] event emitted by the [`EventBus`].
-    fn on_select_next_widget(&mut self) {
-        tracing::debug!("cycling focus to next widget");
-        self.cycle_next_widget();
-    }
-    /// Handles the [`AppEvent::ScrollRecordValueTop`] event emitted by the [`EventBus`].
-    fn on_scroll_record_value_top(&mut self) {
-        tracing::debug!("scroll record value to top");
-        self.record_state.scroll_value_top();
-    }
-    /// Handles the [`AppEvent::ScrollRecordValueDown`] event emitted by the [`EventBus`].
-    fn on_scroll_record_value_down(&mut self) {
-        tracing::debug!("scroll record value down");
-        self.record_state
-            .scroll_value_down(self.config.scroll_factor);
-    }
-    /// Handles the [`AppEvent::ScrollRecordValueUp`] event emitted by the [`EventBus`].
-    fn on_scroll_record_value_up(&mut self) {
-        tracing::debug!("scroll record value up");
-        self.record_state.scroll_value_up(self.config.scroll_factor);
     }
     /// Handles the [`AppEvent::Quit`] event emitted by the [`EventBus`].
     fn on_quit(&mut self) {
         tracing::debug!("quit application request received");
         self.state.running = false;
     }
-    /// Handles the [`AppEvent::SelectScreen`] event emitted by the [`EventBus`].
-    fn on_select_screen(&mut self, screen: Screen) {
-        tracing::debug!("select screen: {:?}", screen);
+    /// Handles the [`AppEvent::SelectComponent`] event emitted by the [`EventBus`].
+    fn on_select_component(&mut self, idx: usize) {
+        tracing::debug!("select component: {:?}", idx);
 
-        self.state.screen = screen;
-
-        match self.state.screen {
-            Screen::Initialize => {}
-            Screen::ConsumeTopic => self.state.selected_widget.set(SelectableWidget::RecordList),
-            Screen::NotificationHistory => self
-                .state
-                .selected_widget
-                .set(SelectableWidget::NotificationHistoryList),
+        if let Some(component) = self.components.get(idx) {
+            self.state.active_component = Rc::clone(component);
         }
-    }
-    /// Handles the [`AppEvent::ScrollNotificationHistoryTop`] event emitted by the [`EventBus`].
-    fn on_scroll_notification_history_top(&mut self) {
-        tracing::debug!("scroll notification history list to top");
-        self.notification_state.scroll_list_top();
-    }
-    /// Handles the [`AppEvent::ScrollNotificationHistoryUp`] event emitted by the [`EventBus`].
-    fn on_scroll_notification_history_up(&mut self) {
-        tracing::debug!("scroll notification history list up");
-        self.notification_state.scroll_list_up();
-    }
-    /// Handles the [`AppEvent::ScrollNotificationHistoryUp`] event emitted by the [`EventBus`].
-    fn on_scroll_notification_history_down(&mut self) {
-        tracing::debug!("scroll notification history list down");
-        self.notification_state.scroll_list_down();
-    }
-    /// Handles the [`AppEvent::ScrollNotificationHistoryBottom`] event emitted by the [`EventBus`].
-    fn on_scroll_notification_history_bottom(&mut self) {
-        tracing::debug!("scroll notification history list to bottom");
-        self.notification_state.scroll_list_bottom();
     }
 }
 
