@@ -1,8 +1,12 @@
 mod notifications;
 mod records;
+mod stats;
 
-pub use crate::ui::notifications::{Notifications, NotificationsConfig};
-pub use crate::ui::records::{Records, RecordsConfig};
+pub use crate::ui::{
+    notifications::{Notifications, NotificationsConfig},
+    records::{Records, RecordsConfig},
+    stats::{Stats, StatsConfig},
+};
 
 use crate::{
     app::{App, BufferedKeyPress, NotificationStatus},
@@ -49,16 +53,22 @@ pub trait Component {
     /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str;
     /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph<'_>;
+    fn status_line(&self) -> Paragraph<'_> {
+        Paragraph::default()
+    }
     /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph<'_>;
+    fn key_bindings(&self) -> Paragraph<'_> {
+        Paragraph::default()
+    }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
     /// for processing.
     fn map_key_event(
         &self,
-        event: KeyEvent,
-        buffered: Option<&BufferedKeyPress>,
-    ) -> Option<AppEvent>;
+        _event: KeyEvent,
+        _buffered: Option<&BufferedKeyPress>,
+    ) -> Option<AppEvent> {
+        None
+    }
     /// Allows the component to handle any [`AppEvent`] that was not handled by the main
     /// application.
     fn on_app_event(&mut self, event: &AppEvent);
@@ -75,18 +85,14 @@ impl App {
         } else {
             let full_screen = frame.area();
 
-            let outer = Layout::default()
+            let [header_area, component_area, footer_area] = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Length(3),
                     Constraint::Min(1),
                     Constraint::Length(3),
                 ])
-                .split(full_screen);
-
-            let header_area = outer[0];
-            let component_area = outer[1];
-            let footer_area = outer[2];
+                .areas(full_screen);
 
             render_header(self, frame, header_area);
 
@@ -106,13 +112,10 @@ fn render_initialize(app: &App, frame: &mut Frame) {
     let border_color =
         Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
 
-    let layout = Layout::default()
+    let [empty_area, initializing_text_area] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(frame.area());
-
-    let empty_area = layout[0];
-    let initializing_text_area = layout[1];
+        .areas(frame.area());
 
     let empty_text = Paragraph::default().block(
         Block::default()
@@ -150,13 +153,10 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
 
     let inner_area = outer.inner(area);
 
-    let inner_layout = Layout::default()
+    let [left_panel, right_panel] = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(inner_area);
-
-    let left_panel = inner_layout[0];
-    let right_panel = inner_layout[1];
+        .areas(inner_area);
 
     let mut selected_menu_item = 0;
 
@@ -221,13 +221,10 @@ fn render_footer(app: &App, status: Paragraph, keys: Paragraph, frame: &mut Fram
 
     let inner_area = outer.inner(area);
 
-    let inner_layout = Layout::default()
+    let [left_panel, right_panel] = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(inner_area);
-
-    let left_panel = inner_layout[0];
-    let right_panel = inner_layout[1];
+        .areas(inner_area);
 
     frame.render_widget(outer, area);
     frame.render_widget(status, left_panel);

@@ -141,6 +141,9 @@ properties are available to be configured using a theme.
 * `notificationTextColorSuccess` - Color of the notification message text for a successful action.
 * `notificationTextColorWarn` - Color of the notification message text for an action that produces a warning.
 * `notificationTextColorFailure` - Color of the error notification message text for a failed action.
+* `statsTextColor` - Color used for the text in the stats UI.
+* `statsBarColor` - Pimary color used for bars in a bar graph in the stats UI.
+* `statsBarSecondaryColor` - Secondary color used for bars in a bar graph in the stats UI.
 
 > Colors must be specified in RGB format **with** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
 section for an example of a theme.
@@ -192,7 +195,10 @@ values which can be used to configure the application using the `.kaftui.json` f
     "selectedMenuItemTextColor": "#8BE9FD",
     "notificationTextColorSuccess": "#F8F8F2",
     "notificationTextColorWarn": "#F1FA8C",
-    "notificationTextColorFailure": "#FF5555"
+    "notificationTextColorFailure": "#FF5555",
+    "statsTextColor": "#F8F8F2",
+    "statsBarColor": "#F8F8F2",
+    "statsBarSecondaryColor": "#50FA7B"
   }
 }
 ```

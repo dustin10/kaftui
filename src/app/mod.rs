@@ -4,8 +4,10 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{AppEvent, Event, EventBus},
-    kafka::{Consumer, ConsumerMode, PartitionOffset, Record},
-    ui::{Component, Notifications, NotificationsConfig, Records, RecordsConfig},
+    kafka::{Consumer, ConsumerMode, PartitionOffset, Record, RecordState},
+    ui::{
+        Component, Notifications, NotificationsConfig, Records, RecordsConfig, Stats, StatsConfig,
+    },
 };
 
 use anyhow::Context;
@@ -165,7 +167,7 @@ pub struct App {
     /// [`EventBus`].
     event_rx: Receiver<Event>,
     /// Channel receiver that is used to receive records from the Kafka consumer.
-    consumer_rx: Receiver<Record>,
+    consumer_rx: Receiver<RecordState>,
     /// Emits events to be handled by the application.
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
@@ -219,6 +221,13 @@ impl App {
                 .expect("valid Records config"),
         )));
 
+        let stats_component = Rc::new(RefCell::new(Stats::new(
+            StatsConfig::builder()
+                .theme(&config.theme)
+                .build()
+                .expect("valid Stats config"),
+        )));
+
         let notification_history = Rc::new(RefCell::new(BoundedVecDeque::new(512)));
 
         let notifications_component = Rc::new(RefCell::new(Notifications::new(
@@ -229,8 +238,11 @@ impl App {
                 .expect("valid Notifications config"),
         )));
 
-        let components: Vec<Rc<RefCell<dyn Component>>> =
-            vec![records_component.clone(), notifications_component];
+        let components: Vec<Rc<RefCell<dyn Component>>> = vec![
+            records_component.clone(),
+            stats_component,
+            notifications_component,
+        ];
 
         let state = State::new(consumer_mode, notification_history, records_component);
 
@@ -275,8 +287,6 @@ impl App {
                         AppEvent::PauseProcessing => self.on_pause_processing().await,
                         AppEvent::ResumeProcessing => self.on_resume_processing().await,
                         _ => {
-                            // TODO: give precedence to active component and stop when handled? if
-                            // not then change to using tokio::sync::broadcast?
                             self.components
                                 .iter()
                                 .for_each(|c| c.borrow_mut().on_app_event(&app_event));
@@ -285,8 +295,11 @@ impl App {
                 }
             }
 
-            if let Ok(record) = self.consumer_rx.try_recv() {
-                self.on_record_received(record).await;
+            if let Ok(consumed_record) = self.consumer_rx.try_recv() {
+                match consumed_record {
+                    RecordState::Received(record) => self.on_record_received(record).await,
+                    RecordState::Filtered(record) => self.on_record_filtered(record).await,
+                }
             }
         }
 
@@ -338,6 +351,10 @@ impl App {
         tracing::debug!("Kafka record received");
         self.event_bus.send(AppEvent::RecordReceived(record)).await;
     }
+    async fn on_record_filtered(&mut self, record: Record) {
+        tracing::debug!("Kafka record filtered");
+        self.event_bus.send(AppEvent::RecordFiltered(record)).await;
+    }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
     async fn on_key_event(&mut self, key_event: KeyEvent) {
@@ -387,13 +404,13 @@ impl App {
 
         let notification = match self.exporter.export_record(&record) {
             Ok(file_path) => Notification::success(
-                "Record exported successfully",
-                format!("Record succesfully exported to file at {}", file_path),
+                "Record Exported Successfully",
+                format!("Record succesfully exported to file {}", file_path),
             ),
             Err(e) => {
                 tracing::error!("export record failure: {}", e);
                 Notification::failure(
-                    "Record export failed",
+                    "Record Export Failed",
                     format!("Failed to export the selected record: {}", e),
                 )
             }
@@ -412,13 +429,13 @@ impl App {
 
             let notification = match self.consumer.pause() {
                 Ok(_) => Notification::success(
-                    "Consumer paused successfully",
+                    "Consumer Paused Successfully",
                     "Kafka consumer was successfully paused at the request of the user",
                 ),
                 Err(e) => {
                     tracing::error!("failed to pause consumer: {}", e);
                     Notification::failure(
-                        "Pause consumer failed",
+                        "Pause Consumer Failed",
                         format!("Failed to pause the Kafka consumer: {}", e),
                     )
                 }
@@ -438,13 +455,13 @@ impl App {
 
             let notification = match self.consumer.resume() {
                 Ok(_) => Notification::success(
-                    "Consumer resumed successfully",
+                    "Consumer Resumed Successfully",
                     "Kafka consumer was successfully resumed at the request of the user",
                 ),
                 Err(e) => {
                     tracing::error!("failed to resume consumer: {}", e);
                     Notification::failure(
-                        "Resume consumer failed",
+                        "Resume Consumer Failed",
                         format!("Failed to resume the Kafka consumer: {}", e),
                     )
                 }

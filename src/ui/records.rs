@@ -69,7 +69,8 @@ impl<'a> RecordsConfig<'a> {
     }
 }
 
-/// Manages state related to records consumed from the Kafka topic and the UI around them.
+/// Manages state related to records consumed from the Kafka topic and the UI that renders them to
+/// the user.
 #[derive(Debug)]
 struct RecordsState {
     /// Stores the current [`ConsumerMode`] of the application which indicates whether records are
@@ -89,8 +90,6 @@ struct RecordsState {
     list_scroll_state: ScrollbarState,
     /// Contains the current scolling state for the record value text.
     value_scroll: (u16, u16),
-    /// Total number of records consumed from the Kafka topic since the application was launched.
-    total_consumed: u32,
 }
 
 impl RecordsState {
@@ -105,7 +104,6 @@ impl RecordsState {
             list_state: TableState::default(),
             list_scroll_state: ScrollbarState::default(),
             value_scroll: (0, 0),
-            total_consumed: 0,
         }
     }
     /// Determines if there is a [`Record`] currently selected.
@@ -130,7 +128,6 @@ impl RecordsState {
     /// consumer.
     fn push_record(&mut self, record: Record) {
         self.records.push_front(record);
-        self.total_consumed += 1;
 
         if let Some(i) = self.list_state.selected().as_mut() {
             let new_idx = *i + 1;
@@ -392,18 +389,14 @@ impl Records {
     fn render_record_details(&self, frame: &mut Frame, area: Rect) {
         let record = self.state.selected.clone().expect("selected Record exists");
 
-        let layout_slices = Layout::default()
+        let [info_slice, headers_slice, value_slice] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Fill(1),
                 Constraint::Fill(3),
                 Constraint::Fill(7),
             ])
-            .split(area);
-
-        let info_slice = layout_slices[0];
-        let headers_slice = layout_slices[1];
-        let value_slice = layout_slices[2];
+            .areas(area);
 
         let info_block = Block::bordered()
             .title(" Info ")
@@ -494,13 +487,10 @@ impl Records {
     /// Renders the panel containing the details of a [`Record`] when there is currently none
     /// selected.
     fn render_record_empty(&self, frame: &mut Frame, area: Rect) {
-        let layout = Layout::default()
+        let [empty_area, no_record_text_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-
-        let empty_area = layout[0];
-        let no_record_text_area = layout[1];
+            .areas(area);
 
         let empty_text = Paragraph::default().block(
             Block::default()
@@ -541,9 +531,8 @@ impl Component for Records {
             .unwrap_or_default();
 
         Paragraph::new(format!(
-            "Topic: {} | Consumed: {} | {:?}{}",
+            "Topic: {} | {:?}{}",
             self.topic,
-            self.state.total_consumed,
             self.state.consumer_mode.get(),
             filter_text,
         ))
@@ -647,13 +636,10 @@ impl Component for Records {
     }
     /// Renders the component-specific widgets to the terminal.
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let view_record_inner = Layout::default()
+        let [records_table_panel, record_details_panel] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-
-        let records_table_panel = view_record_inner[0];
-        let record_details_panel = view_record_inner[1];
+            .areas(area);
 
         self.render_record_list(frame, records_table_panel);
 

@@ -5,6 +5,7 @@ description = "A TUI application for interacting with Kafka."
 authors = ["ddobervich@gmail.com>"]
 license = "MIT"
 edition = "2024"
+rust-version = "1.89"
 
 [dependencies]
 anyhow = "1.0.98"

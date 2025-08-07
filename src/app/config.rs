@@ -308,6 +308,12 @@ pub struct Theme {
     pub notification_text_color_warn: String,
     /// Color used for the text in an unsuccessful notification message. Defaults to red.
     pub notification_text_color_failure: String,
+    /// Color used for the text in the stats UI. Defaults to white.
+    pub stats_text_color: String,
+    /// Pimary color used for bars in a bar graph in the stats UI. Defaults to white.
+    pub stats_bar_color: String,
+    /// Secondary color used for bars in a bar graph in the stats UI. Defaults to white.
+    pub stats_bar_secondary_color: String,
 }
 
 impl Default for Theme {
@@ -333,6 +339,9 @@ impl Default for Theme {
     /// * Success Notification Text - White
     /// * Warn Notification Text - Yellow
     /// * Failure Notification Text - Red
+    /// * Stats Text - White
+    /// * Stats Bar - White
+    /// * Stats Bar Secondary - White
     fn default() -> Self {
         Self {
             panel_border_color: String::from("#FFFFFF"),
@@ -350,6 +359,9 @@ impl Default for Theme {
             notification_text_color_success: String::from("#FFFFFF"),
             notification_text_color_warn: String::from("#FFFF00"),
             notification_text_color_failure: String::from("#FF0000"),
+            stats_text_color: String::from("#FFFFFF"),
+            stats_bar_color: String::from("#FFFFFF"),
+            stats_bar_secondary_color: String::from("#FFFFFF"),
         }
     }
 }
@@ -430,6 +442,21 @@ impl From<Theme> for ValueKind {
         data.insert(
             String::from("notificationTextColorFailure"),
             Value::from(value.notification_text_color_failure),
+        );
+
+        data.insert(
+            String::from("statsTextColor"),
+            Value::from(value.stats_text_color),
+        );
+
+        data.insert(
+            String::from("statsBarColor"),
+            Value::from(value.stats_bar_color),
+        );
+
+        data.insert(
+            String::from("statsBarSecondaryColor"),
+            Value::from(value.stats_bar_secondary_color),
         );
 
         Self::Table(data)

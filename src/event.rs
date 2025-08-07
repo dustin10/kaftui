@@ -24,6 +24,9 @@ pub enum AppEvent {
     ConsumerStartFailure(anyhow::Error),
     /// Fires when the Kafka consumer receives a new [`Record`].
     RecordReceived(Record),
+    /// Fires when the Kafka consumer receives a new [`Record`] but it does not match the
+    /// configured JSONPath filter.
+    RecordFiltered(Record),
     /// Fires when the user wants to select the first record in the list.
     SelectFirstRecord,
     /// Fires when the user wants to select the previous record in the list.

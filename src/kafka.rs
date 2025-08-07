@@ -146,20 +146,29 @@ impl RDConsumerContext for ConsumerContext {
     }
 }
 
+/// Enumeration of the states of a [`Record`] that was consumed from the Kafka topic.
+#[derive(Clone, Debug)]
+pub enum RecordState {
+    /// A [`Record`] was consumed and it should be displayed to the user.
+    Received(Record),
+    /// A [`Record`] was consumed but it does not match the configured JSONPath filter.
+    Filtered(Record),
+}
+
 /// High-level Kafka consumer. Through this struct the application can easily start, pause and
 /// resume the underlying Kafka consumer.
 pub struct Consumer {
     /// Underlying Kafka consumer.
     consumer: Arc<StreamConsumer<ConsumerContext>>,
     /// Sender for the Kafka consumer channel.
-    consumer_tx: Sender<Record>,
+    consumer_tx: Sender<RecordState>,
 }
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
     pub fn new(
         config: HashMap<String, String>,
-        consumer_tx: Sender<Record>,
+        consumer_tx: Sender<RecordState>,
     ) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
 
@@ -397,7 +406,7 @@ struct PartitionConsumerTask {
     /// Any filter to apply to the record.
     filter: Option<String>,
     /// Sender for the Kafka consumer channel.
-    consumer_tx: Sender<Record>,
+    consumer_tx: Sender<RecordState>,
 }
 
 impl PartitionConsumerTask {
@@ -406,7 +415,7 @@ impl PartitionConsumerTask {
         consumer: Arc<StreamConsumer<ConsumerContext>>,
         partition_queue: Arc<StreamPartitionQueue<ConsumerContext>>,
         filter: Option<String>,
-        consumer_tx: Sender<Record>,
+        consumer_tx: Sender<RecordState>,
     ) -> Self {
         Self {
             consumer,
@@ -434,11 +443,21 @@ impl PartitionConsumerTask {
 
                     if json_path.query(&json_value).is_empty() {
                         tracing::debug!("ignoring Kafka record based on filter");
+
+                        // TODO: clean up this duplication
+                        if let Err(e) = self.consumer_tx.send(RecordState::Filtered(record)).await {
+                            tracing::error!("failed to send record over consumer channel: {}", e);
+                        }
+
+                        if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
+                            tracing::error!("error committing Kafka message: {}", err);
+                        }
+
                         return Ok(());
                     }
                 }
 
-                if let Err(e) = self.consumer_tx.send(record).await {
+                if let Err(e) = self.consumer_tx.send(RecordState::Received(record)).await {
                     tracing::error!("failed to send record over consumer channel: {}", e);
                 }
 
