@@ -5,7 +5,9 @@ use crate::{
     app::{config::Config, export::Exporter},
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, ConsumerMode, PartitionOffset, Record},
-    ui::{Component, Notifications, NotificationsConfig, Records, RecordsConfig},
+    ui::{
+        Component, Notifications, NotificationsConfig, Records, RecordsConfig, Stats, StatsConfig,
+    },
 };
 
 use anyhow::Context;
@@ -219,6 +221,13 @@ impl App {
                 .expect("valid Records config"),
         )));
 
+        let stats_component = Rc::new(RefCell::new(Stats::new(
+            StatsConfig::builder()
+                .theme(&config.theme)
+                .build()
+                .expect("valid Stats config"),
+        )));
+
         let notification_history = Rc::new(RefCell::new(BoundedVecDeque::new(512)));
 
         let notifications_component = Rc::new(RefCell::new(Notifications::new(
@@ -229,8 +238,11 @@ impl App {
                 .expect("valid Notifications config"),
         )));
 
-        let components: Vec<Rc<RefCell<dyn Component>>> =
-            vec![records_component.clone(), notifications_component];
+        let components: Vec<Rc<RefCell<dyn Component>>> = vec![
+            records_component.clone(),
+            stats_component,
+            notifications_component,
+        ];
 
         let state = State::new(consumer_mode, notification_history, records_component);
 

@@ -1,8 +1,12 @@
 mod notifications;
 mod records;
+mod stats;
 
-pub use crate::ui::notifications::{Notifications, NotificationsConfig};
-pub use crate::ui::records::{Records, RecordsConfig};
+pub use crate::ui::{
+    notifications::{Notifications, NotificationsConfig},
+    records::{Records, RecordsConfig},
+    stats::{Stats, StatsConfig},
+};
 
 use crate::{
     app::{App, BufferedKeyPress, NotificationStatus},
@@ -49,16 +53,22 @@ pub trait Component {
     /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str;
     /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph;
+    fn status_line(&self) -> Paragraph {
+        Paragraph::default()
+    }
     /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph;
+    fn key_bindings(&self) -> Paragraph {
+        Paragraph::default()
+    }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
     /// for processing.
     fn map_key_event(
         &self,
-        event: KeyEvent,
-        buffered: Option<&BufferedKeyPress>,
-    ) -> Option<AppEvent>;
+        _event: KeyEvent,
+        _buffered: Option<&BufferedKeyPress>,
+    ) -> Option<AppEvent> {
+        None
+    }
     /// Allows the component to handle any [`AppEvent`] that was not handled by the main
     /// application.
     fn on_app_event(&mut self, event: &AppEvent);
