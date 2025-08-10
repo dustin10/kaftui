@@ -172,10 +172,10 @@ impl RecordsState {
             return;
         }
 
-        if let Some(curr_idx) = self.list_state.selected() {
-            if curr_idx == self.records.len() - 1 {
-                return;
-            }
+        if let Some(curr_idx) = self.list_state.selected()
+            && curr_idx == self.records.len() - 1
+        {
+            return;
         }
 
         self.list_state.select_next();
@@ -528,7 +528,7 @@ impl Component for Records {
         "Records"
     }
     /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph {
+    fn status_line(&self) -> Paragraph<'_> {
         let status_text_color = match self.state.consumer_mode.get() {
             ConsumerMode::Processing => self.theme.processing_text_color,
             ConsumerMode::Paused => self.theme.paused_text_color,
@@ -550,7 +550,7 @@ impl Component for Records {
         .style(status_text_color)
     }
     /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph {
+    fn key_bindings(&self) -> Paragraph<'_> {
         let consumer_mode_key_binding = match self.state.consumer_mode.get() {
             ConsumerMode::Processing => KEY_BINDING_PAUSE,
             ConsumerMode::Paused => KEY_BINDING_RESUME,

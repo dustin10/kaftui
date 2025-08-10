@@ -81,10 +81,10 @@ impl NotificationsState {
             return;
         }
 
-        if let Some(curr_idx) = self.list_state.selected() {
-            if curr_idx == self.history.borrow().len() - 1 {
-                return;
-            }
+        if let Some(curr_idx) = self.list_state.selected()
+            && curr_idx == self.history.borrow().len() - 1
+        {
+            return;
         }
 
         self.list_state.select_next();
@@ -219,12 +219,12 @@ impl Component for Notifications {
         "Notifications"
     }
     /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph {
+    fn status_line(&self) -> Paragraph<'_> {
         Paragraph::new(format!("Total: {}", self.state.history.borrow().len()))
             .style(self.theme.status_text_color_processing)
     }
     /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph {
+    fn key_bindings(&self) -> Paragraph<'_> {
         Paragraph::new(NOTIFICATION_HISTORY_KEY_BINDINGS.join(" | "))
             .style(self.theme.key_bindings_text_color)
             .right_aligned()

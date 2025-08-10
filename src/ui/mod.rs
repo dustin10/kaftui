@@ -49,9 +49,9 @@ pub trait Component {
     /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str;
     /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph;
+    fn status_line(&self) -> Paragraph<'_>;
     /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph;
+    fn key_bindings(&self) -> Paragraph<'_>;
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
     /// for processing.
     fn map_key_event(
@@ -184,29 +184,29 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(menu, left_panel);
     frame.render_widget(outer, area);
 
-    if let Some(notification) = app.state.notification_history.borrow().front() {
-        if !notification.is_expired() {
-            let notification_color = match notification.status {
-                NotificationStatus::Success => {
-                    Color::from_str(&app.config.theme.notification_text_color_success)
-                        .expect("valid RGB color")
-                }
-                NotificationStatus::Warn => {
-                    Color::from_str(&app.config.theme.notification_text_color_warn)
-                        .expect("valid RGB color")
-                }
-                NotificationStatus::Failure => {
-                    Color::from_str(&app.config.theme.notification_text_color_failure)
-                        .expect("valid RGB color")
-                }
-            };
+    if let Some(notification) = app.state.notification_history.borrow().front()
+        && !notification.is_expired()
+    {
+        let notification_color = match notification.status {
+            NotificationStatus::Success => {
+                Color::from_str(&app.config.theme.notification_text_color_success)
+                    .expect("valid RGB color")
+            }
+            NotificationStatus::Warn => {
+                Color::from_str(&app.config.theme.notification_text_color_warn)
+                    .expect("valid RGB color")
+            }
+            NotificationStatus::Failure => {
+                Color::from_str(&app.config.theme.notification_text_color_failure)
+                    .expect("valid RGB color")
+            }
+        };
 
-            let notification_text = Paragraph::new(notification.summary.as_str())
-                .style(notification_color)
-                .right_aligned();
+        let notification_text = Paragraph::new(notification.summary.as_str())
+            .style(notification_color)
+            .right_aligned();
 
-            frame.render_widget(notification_text, right_panel);
-        }
+        frame.render_widget(notification_text, right_panel);
     }
 }
 
