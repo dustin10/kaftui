@@ -1,11 +1,16 @@
 use crate::{app::config::Theme, event::AppEvent, kafka::Record, ui::Component};
 
+use bounded_vec_deque::BoundedVecDeque;
+use chrono::Utc;
 use derive_builder::Builder;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
+    symbols::Marker,
     text::Line,
-    widgets::{Bar, BarChart, BarGroup, Block, Padding, Paragraph},
+    widgets::{
+        Axis, Bar, BarChart, BarGroup, Block, Chart, Dataset, GraphType, Padding, Paragraph,
+    },
     Frame,
 };
 use std::{collections::BTreeMap, str::FromStr};
@@ -13,8 +18,14 @@ use std::{collections::BTreeMap, str::FromStr};
 /// Number of columns to render between bars in a bar chart.
 const BAR_GAP: u16 = 2;
 
+/// Minimum width of a bar in the total per partition chart that is allowed to display the
+/// percentage of total records alongside the total count.
+const MIN_BAR_WIDTH_FOR_PERCENTAGE: u16 = 14;
+
+const MAX_THROUGHPUT_CAPTURE: usize = 4096;
+
 /// Manages state related to application statistics and the UI that renders them to the user.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct StatsState {
     /// Count of the Kafka records that were consumed from the topic, were not filtered and
     /// presented to the user.
@@ -23,8 +34,12 @@ struct StatsState {
     /// presented to the user.
     filtered: u64,
     /// A [`BTreeMap`] containing the total number of [`Records`]s consumed from the Kafka topic
-    /// split up by partition number.
+    /// split up by partition number. This type of map is used to keep the partitions ordered for
+    /// display in the chart.
     partition_totals: BTreeMap<i32, u64>,
+    /// Contains the timestamps corresponding to when [`Record`]s were consumed from the Kafka
+    /// topic. These timestamps are used to display the throughput chart.
+    timestamps: BoundedVecDeque<i64>,
 }
 
 impl StatsState {
@@ -37,11 +52,13 @@ impl StatsState {
     /// [`Record`] has already passed the filtering process.
     fn on_record_received(&mut self, record: &Record) {
         self.received += 1;
+        self.push_timestamp();
         self.inc_total_for_partition(record.partition);
     }
     /// Invoked when a [`Record`] received from the Kafka consumer is filtered.
     fn on_record_filtered(&mut self, record: &Record) {
         self.filtered += 1;
+        self.push_timestamp();
         self.inc_total_for_partition(record.partition);
     }
     /// Increments the total number of [`Record`]s consumed on a partition.
@@ -50,6 +67,20 @@ impl StatsState {
             .entry(partition)
             .and_modify(|t| *t += 1)
             .or_insert(1);
+    }
+    fn push_timestamp(&mut self) {
+        self.timestamps.push_front(Utc::now().timestamp_millis());
+    }
+}
+
+impl Default for StatsState {
+    fn default() -> Self {
+        Self {
+            received: u64::default(),
+            filtered: u64::default(),
+            partition_totals: BTreeMap::default(),
+            timestamps: BoundedVecDeque::new(MAX_THROUGHPUT_CAPTURE),
+        }
     }
 }
 
@@ -65,6 +96,8 @@ struct StatsTheme {
     bar_color: Color,
     /// Secondary color used for bars in a bar graph.
     bar_secondary_color: Color,
+    /// Color used for the throughput chart.
+    throughput_color: Color,
 }
 
 impl From<&Theme> for StatsTheme {
@@ -87,12 +120,16 @@ impl From<&Theme> for StatsTheme {
         let bar_secondary_color =
             Color::from_str(value.stats_bar_secondary_color.as_str()).expect("valid RGB hex");
 
+        let throughput_color =
+            Color::from_str(value.stats_throughput_color.as_str()).expect("valid RGB hex");
+
         Self {
             panel_border_color,
             label_color,
             text_color,
             bar_color,
             bar_secondary_color,
+            throughput_color,
         }
     }
 }
@@ -186,7 +223,7 @@ impl Stats {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(area);
 
-        let [top_left_panel, _top_right_panel] = Layout::default()
+        let [top_left_panel, top_right_panel] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(top_panel);
@@ -196,7 +233,72 @@ impl Stats {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(bottom_panel);
 
-        self.render_total_by_partition(frame, top_left_panel);
+        self.render_throughput(frame, top_left_panel);
+        self.render_total_by_partition(frame, top_right_panel);
+    }
+    /// Renders the chart that displays the total throughput of records being consumed from the
+    /// Kafka topic per second.
+    fn render_throughput(&self, frame: &mut Frame, area: Rect) {
+        let throughput_block = Block::bordered()
+            .title(" Records/Second ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let now = Utc::now();
+        let now_secs = now.timestamp_millis() / 1000;
+
+        let mut partitioned: BTreeMap<u32, u32> = BTreeMap::new();
+        for timestamp in self.state.timestamps.iter() {
+            let timestamp_secs = timestamp / 1000;
+
+            let seconds_past = now_secs - timestamp_secs;
+
+            partitioned
+                .entry(seconds_past as u32)
+                .and_modify(|t| *t += 1)
+                .or_insert(1);
+        }
+
+        let max = match partitioned.values().max() {
+            Some(m) => *m,
+            None => 0,
+        };
+
+        let data: Vec<(f64, f64)> = partitioned
+            .into_iter()
+            .map(|(secs_ago, total)| {
+                let x = secs_ago.abs_diff(area.width as u32) as f64;
+                let y = total as f64;
+                (x, y)
+            })
+            .collect();
+
+        let data_set = Dataset::default()
+            .marker(Marker::HalfBlock)
+            .style(self.theme.throughput_color)
+            .graph_type(GraphType::Bar)
+            .data(&data);
+
+        let now_time = now.format("%H:%M:%S").to_string();
+
+        let past_min = (area.width as f32 / 60.0).ceil();
+
+        let x_axis = Axis::default()
+            .style(self.theme.text_color)
+            .labels([format!("-{}m", past_min).bold(), now_time.bold()])
+            .bounds([0.0, area.width as f64]);
+
+        let y_axis = Axis::default()
+            .style(self.theme.text_color)
+            .bounds([0.0, max as f64])
+            .labels(["0".bold(), max.to_string().bold()]);
+
+        let throughput_chart = Chart::new(vec![data_set])
+            .block(throughput_block)
+            .x_axis(x_axis)
+            .y_axis(y_axis);
+
+        frame.render_widget(throughput_chart, area);
     }
     /// Renders the bar chart that displays the total records consumed from the Kafka topic per
     /// partition.
@@ -206,29 +308,36 @@ impl Stats {
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
+        let bar_width =
+            calculate_bar_width(&area, self.state.partition_totals.len() as u16, BAR_GAP);
+
         let per_partition_bars: Vec<Bar> = self
             .state
             .partition_totals
             .iter()
             .enumerate()
-            .map(|(i, (p, t))| {
+            .map(|(i, (partition, total))| {
                 let style: Style = if i % 2 == 0 {
                     self.theme.bar_color.into()
                 } else {
                     self.theme.bar_secondary_color.into()
                 };
 
+                let text_value = if bar_width > MIN_BAR_WIDTH_FOR_PERCENTAGE {
+                    let percentage = (*total as f32 / self.state.total() as f32) * 100.0;
+                    format!("{} ({:.1}%)", total, percentage)
+                } else {
+                    format!("{}", total)
+                };
+
                 Bar::default()
-                    .value(*t)
-                    .text_value(t.to_string())
-                    .label(Line::from(format!("P{}", p)).style(self.theme.label_color))
+                    .value(*total)
+                    .text_value(text_value)
+                    .label(Line::from(format!("P{}", partition)).style(self.theme.label_color))
                     .style(style)
                     .value_style(style.reversed())
             })
             .collect();
-
-        let bar_width =
-            calculate_bar_width(&area, self.state.partition_totals.len() as u16, BAR_GAP);
 
         let per_partition_chart = BarChart::default()
             .data(BarGroup::default().bars(&per_partition_bars))

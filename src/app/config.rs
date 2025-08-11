@@ -314,6 +314,8 @@ pub struct Theme {
     pub stats_bar_color: String,
     /// Secondary color used for bars in a bar graph in the stats UI. Defaults to white.
     pub stats_bar_secondary_color: String,
+    /// Color used for the throughput chart in the stats UI. Defaults to white.
+    pub stats_throughput_color: String,
 }
 
 impl Default for Theme {
@@ -342,6 +344,7 @@ impl Default for Theme {
     /// * Stats Text - White
     /// * Stats Bar - White
     /// * Stats Bar Secondary - White
+    /// * Stats Throughput - White
     fn default() -> Self {
         Self {
             panel_border_color: String::from("#FFFFFF"),
@@ -362,6 +365,7 @@ impl Default for Theme {
             stats_text_color: String::from("#FFFFFF"),
             stats_bar_color: String::from("#FFFFFF"),
             stats_bar_secondary_color: String::from("#FFFFFF"),
+            stats_throughput_color: String::from("#FFFFFF"),
         }
     }
 }
@@ -457,6 +461,11 @@ impl From<Theme> for ValueKind {
         data.insert(
             String::from("statsBarSecondaryColor"),
             Value::from(value.stats_bar_secondary_color),
+        );
+
+        data.insert(
+            String::from("statsThroughputColor"),
+            Value::from(value.stats_throughput_color),
         );
 
         Self::Table(data)

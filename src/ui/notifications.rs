@@ -11,8 +11,7 @@ use ratatui::{
     layout::{Constraint, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     widgets::{
-        Block, BorderType, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
-        TableState,
+        Block, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState,
     },
     Frame,
 };
@@ -27,17 +26,9 @@ const NOTIFICATION_HISTORY_KEY_BINDINGS: [&str; 4] = [
     super::KEY_BINDING_BOTTOM,
 ];
 
-/// Enumeration of the widgets in the [`Notifications`] component that can have focus.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum NotificationsWidget {
-    HistoryList,
-}
-
 /// Manages state related to notifications displayed to the user and the UI around them.
 #[derive(Debug)]
 pub struct NotificationsState {
-    /// [`NotificationsWidget`] that currently has focus.
-    active_widget: NotificationsWidget,
     /// Stores the history of [`Notification`]s displayed to the user.
     history: Rc<RefCell<BoundedVecDeque<Notification>>>,
     /// [`TableState`] for the table that notifications from the history list are rendered into.
@@ -52,7 +43,6 @@ impl NotificationsState {
     /// containing all [`Notification`]s that were presented to the user.
     fn new(history: Rc<RefCell<BoundedVecDeque<Notification>>>) -> Self {
         Self {
-            active_widget: NotificationsWidget::HistoryList,
             history,
             list_state: TableState::default(),
             list_scroll_state: ScrollbarState::default(),
@@ -118,8 +108,6 @@ impl NotificationsState {
 struct NotificationsTheme {
     /// Color used for the borders of the main info panels.
     panel_border_color: Color,
-    /// Color used for the borders of the selected info panel.
-    selected_panel_border_color: Color,
     /// Color used for the label text in tables, etc.
     label_color: Color,
     /// Color used for the status text while the Kafka consumer is active.
@@ -139,9 +127,6 @@ impl From<&Theme> for NotificationsTheme {
     fn from(value: &Theme) -> Self {
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
-
-        let selected_panel_border_color =
-            Color::from_str(value.selected_panel_border_color.as_str()).expect("valid RGB hex");
 
         let label_color = Color::from_str(value.label_color.as_str()).expect("valid RGB hex");
 
@@ -164,7 +149,6 @@ impl From<&Theme> for NotificationsTheme {
 
         Self {
             panel_border_color,
-            selected_panel_border_color,
             label_color,
             status_text_color_processing,
             key_bindings_text_color,
@@ -265,16 +249,10 @@ impl Component for Notifications {
     }
     /// Renders the component-specific widgets to the terminal.
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let mut table_block = Block::bordered()
+        let table_block = Block::bordered()
             .title(" Notifications ")
             .border_style(self.theme.panel_border_color)
             .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
-
-        if self.state.active_widget == NotificationsWidget::HistoryList {
-            table_block = table_block
-                .border_type(BorderType::Thick)
-                .border_style(self.theme.selected_panel_border_color);
-        }
 
         let table_rows: Vec<Row> = self
             .state

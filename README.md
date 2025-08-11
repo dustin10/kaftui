@@ -144,6 +144,7 @@ properties are available to be configured using a theme.
 * `statsTextColor` - Color used for the text in the stats UI.
 * `statsBarColor` - Pimary color used for bars in a bar graph in the stats UI.
 * `statsBarSecondaryColor` - Secondary color used for bars in a bar graph in the stats UI.
+* `statsThroughputColor` - Color used for the throughput chart in the stats UI.
 
 > Colors must be specified in RGB format **with** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
 section for an example of a theme.
@@ -198,7 +199,8 @@ values which can be used to configure the application using the `.kaftui.json` f
     "notificationTextColorFailure": "#FF5555",
     "statsTextColor": "#F8F8F2",
     "statsBarColor": "#F8F8F2",
-    "statsBarSecondaryColor": "#50FA7B"
+    "statsBarSecondaryColor": "#50FA7B",
+    "statsThroughputColor": "#FFB86C"
   }
 }
 ```
