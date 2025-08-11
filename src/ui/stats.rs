@@ -10,6 +10,9 @@ use ratatui::{
 };
 use std::{collections::BTreeMap, str::FromStr};
 
+/// Number of columns to render between bars in a bar chart.
+const BAR_GAP: u16 = 2;
+
 /// Manages state related to application statistics and the UI that renders them to the user.
 #[derive(Debug, Default)]
 struct StatsState {
@@ -34,17 +37,17 @@ impl StatsState {
     /// [`Record`] has already passed the filtering process.
     fn on_record_received(&mut self, record: &Record) {
         self.received += 1;
-        self.inc_total(record);
+        self.inc_total_for_partition(record.partition);
     }
     /// Invoked when a [`Record`] received from the Kafka consumer is filtered.
     fn on_record_filtered(&mut self, record: &Record) {
         self.filtered += 1;
-        self.inc_total(record);
+        self.inc_total_for_partition(record.partition);
     }
     /// Increments the total number of [`Record`]s consumed on a partition.
-    fn inc_total(&mut self, record: &Record) {
+    fn inc_total_for_partition(&mut self, partition: i32) {
         self.partition_totals
-            .entry(record.partition)
+            .entry(partition)
             .and_modify(|t| *t += 1)
             .or_insert(1);
     }
@@ -147,6 +150,7 @@ impl Stats {
         let received_paragraph = Paragraph::new(self.state.received.to_string())
             .block(received_block)
             .style(self.theme.text_color)
+            .bold()
             .centered();
 
         let filtered_block = Block::bordered()
@@ -157,6 +161,7 @@ impl Stats {
         let filtered_paragraph = Paragraph::new(self.state.filtered.to_string())
             .block(filtered_block)
             .style(self.theme.text_color)
+            .bold()
             .centered();
 
         let total_block = Block::bordered()
@@ -167,6 +172,7 @@ impl Stats {
         let total_paragraph = Paragraph::new(self.state.total().to_string())
             .block(total_block)
             .style(self.theme.text_color)
+            .bold()
             .centered();
 
         frame.render_widget(received_paragraph, received_panel);
@@ -175,6 +181,26 @@ impl Stats {
     }
     /// Renders the various charts for the stats UI.
     fn render_charts(&self, frame: &mut Frame, area: Rect) {
+        let [top_panel, bottom_panel] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(area);
+
+        let [top_left_panel, _top_right_panel] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(top_panel);
+
+        let [_bottom_left_panel, _bottom_right_panel] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(bottom_panel);
+
+        self.render_total_by_partition(frame, top_left_panel);
+    }
+    /// Renders the bar chart that displays the total records consumed from the Kafka topic per
+    /// partition.
+    fn render_total_by_partition(&self, frame: &mut Frame, area: Rect) {
         let charts_block = Block::bordered()
             .title(" Total Per Partition ")
             .border_style(self.theme.panel_border_color)
@@ -201,17 +227,29 @@ impl Stats {
             })
             .collect();
 
-        // TODO: determine bar_width and bar_gap based on the area passed in and the number of
-        // partitions that will be rendered to the chart
+        let bar_width =
+            calculate_bar_width(&area, self.state.partition_totals.len() as u16, BAR_GAP);
 
         let per_partition_chart = BarChart::default()
             .data(BarGroup::default().bars(&per_partition_bars))
-            .bar_width(8)
-            .bar_gap(2)
+            .bar_width(bar_width)
+            .bar_gap(BAR_GAP)
             .block(charts_block);
 
         frame.render_widget(per_partition_chart, area);
     }
+}
+
+/// Calculates the bar width based on total number of partitions, gap between bars and the
+/// width of the available area.
+fn calculate_bar_width(area: &Rect, num_bars: u16, bar_gap: u16) -> u16 {
+    if num_bars == 0 {
+        return 1;
+    }
+
+    let total_gap = (num_bars + 1) * bar_gap;
+
+    (area.width - total_gap) / num_bars
 }
 
 impl Component for Stats {
