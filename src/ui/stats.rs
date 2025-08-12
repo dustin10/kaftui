@@ -242,7 +242,7 @@ impl Stats {
     /// Kafka topic per second.
     fn render_throughput(&self, frame: &mut Frame, area: Rect) {
         let throughput_block = Block::bordered()
-            .title(" Records/Second ")
+            .title(" Records Per Second ")
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
@@ -287,13 +287,21 @@ impl Stats {
 
         let x_axis = Axis::default()
             .style(self.theme.text_color)
-            .labels([format!("-{}m", past_min).bold(), now_time.bold()])
+            .labels([
+                format!("-{}m", past_min)
+                    .bold()
+                    .style(self.theme.label_color),
+                now_time.bold().style(self.theme.label_color),
+            ])
             .bounds([0.0, area.width as f64]);
 
         let y_axis = Axis::default()
             .style(self.theme.text_color)
             .bounds([0.0, max as f64])
-            .labels(["0".bold(), max.to_string().bold()]);
+            .labels([
+                "0".bold().style(self.theme.label_color),
+                max.to_string().bold().style(self.theme.label_color),
+            ]);
 
         let throughput_chart = Chart::new(vec![data_set])
             .block(throughput_block)
