@@ -28,7 +28,7 @@ The following statistics are currently tracked.
 
 ## Quick Start
 
-First, install the `kafktui` application using `cargo`.
+First, install the `kafktui` application using `cargo`. The minimum required version of Rust is `1.89.0`.
 
 ```sh
 > cargo install --git https://github.com/dustin10/kaftui.git
