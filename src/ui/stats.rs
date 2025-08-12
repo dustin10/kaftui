@@ -22,6 +22,8 @@ const BAR_GAP: u16 = 2;
 /// percentage of total records alongside the total count.
 const MIN_BAR_WIDTH_FOR_PERCENTAGE: u16 = 14;
 
+/// Maximum number of timestamps corresponding to recrods being consumed from the Kafka topic that
+/// will be kept in memory at any given time to be evaluated for the throughput chart.
 const MAX_THROUGHPUT_CAPTURE: usize = 4096;
 
 /// Manages state related to application statistics and the UI that renders them to the user.
