@@ -34,8 +34,8 @@ const KEY_BINDING_EXPORT: &str = "(e) export";
 /// Enumeration of the widgets in the [`Records`] component that can have focus.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum RecordsWidget {
-    RecordList,
-    RecordValue,
+    List,
+    Value,
 }
 
 /// Configuration used to create a new [`Records`] component.
@@ -92,7 +92,7 @@ impl RecordsState {
     fn new(consumer_mode: Rc<Cell<ConsumerMode>>, max_records: usize) -> Self {
         Self {
             consumer_mode,
-            active_widget: RecordsWidget::RecordList,
+            active_widget: RecordsWidget::List,
             selected: None,
             records: BoundedVecDeque::new(max_records),
             list_state: TableState::default(),
@@ -196,10 +196,8 @@ impl RecordsState {
     /// Cycles the focus to the next available widget based on the currently selected widget.
     fn select_next_widget(&mut self) {
         let next_widget = match self.active_widget {
-            RecordsWidget::RecordList if self.selected.is_some() => {
-                Some(RecordsWidget::RecordValue)
-            }
-            _ => Some(RecordsWidget::RecordList),
+            RecordsWidget::List if self.selected.is_some() => Some(RecordsWidget::Value),
+            _ => Some(RecordsWidget::List),
         };
 
         if let Some(widget) = next_widget {
@@ -315,7 +313,7 @@ impl Records {
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
-        if self.state.active_widget == RecordsWidget::RecordList {
+        if self.state.active_widget == RecordsWidget::List {
             record_list_block = record_list_block
                 .border_type(BorderType::Thick)
                 .border_style(self.theme.selected_panel_border_color);
@@ -449,7 +447,7 @@ impl Records {
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
-        if self.state.active_widget == RecordsWidget::RecordValue {
+        if self.state.active_widget == RecordsWidget::Value {
             value_block = value_block
                 .border_type(BorderType::Thick)
                 .border_style(self.theme.selected_panel_border_color);
@@ -542,13 +540,13 @@ impl Component for Records {
         let mut key_bindings = Vec::from(RECORDS_STANDARD_KEY_BINDINGS);
 
         match self.state.active_widget {
-            RecordsWidget::RecordList => {
+            RecordsWidget::List => {
                 key_bindings.push(super::KEY_BINDING_TOP);
                 key_bindings.push(super::KEY_BINDING_NEXT);
                 key_bindings.push(super::KEY_BINDING_PREV);
                 key_bindings.push(super::KEY_BINDING_BOTTOM);
             }
-            RecordsWidget::RecordValue => {
+            RecordsWidget::Value => {
                 key_bindings.push(super::KEY_BINDING_TOP);
                 key_bindings.push(super::KEY_BINDING_SCROLL_DOWN);
                 key_bindings.push(super::KEY_BINDING_SCROLL_UP);
@@ -576,7 +574,7 @@ impl Component for Records {
             KeyCode::Char(c) => {
                 // TODO: cleanup duplication of e,p and r
                 match self.state.active_widget {
-                    RecordsWidget::RecordList => match c {
+                    RecordsWidget::List => match c {
                         'e' => self
                             .state
                             .selected
@@ -592,7 +590,7 @@ impl Component for Records {
                         'G' => Some(AppEvent::SelectLastRecord),
                         _ => None,
                     },
-                    RecordsWidget::RecordValue => match c {
+                    RecordsWidget::Value => match c {
                         'e' => self
                             .state
                             .selected
