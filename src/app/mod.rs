@@ -493,9 +493,9 @@ struct StartConsumerTask {
     consumer: Arc<Consumer>,
     /// Topic to consume records from.
     topic: String,
-    /// Vec of partitions that should be assigned to the Kafka consumer.
+    /// [`Vec`] of partitions that should be assigned to the Kafka consumer.
     partitions: Vec<i32>,
-    /// Vec of partition and offset pairs that the Kafka consumer should seek to before starting to
+    /// [`Vec`] of partition and offset pairs that the Kafka consumer should seek to before starting to
     /// consume records.
     seek_to: Vec<PartitionOffset>,
     /// JSONPath filter to apply to the consumed records.

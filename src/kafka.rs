@@ -191,7 +191,7 @@ impl Consumer {
             consumer_tx,
         })
     }
-    /// Starts the consumption of records from the specified topic.
+    /// Starts the consumption of records from the specified Kafka topic.
     pub fn start(
         &self,
         topic: String,
