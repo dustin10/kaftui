@@ -20,7 +20,7 @@ The application also keeps track of basic statistics during execution and presen
 ![kaftui application stats UI running with the default theme](assets/kaftui-default-stats.png)
 
 The following statistics are currently tracked.
-* Number of Kafka records recieved
+* Number of Kafka records received
 * Number of Kafka records filtered
 * Total number of Kafka records consumed
 * Throughput in records per second.
