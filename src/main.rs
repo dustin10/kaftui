@@ -81,10 +81,7 @@ impl Source for Args {
         }
 
         if let Some(partitions) = self.partitions.as_ref() {
-            cfg.insert(
-                String::from("partitions"),
-                config::Value::from(partitions.clone()),
-            );
+            cfg.insert(String::from("partitions"), Value::from(partitions.clone()));
         }
 
         if let Some(group_id) = self.group_id.as_ref() {

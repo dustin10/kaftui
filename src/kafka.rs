@@ -195,30 +195,31 @@ impl Consumer {
     pub fn start(
         &self,
         topic: String,
-        mut partitions: Vec<i32>,
+        partitions: Vec<i32>,
         seek_to: Vec<PartitionOffset>,
         filter: Option<String>,
     ) -> anyhow::Result<()> {
-        if partitions.is_empty() {
+        let to_assign = if partitions.is_empty() {
             let topic_metadata = self
                 .consumer
                 .fetch_metadata(Some(topic.as_str()), Duration::from_secs(10))
                 .context("fetch topic metadata from broker")?;
 
-            let topic_partitions = topic_metadata
+            topic_metadata
                 .topics()
                 .first()
                 .expect("topic metadata exists")
                 .partitions()
                 .iter()
-                .map(|mp| mp.id());
+                .map(|mp| mp.id())
+                .collect()
+        } else {
+            partitions
+        };
 
-            partitions.extend(topic_partitions);
-        }
+        let mut assignments_list = TopicPartitionList::with_capacity(to_assign.len());
 
-        let mut assignments_list = TopicPartitionList::with_capacity(partitions.len());
-
-        for partition in partitions.iter() {
+        for partition in to_assign.iter() {
             match seek_to.iter().find(|po| po.partition == *partition) {
                 Some(po) => assignments_list
                     .add_partition_offset(topic.as_str(), *partition, Offset::Offset(po.offset))
@@ -233,7 +234,7 @@ impl Consumer {
             .assign(&assignments_list)
             .context("assign partitions to consumer")?;
 
-        for partition in partitions.iter() {
+        for partition in to_assign.iter() {
             let partition_queue = self
                 .consumer
                 .split_partition_queue(topic.as_str(), *partition)
