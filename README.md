@@ -2,7 +2,7 @@
 
 A TUI application which can be used to view records published to a [Kafka](https://kafka.apache.org/) topic.
 
-![kaftui application running with the default theme](assets/kaftui-default.png)
+![kaftui application records UI running with the default theme](assets/kaftui-default-records.png)
 
 The `kaftui` application provides the following features to users.
 
@@ -14,6 +14,17 @@ The `kaftui` application provides the following features to users.
 * [Filter](#Filtering) out records the user may not be interested in using a JSONPath filter.
 * Configure [profiles](#Profiles) to easily connect to different Kafka clusters.
 * [Theme](#Theme) the application to match any existing terminal color scheme.
+
+The application also keeps track of basic statistics during execution and presents them in a dedicated UI for the user.
+
+![kaftui application stats UI running with the default theme](assets/kaftui-default-stats.png)
+
+The following statistics are currently tracked.
+* Number of Kafka records recieved
+* Number of Kafka records filtered
+* Total number of Kafka records consumed
+* Throughput in records per second.
+* Number of Kafka records consumed per partition.
 
 ## Quick Start
 
@@ -151,7 +162,9 @@ section for an example of a theme.
 
 The screenshow below is an example of a `kaftui` theme configuration that is inspired by the Dracula theme.
 
-![kaftui application running with a dracula theme](assets/kaftui-dracula.png)
+![kaftui application running with a dracula theme](assets/kaftui-dracula-records.png)
+
+![kaftui application running with a dracula theme](assets/kaftui-dracula-stats.png)
 
 ## Persisted Configuration
 
