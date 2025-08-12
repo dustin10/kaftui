@@ -83,7 +83,8 @@ active widget.The following key bindings apply no matter which widget is current
 * `esc` - Exits the `kaftui` application.
 * `tab` - Changes focus from the current widget to the next available one.
 * `1` - View the `Records` screen.
-* `2` - View the `Notification History` screen.
+* `2` - View the `Stats` screen.
+* `3` - View the `Notifications` screen.
 
 The active key bindings will be displayed in the UI on the right side of the footer and will vary depending on the 
 screen that is currently being viewed within the application.
