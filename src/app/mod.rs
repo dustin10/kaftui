@@ -223,6 +223,9 @@ impl App {
 
         let stats_component = Rc::new(RefCell::new(Stats::new(
             StatsConfig::builder()
+                .consumer_mode(Rc::clone(&consumer_mode))
+                .topic(config.topic.clone())
+                .filter(config.filter.clone())
                 .theme(&config.theme)
                 .build()
                 .expect("valid Stats config"),

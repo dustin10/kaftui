@@ -19,7 +19,8 @@ use std::{cell::RefCell, rc::Rc, str::FromStr};
 
 /// Key bindings that are displayed to the user in the footer when viewing the notification history
 /// screen.
-const NOTIFICATION_HISTORY_KEY_BINDINGS: [&str; 4] = [
+const NOTIFICATION_HISTORY_KEY_BINDINGS: [&str; 5] = [
+    super::KEY_BINDING_QUIT,
     super::KEY_BINDING_TOP,
     super::KEY_BINDING_SCROLL_DOWN,
     super::KEY_BINDING_SCROLL_UP,

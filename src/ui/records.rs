@@ -24,15 +24,9 @@ use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 const EMPTY_PARTITION_KEY: &str = "<empty>";
 
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
-/// the application is when viewing the consume topic screen.
-const CONSUME_TOPIC_STANDARD_KEY_BINDINGS: [&str; 2] =
+/// the application is when viewing the records UI.
+const RECORDS_STANDARD_KEY_BINDINGS: [&str; 2] =
     [super::KEY_BINDING_QUIT, super::KEY_BINDING_CHANGE_FOCUS];
-
-/// Text displayed to the user in the footer for the pause key binding.
-const KEY_BINDING_PAUSE: &str = "(p) pause";
-
-/// Text displayed to the user in the footer for the resume key binding.
-const KEY_BINDING_RESUME: &str = "(r) resume";
 
 /// Text displayed to the user in the footer for the export key binding.
 const KEY_BINDING_EXPORT: &str = "(e) export";
@@ -541,11 +535,11 @@ impl Component for Records {
     /// Returns a [`Paragraph`] that will be used to render the active key bindings.
     fn key_bindings(&self) -> Paragraph<'_> {
         let consumer_mode_key_binding = match self.state.consumer_mode.get() {
-            ConsumerMode::Processing => KEY_BINDING_PAUSE,
-            ConsumerMode::Paused => KEY_BINDING_RESUME,
+            ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
+            ConsumerMode::Paused => super::KEY_BINDING_RESUME,
         };
 
-        let mut key_bindings = Vec::from(CONSUME_TOPIC_STANDARD_KEY_BINDINGS);
+        let mut key_bindings = Vec::from(RECORDS_STANDARD_KEY_BINDINGS);
 
         match self.state.active_widget {
             RecordsWidget::RecordList => {

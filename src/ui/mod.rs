@@ -28,6 +28,12 @@ const KEY_BINDING_QUIT: &str = "(esc) quit";
 /// Text displayed to the user in the footer for the cycle widget key binding.
 const KEY_BINDING_CHANGE_FOCUS: &str = "(tab) cycle focus";
 
+/// Text displayed to the user in the footer for the pause key binding.
+const KEY_BINDING_PAUSE: &str = "(p) pause";
+
+/// Text displayed to the user in the footer for the resume key binding.
+const KEY_BINDING_RESUME: &str = "(r) resume";
+
 /// Text displayed to the user in the footer for the scroll down key binding.
 const KEY_BINDING_SCROLL_DOWN: &str = "(j) down";
 

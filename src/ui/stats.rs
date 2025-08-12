@@ -1,7 +1,13 @@
-use crate::{app::config::Theme, event::AppEvent, kafka::Record, ui::Component};
+use crate::{
+    app::{config::Theme, BufferedKeyPress},
+    event::AppEvent,
+    kafka::{ConsumerMode, Record},
+    ui::Component,
+};
 
 use bounded_vec_deque::BoundedVecDeque;
 use chrono::Utc;
+use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -9,11 +15,12 @@ use ratatui::{
     symbols::Marker,
     text::Line,
     widgets::{
-        Axis, Bar, BarChart, BarGroup, Block, Chart, Dataset, GraphType, Padding, Paragraph,
+        Axis, Bar, BarChart, BarGroup, Block, Borders, Chart, Dataset, GraphType, Padding,
+        Paragraph,
     },
     Frame,
 };
-use std::{collections::BTreeMap, str::FromStr};
+use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 
 /// Number of columns to render between bars in a bar chart.
 const BAR_GAP: u16 = 2;
@@ -26,9 +33,15 @@ const MIN_BAR_WIDTH_FOR_PERCENTAGE: u16 = 14;
 /// will be kept in memory at any given time to be evaluated for the throughput chart.
 const MAX_THROUGHPUT_CAPTURE: usize = 4096;
 
+/// Key bindings that are displayed to the user in the footer no matter what the current state of
+/// the application is when viewing the stats screen.
+const STATS_STANDARD_KEY_BINDINGS: [&str; 1] = [super::KEY_BINDING_QUIT];
+
 /// Manages state related to application statistics and the UI that renders them to the user.
 #[derive(Debug)]
 struct StatsState {
+    /// Reference to the current [`ConsumerMode`].
+    consumer_mode: Rc<Cell<ConsumerMode>>,
     /// Count of the Kafka records that were consumed from the topic, were not filtered and
     /// presented to the user.
     received: u64,
@@ -45,6 +58,16 @@ struct StatsState {
 }
 
 impl StatsState {
+    /// Creates a new [`StatsState`].
+    fn new(consumer_mode: Rc<Cell<ConsumerMode>>) -> Self {
+        Self {
+            consumer_mode,
+            received: u64::default(),
+            filtered: u64::default(),
+            partition_totals: BTreeMap::default(),
+            timestamps: BoundedVecDeque::new(MAX_THROUGHPUT_CAPTURE),
+        }
+    }
     /// Computes the total number of records consumed. The total is sum of the number of records
     /// recieved and the number of records filtered.
     fn total(&self) -> u64 {
@@ -70,19 +93,10 @@ impl StatsState {
             .and_modify(|t| *t += 1)
             .or_insert(1);
     }
+    /// Pushes a the current timestamp onto the timestamps [`BoundedVecDeque`] which indicates that
+    /// a [`Record`] was consumed from the Kafka topic.
     fn push_timestamp(&mut self) {
         self.timestamps.push_front(Utc::now().timestamp_millis());
-    }
-}
-
-impl Default for StatsState {
-    fn default() -> Self {
-        Self {
-            received: u64::default(),
-            filtered: u64::default(),
-            partition_totals: BTreeMap::default(),
-            timestamps: BoundedVecDeque::new(MAX_THROUGHPUT_CAPTURE),
-        }
     }
 }
 
@@ -100,6 +114,12 @@ struct StatsTheme {
     bar_secondary_color: Color,
     /// Color used for the throughput chart.
     throughput_color: Color,
+    /// Color used for the status text while the Kafka consumer is active.
+    processing_text_color: Color,
+    /// Color used for the status text while the Kafka consumer is paused.
+    paused_text_color: Color,
+    /// Color used for the key bindings text.
+    key_bindings_text_color: Color,
 }
 
 impl From<&Theme> for StatsTheme {
@@ -125,6 +145,15 @@ impl From<&Theme> for StatsTheme {
         let throughput_color =
             Color::from_str(value.stats_throughput_color.as_str()).expect("valid RGB hex");
 
+        let processing_text_color =
+            Color::from_str(value.status_text_color_processing.as_str()).expect("valid RGB hex");
+
+        let paused_text_color =
+            Color::from_str(value.status_text_color_paused.as_str()).expect("valid RGB hex");
+
+        let key_bindings_text_color =
+            Color::from_str(value.key_bindings_text_color.as_str()).expect("valid RGB hex");
+
         Self {
             panel_border_color,
             label_color,
@@ -132,6 +161,9 @@ impl From<&Theme> for StatsTheme {
             bar_color,
             bar_secondary_color,
             throughput_color,
+            processing_text_color,
+            paused_text_color,
+            key_bindings_text_color,
         }
     }
 }
@@ -139,6 +171,12 @@ impl From<&Theme> for StatsTheme {
 /// Configuration used to create a new [`Stats`] component.
 #[derive(Builder, Debug)]
 pub struct StatsConfig<'a> {
+    /// Reference to the current [`ConsumerMode`].
+    consumer_mode: Rc<Cell<ConsumerMode>>,
+    /// Topic name that records are being consumed from.
+    topic: String,
+    /// Any filter that was configured by the user.
+    filter: Option<String>,
     /// Reference to the application [`Theme`].
     theme: &'a Theme,
 }
@@ -155,6 +193,10 @@ impl<'a> StatsConfig<'a> {
 /// application while consuming records from the Kafka topic.
 #[derive(Debug)]
 pub struct Stats {
+    /// Topic name that records are being consumed from.
+    topic: String,
+    /// Any filter that was configured by the user.
+    filter: Option<String>,
     /// Current state of the component and it's underlying widgets.
     state: StatsState,
     /// Color scheme for the component.
@@ -164,11 +206,16 @@ pub struct Stats {
 impl Stats {
     /// Creates a new [`Stats`] component using the specified [`StatsConfig`].
     pub fn new(config: StatsConfig) -> Self {
-        let state = StatsState::default();
+        let state = StatsState::new(config.consumer_mode);
 
         let theme = config.theme.into();
 
-        Self { state, theme }
+        Self {
+            topic: config.topic,
+            filter: config.filter,
+            state,
+            theme,
+        }
     }
     /// Renders the count of records received, filtered and the total.
     fn render_triptych(&self, frame: &mut Frame, area: Rect) {
@@ -230,13 +277,16 @@ impl Stats {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(top_panel);
 
-        let [_bottom_left_panel, _bottom_right_panel] = Layout::default()
+        self.render_throughput(frame, top_left_panel);
+        self.render_total_by_partition(frame, top_right_panel);
+
+        let [bottom_left_panel, bottom_right_panel] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(bottom_panel);
 
-        self.render_throughput(frame, top_left_panel);
-        self.render_total_by_partition(frame, top_right_panel);
+        self.render_empty_panel(frame, bottom_left_panel);
+        self.render_empty_panel(frame, bottom_right_panel);
     }
     /// Renders the chart that displays the total throughput of records being consumed from the
     /// Kafka topic per second.
@@ -357,6 +407,31 @@ impl Stats {
 
         frame.render_widget(per_partition_chart, area);
     }
+    /// Renders an empty panel with a border into the specified area.
+    fn render_empty_panel(&self, frame: &mut Frame, area: Rect) {
+        let [empty_area, text_area] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(area);
+
+        let empty_text = Paragraph::default().block(
+            Block::default()
+                .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
+                .border_style(self.theme.panel_border_color),
+        );
+
+        let shrug_text = Paragraph::new("¯\\_(ツ)_/¯")
+            .style(self.theme.panel_border_color)
+            .block(
+                Block::default()
+                    .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
+                    .border_style(self.theme.panel_border_color),
+            )
+            .centered();
+
+        frame.render_widget(empty_text, empty_area);
+        frame.render_widget(shrug_text, text_area);
+    }
 }
 
 /// Calculates the bar width based on total number of partitions, gap between bars and the
@@ -375,6 +450,57 @@ impl Component for Stats {
     /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str {
         "Stats"
+    }
+    /// Returns a [`Paragraph`] that will be used to render the current status line.
+    fn status_line(&self) -> Paragraph<'_> {
+        let status_text_color = match self.state.consumer_mode.get() {
+            ConsumerMode::Processing => self.theme.processing_text_color,
+            ConsumerMode::Paused => self.theme.paused_text_color,
+        };
+
+        let filter_text = self
+            .filter
+            .as_ref()
+            .map(|f| format!(" (Filter: {})", f))
+            .unwrap_or_default();
+
+        Paragraph::new(format!(
+            "Topic: {} | {:?}{}",
+            self.topic,
+            self.state.consumer_mode.get(),
+            filter_text,
+        ))
+        .style(status_text_color)
+    }
+    /// Returns a [`Paragraph`] that will be used to render the active key bindings.
+    fn key_bindings(&self) -> Paragraph<'_> {
+        let consumer_mode_key_binding = match self.state.consumer_mode.get() {
+            ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
+            ConsumerMode::Paused => super::KEY_BINDING_RESUME,
+        };
+
+        let mut key_bindings = Vec::from(STATS_STANDARD_KEY_BINDINGS);
+        key_bindings.push(consumer_mode_key_binding);
+
+        Paragraph::new(key_bindings.join(" | "))
+            .style(self.theme.key_bindings_text_color)
+            .right_aligned()
+    }
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
+    /// for processing.
+    fn map_key_event(
+        &self,
+        event: KeyEvent,
+        _buffered: Option<&BufferedKeyPress>,
+    ) -> Option<AppEvent> {
+        match event.code {
+            KeyCode::Char(c) => match c {
+                'p' => Some(AppEvent::PauseProcessing),
+                'r' => Some(AppEvent::ResumeProcessing),
+                _ => None,
+            },
+            _ => None,
+        }
     }
     /// Allows the component to handle any [`AppEvent`] that was not handled by the main
     /// application.
