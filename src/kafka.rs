@@ -2,6 +2,7 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
 use rdkafka::{
+    config::RDKafkaLogLevel,
     consumer::{
         stream_consumer::StreamPartitionQueue, BaseConsumer, CommitMode, Consumer as RDConsumer,
         ConsumerContext as RDConsumerContext, Rebalance, StreamConsumer,
@@ -101,7 +102,24 @@ pub struct Record {
 /// to hook into key events in the lifecycle of a Kafka consumer.
 struct ConsumerContext;
 
-impl ClientContext for ConsumerContext {}
+impl ClientContext for ConsumerContext {
+    /// Receives log lines from the underlying librdkafka library.
+    fn log(&self, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
+        match level {
+            RDKafkaLogLevel::Emerg
+            | RDKafkaLogLevel::Alert
+            | RDKafkaLogLevel::Critical
+            | RDKafkaLogLevel::Error => {
+                tracing::error!("{} {}", fac, log_message);
+            }
+            RDKafkaLogLevel::Warning => tracing::warn!("{} {}", fac, log_message),
+            RDKafkaLogLevel::Notice | RDKafkaLogLevel::Info => {
+                tracing::info!("{} {}", fac, log_message);
+            }
+            RDKafkaLogLevel::Debug => tracing::debug!("{} {}", fac, log_message),
+        }
+    }
+}
 
 impl RDConsumerContext for ConsumerContext {
     /// Hook invoked right before the consumer begins rebalancing.
