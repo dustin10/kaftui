@@ -201,6 +201,7 @@ impl Consumer {
         client_config.set("enable.auto.commit", "false");
 
         let consumer: StreamConsumer<ConsumerContext> = client_config
+            .set_log_level(RDKafkaLogLevel::Debug)
             .create_with_context(ConsumerContext)
             .context("create Kafka consumer")?;
 
