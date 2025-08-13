@@ -67,7 +67,7 @@ impl Source for Args {
     }
     /// Collect all configuration properties available from this source into a [`Map`].
     fn collect(&self) -> Result<Map<String, Value>, ConfigError> {
-        let mut cfg = config::Map::new();
+        let mut cfg = Map::new();
 
         if let Some(servers) = self.bootstrap_servers.as_ref() {
             cfg.insert(
@@ -105,8 +105,9 @@ impl Source for Args {
 
         if let Some(path) = self.consumer_properties.as_ref() {
             let file = File::open(path).expect("properties file can be opened");
-            let consumer_properties =
-                java_properties::read(BufReader::new(file)).expect("properties file can be read");
+            let consumer_properties = java_properties::read(BufReader::new(file)).map_err(|e| {
+                ConfigError::Message(format!("failed to read consumer properties file: {}", e))
+            })?;
 
             cfg.insert(
                 String::from("consumer_properties"),

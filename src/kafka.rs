@@ -123,11 +123,11 @@ impl ClientContext for ConsumerContext {
 
 impl RDConsumerContext for ConsumerContext {
     /// Hook invoked right before the consumer begins rebalancing.
-    fn pre_rebalance(&self, _: &BaseConsumer<Self>, rebalance: &Rebalance<'_>) {
+    fn pre_rebalance(&self, _base_consumer: &BaseConsumer<Self>, rebalance: &Rebalance<'_>) {
         tracing::debug!("rebalance initiated: {:?}", rebalance);
     }
     /// Hook invoked after the consumer rebalancing has been completed.
-    fn post_rebalance(&self, _: &BaseConsumer<Self>, rebalance: &Rebalance) {
+    fn post_rebalance(&self, _base_consumer: &BaseConsumer<Self>, rebalance: &Rebalance) {
         match rebalance {
             Rebalance::Assign(tpl) => {
                 tpl.elements().iter().for_each(|e| {
@@ -213,7 +213,7 @@ impl Consumer {
     /// Starts the consumption of records from the specified Kafka topic.
     pub fn start(
         &self,
-        topic: String,
+        topic: impl AsRef<str>,
         partitions: Vec<i32>,
         seek_to: Vec<PartitionOffset>,
         filter: Option<String>,
@@ -221,7 +221,7 @@ impl Consumer {
         let to_assign = if partitions.is_empty() {
             let topic_metadata = self
                 .consumer
-                .fetch_metadata(Some(topic.as_str()), Duration::from_secs(10))
+                .fetch_metadata(Some(topic.as_ref()), Duration::from_secs(10))
                 .context("fetch topic metadata from broker")?;
 
             topic_metadata
@@ -241,10 +241,10 @@ impl Consumer {
         for partition in to_assign.iter() {
             match seek_to.iter().find(|po| po.partition == *partition) {
                 Some(po) => assignments_list
-                    .add_partition_offset(topic.as_str(), *partition, Offset::Offset(po.offset))
+                    .add_partition_offset(topic.as_ref(), *partition, Offset::Offset(po.offset))
                     .context("add partition offset")?,
                 None => {
-                    let _ = assignments_list.add_partition(topic.as_str(), *partition);
+                    let _ = assignments_list.add_partition(topic.as_ref(), *partition);
                 }
             }
         }
@@ -256,7 +256,7 @@ impl Consumer {
         for partition in to_assign.iter() {
             let partition_queue = self
                 .consumer
-                .split_partition_queue(topic.as_str(), *partition)
+                .split_partition_queue(topic.as_ref(), *partition)
                 .expect("partition queue created");
 
             let task = PartitionConsumerTask::new(

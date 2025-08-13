@@ -515,7 +515,7 @@ impl StartConsumerTask {
             .consumer
             .start(self.topic, self.partitions, self.seek_to, self.filter)
         {
-            Ok(()) => self.event_bus.send(AppEvent::ConsumerStarted).await,
+            Ok(_) => self.event_bus.send(AppEvent::ConsumerStarted).await,
             Err(e) => self.event_bus.send(AppEvent::ConsumerStartFailure(e)).await,
         };
     }
