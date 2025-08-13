@@ -203,16 +203,20 @@ impl Component for Notifications {
     fn name(&self) -> &'static str {
         "Notifications"
     }
-    /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph<'_> {
-        Paragraph::new(format!("Total: {}", self.state.history.borrow().len()))
-            .style(self.theme.status_text_color_processing)
+    /// Allows the [`Component`] to render the status line text into the footer.
+    fn render_status_line(&self, frame: &mut Frame, area: Rect) {
+        let status_line = Paragraph::new(format!("Total: {}", self.state.history.borrow().len()))
+            .style(self.theme.status_text_color_processing);
+
+        frame.render_widget(status_line, area);
     }
-    /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph<'_> {
-        Paragraph::new(NOTIFICATION_HISTORY_KEY_BINDINGS.join(" | "))
+    /// Allows the [`Component`] to render the key bindings text into the footer.
+    fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
+        let text = Paragraph::new(NOTIFICATION_HISTORY_KEY_BINDINGS.join(" | "))
             .style(self.theme.key_bindings_text_color)
-            .right_aligned()
+            .right_aligned();
+
+        frame.render_widget(text, area);
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
     /// for processing.
@@ -234,7 +238,7 @@ impl Component for Notifications {
             _ => None,
         }
     }
-    /// Allows the component to handle any [`AppEvent`] that was not handled by the main
+    /// Allows the [`Component`] to handle any [`AppEvent`] that was not handled by the main
     /// application.
     fn on_app_event(&mut self, event: &AppEvent) {
         match event {

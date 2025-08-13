@@ -2,7 +2,7 @@ use crate::{
     app::{config::Theme, BufferedKeyPress},
     event::AppEvent,
     kafka::{ConsumerMode, Record},
-    ui::Component,
+    ui::{Component, ConsumerStatusLine},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
@@ -451,29 +451,21 @@ impl Component for Stats {
     fn name(&self) -> &'static str {
         "Stats"
     }
-    /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph<'_> {
-        let status_text_color = match self.state.consumer_mode.get() {
-            ConsumerMode::Processing => self.theme.processing_text_color,
-            ConsumerMode::Paused => self.theme.paused_text_color,
-        };
+    /// Allows the [`Component`] to render the status line text into the footer.
+    fn render_status_line(&self, frame: &mut Frame, area: Rect) {
+        let consumer_status_line = ConsumerStatusLine::builder()
+            .consumer_mode(self.state.consumer_mode.get())
+            .topic(self.topic.as_str())
+            .filter(self.filter.as_ref())
+            .processing_style(self.theme.processing_text_color)
+            .paused_style(self.theme.paused_text_color)
+            .build()
+            .expect("valid consumer status line widget");
 
-        let filter_text = self
-            .filter
-            .as_ref()
-            .map(|f| format!(" (Filter: {})", f))
-            .unwrap_or_default();
-
-        Paragraph::new(format!(
-            "Topic: {} | {:?}{}",
-            self.topic,
-            self.state.consumer_mode.get(),
-            filter_text,
-        ))
-        .style(status_text_color)
+        frame.render_widget(consumer_status_line, area);
     }
-    /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph<'_> {
+    /// Allows the [`Component`] to render the key bindings text into the footer.
+    fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
         let consumer_mode_key_binding = match self.state.consumer_mode.get() {
             ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
             ConsumerMode::Paused => super::KEY_BINDING_RESUME,
@@ -482,9 +474,11 @@ impl Component for Stats {
         let mut key_bindings = Vec::from(STATS_STANDARD_KEY_BINDINGS);
         key_bindings.push(consumer_mode_key_binding);
 
-        Paragraph::new(key_bindings.join(" | "))
+        let text = Paragraph::new(key_bindings.join(" | "))
             .style(self.theme.key_bindings_text_color)
-            .right_aligned()
+            .right_aligned();
+
+        frame.render_widget(text, area);
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
     /// for processing.
@@ -502,7 +496,7 @@ impl Component for Stats {
             _ => None,
         }
     }
-    /// Allows the component to handle any [`AppEvent`] that was not handled by the main
+    /// Allows the [`Component`] to handle any [`AppEvent`] that was not handled by the main
     /// application.
     fn on_app_event(&mut self, event: &AppEvent) {
         match event {

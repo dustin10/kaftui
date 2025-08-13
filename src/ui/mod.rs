@@ -1,11 +1,13 @@
 mod notifications;
 mod records;
 mod stats;
+pub mod widget;
 
 pub use crate::ui::{
     notifications::{Notifications, NotificationsConfig},
     records::{Records, RecordsConfig},
     stats::{Stats, StatsConfig},
+    widget::ConsumerStatusLine,
 };
 
 use crate::{
@@ -58,14 +60,8 @@ const KEY_BINDING_BOTTOM: &str = "(G) bottom";
 pub trait Component {
     /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str;
-    /// Returns a [`Paragraph`] that will be used to render the current status line.
-    fn status_line(&self) -> Paragraph<'_> {
-        Paragraph::default()
-    }
-    /// Returns a [`Paragraph`] that will be used to render the active key bindings.
-    fn key_bindings(&self) -> Paragraph<'_> {
-        Paragraph::default()
-    }
+    /// Renders the component-specific widgets to the terminal.
+    fn render(&mut self, frame: &mut Frame, area: Rect);
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
     /// for processing.
     fn map_key_event(
@@ -77,9 +73,11 @@ pub trait Component {
     }
     /// Allows the component to handle any [`AppEvent`] that was not handled by the main
     /// application.
-    fn on_app_event(&mut self, event: &AppEvent);
-    /// Renders the component-specific widgets to the terminal.
-    fn render(&mut self, frame: &mut Frame, area: Rect);
+    fn on_app_event(&mut self, _event: &AppEvent) {}
+    /// Allows the [`Component`] to render the status line text into the footer.
+    fn render_status_line(&self, _frame: &mut Frame, _area: Rect) {}
+    /// Allows the [`Component`] to render the key bindings text into the footer.
+    fn render_key_bindings(&self, _frame: &mut Frame, _area: Rect) {}
 }
 
 impl App {
@@ -87,7 +85,7 @@ impl App {
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {
         if self.state.initializing {
-            render_initialize(self, frame);
+            self.render_initialize(frame);
         } else {
             let full_screen = frame.area();
 
@@ -100,139 +98,137 @@ impl App {
                 ])
                 .areas(full_screen);
 
-            render_header(self, frame, header_area);
-
-            let mut component = self.state.active_component.borrow_mut();
-            component.render(frame, component_area);
-
-            let status_line = component.status_line();
-            let key_bindings = component.key_bindings();
-
-            render_footer(self, status_line, key_bindings, frame, footer_area);
+            self.render_header(frame, header_area);
+            self.render_component(frame, component_area);
+            self.render_footer(frame, footer_area);
         }
     }
-}
+    /// Renders the UI to the terminal for the [`Screen::Initialize`] screen.
+    fn render_initialize(&self, frame: &mut Frame) {
+        let border_color =
+            Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
 
-/// Renders the UI to the terminal for the [`Screen::Initialize`] screen.
-fn render_initialize(app: &App, frame: &mut Frame) {
-    let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
+        let [empty_area, initializing_text_area] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(frame.area());
 
-    let [empty_area, initializing_text_area] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .areas(frame.area());
-
-    let empty_text = Paragraph::default().block(
-        Block::default()
-            .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-            .border_style(border_color),
-    );
-
-    let no_record_text = Paragraph::new("Initializing...")
-        .style(border_color)
-        .block(
+        let empty_text = Paragraph::default().block(
             Block::default()
-                .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
+                .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
                 .border_style(border_color),
-        )
-        .centered();
+        );
 
-    frame.render_widget(empty_text, empty_area);
-    frame.render_widget(no_record_text, initializing_text_area);
-}
+        let no_record_text = Paragraph::new("Initializing...")
+            .style(border_color)
+            .block(
+                Block::default()
+                    .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
+                    .border_style(border_color),
+            )
+            .centered();
 
-/// Renders the header panel that contains the key bindings.
-fn render_header(app: &App, frame: &mut Frame, area: Rect) {
-    let border_color =
-        Color::from_str(&app.config.theme.panel_border_color).expect("valid RGB color");
+        frame.render_widget(empty_text, empty_area);
+        frame.render_widget(no_record_text, initializing_text_area);
+    }
+    /// Renders the header panel that contains the key bindings.
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
+        let border_color =
+            Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
 
-    let menu_items_color =
-        Color::from_str(&app.config.theme.menu_item_text_color).expect("valid RGB color");
+        let menu_items_color =
+            Color::from_str(&self.config.theme.menu_item_text_color).expect("valid RGB color");
 
-    let selected_menu_item_color =
-        Color::from_str(&app.config.theme.selected_menu_item_text_color).expect("valid RGB color");
+        let selected_menu_item_color =
+            Color::from_str(&self.config.theme.selected_menu_item_text_color)
+                .expect("valid RGB color");
 
-    let outer = Block::bordered()
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
+        let outer = Block::bordered()
+            .border_style(border_color)
+            .padding(Padding::new(1, 1, 0, 0));
 
-    let inner_area = outer.inner(area);
+        let inner_area = outer.inner(area);
 
-    let [left_panel, right_panel] = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .areas(inner_area);
+        let [left_panel, right_panel] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(inner_area);
 
-    let mut selected_menu_item = 0;
+        let mut selected_menu_item = 0;
 
-    let mut menu_items = Vec::new();
-    for i in 0..app.components.len() {
-        let component = app.components.get(i).expect("valid index");
+        let mut menu_items = Vec::new();
+        for i in 0..self.components.len() {
+            let component = self.components.get(i).expect("valid index");
 
-        if component
-            .borrow()
-            .name()
-            .eq(app.state.active_component.borrow().name())
-        {
-            selected_menu_item = i;
+            if component
+                .borrow()
+                .name()
+                .eq(self.state.active_component.borrow().name())
+            {
+                selected_menu_item = i;
+            }
+
+            menu_items.push(format!("{} [{}]", component.borrow().name(), i + 1));
         }
 
-        menu_items.push(format!("{} [{}]", component.borrow().name(), i + 1));
+        let menu = Tabs::new(menu_items)
+            .divider("|")
+            .style(menu_items_color)
+            .highlight_style(Style::default().underlined().fg(selected_menu_item_color))
+            .select(selected_menu_item);
+
+        frame.render_widget(menu, left_panel);
+        frame.render_widget(outer, area);
+
+        if let Some(notification) = self.state.notification_history.borrow().front()
+            && !notification.is_expired()
+        {
+            let notification_color = match notification.status {
+                NotificationStatus::Success => {
+                    Color::from_str(&self.config.theme.notification_text_color_success)
+                        .expect("valid RGB color")
+                }
+                NotificationStatus::Warn => {
+                    Color::from_str(&self.config.theme.notification_text_color_warn)
+                        .expect("valid RGB color")
+                }
+                NotificationStatus::Failure => {
+                    Color::from_str(&self.config.theme.notification_text_color_failure)
+                        .expect("valid RGB color")
+                }
+            };
+
+            let notification_text = Paragraph::new(notification.summary.as_str())
+                .style(notification_color)
+                .right_aligned();
+
+            frame.render_widget(notification_text, right_panel);
+        }
     }
-
-    let menu = Tabs::new(menu_items)
-        .divider("|")
-        .style(menu_items_color)
-        .highlight_style(Style::default().underlined().fg(selected_menu_item_color))
-        .select(selected_menu_item);
-
-    frame.render_widget(menu, left_panel);
-    frame.render_widget(outer, area);
-
-    if let Some(notification) = app.state.notification_history.borrow().front()
-        && !notification.is_expired()
-    {
-        let notification_color = match notification.status {
-            NotificationStatus::Success => {
-                Color::from_str(&app.config.theme.notification_text_color_success)
-                    .expect("valid RGB color")
-            }
-            NotificationStatus::Warn => {
-                Color::from_str(&app.config.theme.notification_text_color_warn)
-                    .expect("valid RGB color")
-            }
-            NotificationStatus::Failure => {
-                Color::from_str(&app.config.theme.notification_text_color_failure)
-                    .expect("valid RGB color")
-            }
-        };
-
-        let notification_text = Paragraph::new(notification.summary.as_str())
-            .style(notification_color)
-            .right_aligned();
-
-        frame.render_widget(notification_text, right_panel);
+    /// Renders the active [`Component`] to the screen.
+    fn render_component(&self, frame: &mut Frame, area: Rect) {
+        self.state.active_component.borrow_mut().render(frame, area);
     }
-}
+    /// Renders the footer widgets using the status and key bindings from the active [`Component`].
+    fn render_footer(&self, frame: &mut Frame, area: Rect) {
+        let border_color =
+            Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
 
-/// Renders the footer widgets using the status and key bindings from the active [`Component`].
-fn render_footer(app: &App, status: Paragraph, keys: Paragraph, frame: &mut Frame, area: Rect) {
-    let border_color =
-        Color::from_str(app.config.theme.panel_border_color.as_str()).expect("valid RGB color");
+        let outer = Block::bordered()
+            .border_style(border_color)
+            .padding(Padding::new(1, 1, 0, 0));
 
-    let outer = Block::bordered()
-        .border_style(border_color)
-        .padding(Padding::new(1, 1, 0, 0));
+        let inner_area = outer.inner(area);
 
-    let inner_area = outer.inner(area);
+        let [left_panel, right_panel] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(inner_area);
 
-    let [left_panel, right_panel] = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .areas(inner_area);
+        let component = self.state.active_component.borrow();
 
-    frame.render_widget(outer, area);
-    frame.render_widget(status, left_panel);
-    frame.render_widget(keys, right_panel);
+        frame.render_widget(outer, area);
+        component.render_status_line(frame, left_panel);
+        component.render_key_bindings(frame, right_panel);
+    }
 }
