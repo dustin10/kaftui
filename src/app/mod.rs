@@ -5,6 +5,7 @@ use crate::{
     app::{config::Config, export::Exporter},
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, ConsumerMode, PartitionOffset, Record, RecordState},
+    trace::Log,
     ui::{
         Component, Notifications, NotificationsConfig, Records, RecordsConfig, Stats, StatsConfig,
     },
@@ -19,7 +20,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc::Receiver;
 
@@ -183,8 +184,11 @@ const EVENT_CHANNEL_SIZE: usize = 16;
 const CONSUMER_CHANNEL_SIZE: usize = 64;
 
 impl App {
-    /// Creates a new [`App`] configured by the specified [`Config`].
-    pub fn new(config: Config) -> anyhow::Result<Self> {
+    /// Creates a new [`App`] with the specified dependencies.
+    pub fn new(
+        config: Config,
+        logs: Option<Arc<Mutex<BoundedVecDeque<Log>>>>,
+    ) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let event_bus = Arc::new(EventBus::new(event_tx));
@@ -246,6 +250,10 @@ impl App {
             stats_component,
             notifications_component,
         ];
+
+        if let Some(_logs) = logs {
+            // TODO: add logs component
+        }
 
         let state = State::new(consumer_mode, notification_history, records_component);
 

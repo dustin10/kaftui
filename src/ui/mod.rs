@@ -87,8 +87,6 @@ impl App {
         if self.state.initializing {
             self.render_initialize(frame);
         } else {
-            let full_screen = frame.area();
-
             let [header_area, component_area, footer_area] = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -96,14 +94,14 @@ impl App {
                     Constraint::Min(1),
                     Constraint::Length(3),
                 ])
-                .areas(full_screen);
+                .areas(frame.area());
 
             self.render_header(frame, header_area);
             self.render_component(frame, component_area);
             self.render_footer(frame, footer_area);
         }
     }
-    /// Renders the UI to the terminal for the [`Screen::Initialize`] screen.
+    /// Renders the UI to the terminal during application initialization.
     fn render_initialize(&self, frame: &mut Frame) {
         let border_color =
             Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");

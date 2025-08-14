@@ -1,4 +1,5 @@
 *.log
+kaftui-logs-*
 /target
 .idea
 .vscode

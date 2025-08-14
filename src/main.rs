@@ -1,16 +1,26 @@
 mod app;
 mod event;
 mod kafka;
+mod trace;
 mod ui;
 
-use crate::app::{config::Config, App};
+use crate::{
+    app::{config::Config, App},
+    trace::{CaptureLayer, Log},
+};
 
 use anyhow::Context;
+use bounded_vec_deque::BoundedVecDeque;
+use chrono::Utc;
 use clap::Parser;
 use config::{ConfigError, Map, Source, Value};
-use std::{fs::File, io::BufReader};
+use std::{
+    fs::File,
+    io::BufReader,
+    sync::{Arc, Mutex},
+};
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
@@ -122,54 +132,89 @@ impl Source for Args {
 /// Main entry point for the application.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    init_env();
+    let logs = init_env();
 
     let args = Args::parse();
     let profile_name = args.profile.clone();
 
     let config = Config::new(args, profile_name).context("create application config")?;
 
-    run_app(config).await
+    run_app(config, logs).await
 }
 
 /// Environment variable that can be used to enable capturing logs to a file for debugging.
-const ENABLE_LOGS_ENV_VAR: &str = "KAFTUI_ENABLE_LOGS";
+const LOGS_ENABLED_ENV_VAR: &str = "KAFTUI_LOGS_ENABLED";
 
-/// Initializes the environment that the application will run in.
-fn init_env() {
+/// Environment variable that can be used to specify the directory that log files should be stored
+/// in. If logs enabled, but no custom directory is specified using this environment variable then
+/// the present working directory, i.e. `.`, will be used.
+const LOGS_DIR_ENV_VAR: &str = "KAFTUI_LOGS_DIR";
+
+/// Environment variable that can be used to specify the maximum number of logs that should be held
+/// in memory at any given time. After the maximum size is reached, when new logs are emitted then
+/// the old ones are purged. This environment variable is only applicable if `KAFTUI_LOGS_ENABLED`
+/// is set to `true`.
+const LOGS_MAX_HISTORY: &str = "KAFTUI_LOGS_MAX_HISTORY";
+
+/// Default maximum number of logs that should be stored in memory.
+const DEFAULT_LOGS_MAX_HISTORY: usize = 2048;
+
+/// Initializes the environment that the application will run in. If logging is enabled, returns
+/// the log history that will be written to by the [`CaptureLayer`].
+fn init_env() -> Option<Arc<Mutex<BoundedVecDeque<Log>>>> {
     let dot_env_result = dotenvy::dotenv();
 
-    let enable_logs = std::env::var(ENABLE_LOGS_ENV_VAR)
+    let enable_logs = std::env::var(LOGS_ENABLED_ENV_VAR)
         .ok()
         .map(|v| v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
     if !enable_logs {
-        return;
+        return None;
     }
 
-    let remove_result = std::fs::remove_file("output.log");
+    let logs_dir = std::env::var(LOGS_DIR_ENV_VAR)
+        .ok()
+        .unwrap_or(String::from("."));
 
-    let file_writer = tracing_appender::rolling::never(".", "output.log");
+    // TODO: change from timestamp mills to formatted date
+    let file_appender = tracing_appender::rolling::never(
+        logs_dir,
+        format!("kaftui-logs-{}.json", Utc::now().timestamp_millis()),
+    );
 
-    // default to INFO logs but allow the RUST_LOG env variable to override.
-    tracing_subscriber::fmt()
+    let file_layer = tracing_subscriber::fmt::Layer::default()
         .json()
-        .with_writer(file_writer)
+        .with_writer(file_appender)
         .with_level(true)
         .with_target(true)
         .with_file(true)
         .with_line_number(true)
         .with_thread_ids(true)
-        .with_thread_names(true)
-        .with_env_filter(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .from_env_lossy(),
-        )
+        .with_thread_names(true);
+
+    let max_history = std::env::var(LOGS_MAX_HISTORY)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_LOGS_MAX_HISTORY);
+
+    let log_history = Arc::new(Mutex::new(BoundedVecDeque::new(max_history)));
+
+    let capture_layer = CaptureLayer::new(Arc::clone(&log_history));
+
+    // default to INFO level logs but respect the RUST_LOG env var.
+    let global_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
+
+    Registry::default()
+        .with(file_layer)
+        .with(capture_layer)
+        .with(global_filter)
         .init();
 
-    // process results after tracing has been initialized
+    // process dotenvy result after tracing has been initialized to ensure any relevant logs are
+    // emitted and viewable by the end user.
     match dot_env_result {
         Ok(path) => tracing::info!("loaded .env file from {}", path.display()),
         Err(e) => match e {
@@ -180,20 +225,18 @@ fn init_env() {
         },
     };
 
-    match remove_result {
-        Ok(_) => tracing::debug!("removed log file from previous run"),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            tracing::debug!("no log file from previous run found to remove")
-        }
-        Err(e) => tracing::warn!("failed to remove previous log file: {}", e),
-    }
+    // TODO: maybe return a receiver here and use a channel instead of a shared collection?
+    Some(log_history)
 }
 
 /// Runs the application.
-async fn run_app(config: Config) -> anyhow::Result<()> {
+async fn run_app(
+    config: Config,
+    logs: Option<Arc<Mutex<BoundedVecDeque<Log>>>>,
+) -> anyhow::Result<()> {
     let terminal = ratatui::init();
 
-    let result = App::new(config)
+    let result = App::new(config, logs)
         .context("initialize application")?
         .run(terminal)
         .await;

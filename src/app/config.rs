@@ -49,6 +49,8 @@ pub struct Config {
     pub theme: Theme,
     /// Directory on the file system where exported files will be saved.
     pub export_directory: String,
+    /// Flag that indicates whether logs are enabled or disabled.
+    pub logs_enabled: bool,
 }
 
 impl Config {
@@ -57,10 +59,10 @@ impl Config {
     ///
     /// Configuration precedence is applied as follows where 1 is the highest:
     ///
-    /// 1. CLI arguments
-    /// 2. Profile values, if one is specified
-    /// 3. Applicable configuration values from $HOME/.kaftui.json file
-    /// 4. Environment variables
+    /// 1. Environment variables
+    /// 2. CLI arguments
+    /// 3. Profile values, if one is specified
+    /// 4. Applicable configuration values from $HOME/.kaftui.json file
     /// 5. Default values
     pub fn new<P, S>(cli_args: S, profile_name: Option<P>) -> anyhow::Result<Self>
     where
@@ -72,9 +74,9 @@ impl Config {
             .join(".kaftui.json");
 
         let persisted_config = match std::fs::read_to_string(file_path) {
-            Ok(s) => serde_json::from_str(&s).context("deserialize persisted config")?,
-            Err(e) if e.kind() != ErrorKind::NotFound => PersistedConfig::default(),
-            Err(e) => return Err(e).context("read config file"),
+            Ok(s) => serde_json::from_str(&s).context("deserialize persisted config from JSON")?,
+            Err(e) if e.kind() == ErrorKind::NotFound => PersistedConfig::default(),
+            Err(e) => return Err(e).context("read persisted config file"),
         };
 
         let profile = profile_name.and_then(|name| {
@@ -89,10 +91,10 @@ impl Config {
 
         let config = ConfigRs::builder()
             .add_source(Defaults)
-            .add_source(Environment::with_prefix("KAFTUI").separator("_"))
             .add_source(persisted_config)
             .add_source(profile.unwrap_or_default())
             .add_source(cli_args)
+            .add_source(Environment::with_prefix("kaftui").prefix_separator("_"))
             .build()
             .context("create Config from sources")?;
 
@@ -132,6 +134,8 @@ impl Source for Defaults {
             String::from("export_directory"),
             Value::from(String::from(DEFAULT_EXPORT_DIRECTORY)),
         );
+
+        cfg.insert(String::from("logs_enabled"), Value::from(false));
 
         Ok(cfg)
     }
