@@ -1,9 +1,11 @@
+mod logs;
 mod notifications;
 mod records;
 mod stats;
 pub mod widget;
 
 pub use crate::ui::{
+    logs::{Logs, LogsConfig},
     notifications::{Notifications, NotificationsConfig},
     records::{Records, RecordsConfig},
     stats::{Stats, StatsConfig},

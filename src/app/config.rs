@@ -49,8 +49,6 @@ pub struct Config {
     pub theme: Theme,
     /// Directory on the file system where exported files will be saved.
     pub export_directory: String,
-    /// Flag that indicates whether logs are enabled or disabled.
-    pub logs_enabled: bool,
 }
 
 impl Config {
@@ -134,8 +132,6 @@ impl Source for Defaults {
             String::from("export_directory"),
             Value::from(String::from(DEFAULT_EXPORT_DIRECTORY)),
         );
-
-        cfg.insert(String::from("logs_enabled"), Value::from(false));
 
         Ok(cfg)
     }

@@ -7,7 +7,8 @@ use crate::{
     kafka::{Consumer, ConsumerMode, PartitionOffset, Record, RecordState},
     trace::Log,
     ui::{
-        Component, Notifications, NotificationsConfig, Records, RecordsConfig, Stats, StatsConfig,
+        Component, Logs, LogsConfig, Notifications, NotificationsConfig, Records, RecordsConfig,
+        Stats, StatsConfig,
     },
 };
 
@@ -245,14 +246,22 @@ impl App {
                 .expect("valid Notifications config"),
         )));
 
-        let components: Vec<Rc<RefCell<dyn Component>>> = vec![
+        let mut components: Vec<Rc<RefCell<dyn Component>>> = vec![
             records_component.clone(),
             stats_component,
             notifications_component,
         ];
 
-        if let Some(_logs) = logs {
-            // TODO: add logs component
+        if let Some(logs) = logs {
+            let logs_component = Rc::new(RefCell::new(Logs::new(
+                LogsConfig::builder()
+                    .logs(logs)
+                    .theme(&config.theme)
+                    .build()
+                    .expect("valid Notifications config"),
+            )));
+
+            components.push(logs_component);
         }
 
         let state = State::new(consumer_mode, notification_history, records_component);

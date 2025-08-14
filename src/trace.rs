@@ -94,13 +94,13 @@ impl Log {
 #[derive(Debug)]
 pub struct CaptureLayer {
     /// Buffered log messages with a bounded size.
-    messages: Arc<Mutex<BoundedVecDeque<Log>>>,
+    logs: Arc<Mutex<BoundedVecDeque<Log>>>,
 }
 
 impl CaptureLayer {
     /// Creates a new [`CaptureLayer`].
-    pub fn new(messages: Arc<Mutex<BoundedVecDeque<Log>>>) -> Self {
-        Self { messages }
+    pub fn new(logs: Arc<Mutex<BoundedVecDeque<Log>>>) -> Self {
+        Self { logs }
     }
 }
 
@@ -108,6 +108,7 @@ impl<S> Layer<S> for CaptureLayer
 where
     S: Subscriber,
 {
+    /// Notifies this layer that an event has occurred.
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
         let mut visitor = CaptureVisitor::default();
         event.record(&mut visitor);
@@ -124,10 +125,7 @@ where
                 .to_owned(),
         };
 
-        self.messages
-            .lock()
-            .expect("lock acquired")
-            .push_front(entry);
+        self.logs.lock().expect("lock acquired").push_front(entry);
     }
 }
 

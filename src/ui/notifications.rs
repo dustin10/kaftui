@@ -54,7 +54,7 @@ impl NotificationsState {
         self.list_state.select_first();
         self.list_scroll_state = self.list_scroll_state.position(0);
     }
-    /// Moves the record value scroll state up by `n` number of lines.
+    /// Moves the notification history scroll state up by one line.
     fn scroll_list_up(&mut self) {
         if self.history.borrow().is_empty() {
             return;
@@ -66,7 +66,7 @@ impl NotificationsState {
 
         self.list_scroll_state = self.list_scroll_state.position(idx);
     }
-    /// Moves the notification history scroll state down by `n` number of lines.
+    /// Moves the notification history scroll state down by one line.
     fn scroll_list_down(&mut self) {
         if self.history.borrow().is_empty() {
             return;
@@ -228,11 +228,11 @@ impl Component for Notifications {
         match event.code {
             KeyCode::Char(c) => match c {
                 'g' if buffered.map(|kp| kp.is('g')).is_some() => {
-                    Some(AppEvent::ScrollNotificationHistoryTop)
+                    Some(AppEvent::ScrollNotificationsTop)
                 }
-                'j' => Some(AppEvent::ScrollNotificationHistoryDown),
-                'k' => Some(AppEvent::ScrollNotificationHistoryUp),
-                'G' => Some(AppEvent::ScrollNotificationHistoryBottom),
+                'j' => Some(AppEvent::ScrollNotificationsDown),
+                'k' => Some(AppEvent::ScrollNotificationsUp),
+                'G' => Some(AppEvent::ScrollNotificationsBottom),
                 _ => None,
             },
             _ => None,
@@ -242,10 +242,10 @@ impl Component for Notifications {
     /// application.
     fn on_app_event(&mut self, event: &AppEvent) {
         match event {
-            AppEvent::ScrollNotificationHistoryTop => self.state.scroll_list_top(),
-            AppEvent::ScrollNotificationHistoryUp => self.state.scroll_list_up(),
-            AppEvent::ScrollNotificationHistoryDown => self.state.scroll_list_down(),
-            AppEvent::ScrollNotificationHistoryBottom => self.state.scroll_list_bottom(),
+            AppEvent::ScrollNotificationsTop => self.state.scroll_list_top(),
+            AppEvent::ScrollNotificationsUp => self.state.scroll_list_up(),
+            AppEvent::ScrollNotificationsDown => self.state.scroll_list_down(),
+            AppEvent::ScrollNotificationsBottom => self.state.scroll_list_bottom(),
             AppEvent::DisplayNotification(notification) => {
                 self.state.push_notification(notification.clone())
             }
