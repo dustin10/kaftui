@@ -565,17 +565,16 @@ impl Component for Records {
         buffered: Option<&BufferedKeyPress>,
     ) -> Option<AppEvent> {
         match event.code {
-            KeyCode::Char(c) => {
-                // TODO: cleanup duplication of e,p and r
-                match self.state.active_widget {
+            KeyCode::Char(c) => match c {
+                'e' => self
+                    .state
+                    .selected
+                    .as_ref()
+                    .map(|r| AppEvent::ExportRecord(r.clone())),
+                'p' => Some(AppEvent::PauseProcessing),
+                'r' => Some(AppEvent::ResumeProcessing),
+                _ => match self.state.active_widget {
                     RecordsWidget::List => match c {
-                        'e' => self
-                            .state
-                            .selected
-                            .as_ref()
-                            .map(|r| AppEvent::ExportRecord(r.clone())),
-                        'p' => Some(AppEvent::PauseProcessing),
-                        'r' => Some(AppEvent::ResumeProcessing),
                         'g' if buffered.map(|kp| kp.is('g')).is_some() => {
                             Some(AppEvent::SelectFirstRecord)
                         }
@@ -585,13 +584,6 @@ impl Component for Records {
                         _ => None,
                     },
                     RecordsWidget::Value => match c {
-                        'e' => self
-                            .state
-                            .selected
-                            .as_ref()
-                            .map(|r| AppEvent::ExportRecord(r.clone())),
-                        'p' => Some(AppEvent::PauseProcessing),
-                        'r' => Some(AppEvent::ResumeProcessing),
                         'g' if buffered.map(|kp| kp.is('g')).is_some() => {
                             Some(AppEvent::ScrollRecordValueTop)
                         }
@@ -599,8 +591,8 @@ impl Component for Records {
                         'k' => Some(AppEvent::ScrollRecordValueUp),
                         _ => None,
                     },
-                }
-            }
+                },
+            },
             _ => None,
         }
     }
