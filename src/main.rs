@@ -177,10 +177,12 @@ fn init_env() -> Option<Arc<Mutex<BoundedVecDeque<Log>>>> {
         .ok()
         .unwrap_or(String::from("."));
 
-    // TODO: change from timestamp mills to formatted date
     let file_appender = tracing_appender::rolling::never(
         logs_dir,
-        format!("kaftui-logs-{}.json", Utc::now().timestamp_millis()),
+        format!(
+            "kaftui-logs-{}.json",
+            Utc::now().format("%d.%m.%Y-%H.%M.%S")
+        ),
     );
 
     let file_layer = tracing_subscriber::fmt::Layer::default()
