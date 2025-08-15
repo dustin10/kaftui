@@ -98,6 +98,21 @@ pub struct Record {
     pub timestamp: DateTime<Utc>,
 }
 
+impl Record {
+    /// Determines if this [`Record`] matches the specified JSONPath filter.
+    fn matches(&self, filter: impl AsRef<str>) -> bool {
+        let filterable_record = FilterableRecord::from(self);
+
+        let json_value =
+            serde_json::to_value(filterable_record).expect("FilterableRecord serializes to JSON");
+
+        let json_path =
+            serde_json_path::JsonPath::parse(filter.as_ref()).expect("valid JSONPath expression");
+
+        !json_path.query(&json_value).is_empty()
+    }
+}
+
 /// The [`ConsumerContext`] is a struct that is used to implement a custom Kafka consumer context
 /// to hook into key events in the lifecycle of a Kafka consumer.
 struct ConsumerContext;
@@ -452,33 +467,13 @@ impl PartitionConsumerTask {
             .try_for_each(|msg| async move {
                 let record = Record::from(&msg);
 
-                if let Some(f) = self.filter.as_ref() {
-                    let filterable_record = FilterableRecord::from(&record);
+                let record_state = match &self.filter {
+                    Some(filter) if !record.matches(filter) => RecordState::Filtered(record),
+                    _ => RecordState::Received(record),
+                };
 
-                    let json_value = serde_json::to_value(filterable_record)
-                        .expect("FilterableRecord serializes to JSON");
-
-                    let json_path =
-                        serde_json_path::JsonPath::parse(f).expect("valid JSONPath expression");
-
-                    if json_path.query(&json_value).is_empty() {
-                        tracing::debug!("ignoring Kafka record based on filter");
-
-                        // TODO: clean up this duplication
-                        if let Err(e) = self.consumer_tx.send(RecordState::Filtered(record)).await {
-                            tracing::error!("failed to send record over consumer channel: {}", e);
-                        }
-
-                        if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
-                            tracing::error!("error committing Kafka message: {}", err);
-                        }
-
-                        return Ok(());
-                    }
-                }
-
-                if let Err(e) = self.consumer_tx.send(RecordState::Received(record)).await {
-                    tracing::error!("failed to send record over consumer channel: {}", e);
+                if let Err(e) = self.consumer_tx.send(record_state).await {
+                    tracing::error!("failed to send record state over consumer channel: {}", e);
                 }
 
                 if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {

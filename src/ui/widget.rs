@@ -56,15 +56,17 @@ where
     where
         Self: Sized,
     {
-        let style = match self.consumer_mode {
-            ConsumerMode::Processing => self.processing_style.into(),
-            ConsumerMode::Paused => self.paused_style.into(),
-        };
+        let (style, filter_text) = match self.consumer_mode {
+            ConsumerMode::Processing => {
+                let filter_text = self
+                    .filter
+                    .map(|f| format!(" (Filter: {})", f.as_ref()))
+                    .unwrap_or_default();
 
-        let filter_text = self
-            .filter
-            .map(|f| format!(" (Filter: {})", f.as_ref()))
-            .unwrap_or_default();
+                (self.processing_style.into(), filter_text)
+            }
+            ConsumerMode::Paused => (self.paused_style.into(), String::default()),
+        };
 
         let paragraph = Paragraph::new(format!(
             "Topic: {} | {:?}{}",
