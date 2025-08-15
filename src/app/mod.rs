@@ -151,6 +151,8 @@ pub struct App {
     pub state: State,
     /// All [`Component`]s available to the user.
     pub components: Vec<Rc<RefCell<dyn Component>>>,
+    /// Buffers the valid `char`s that correspond to menu items.
+    menu_item_chars: Vec<char>,
     /// If available, contains the last key pressed that did not map to an active key binding.
     buffered_key_press: Option<BufferedKeyPress>,
     /// Channel receiver that is used to receive application events that are sent by the
@@ -239,6 +241,14 @@ impl App {
             components.push(logs_component);
         }
 
+        let mut menu_item_chars = Vec::new();
+        for i in 0..components.len() {
+            let index = u8::try_from(i).expect("valid char") + 1;
+            let item = (index + b'0') as char;
+
+            menu_item_chars.push(item);
+        }
+
         let state = State::new(consumer_mode, records_component);
 
         Ok(Self {
@@ -250,6 +260,7 @@ impl App {
             consumer: Arc::new(consumer),
             exporter,
             components,
+            menu_item_chars,
             buffered_key_press: None,
         })
     }
@@ -356,20 +367,10 @@ impl App {
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
     async fn on_key_event(&mut self, key_event: KeyEvent) {
-        // TODO: cleanup if possible and probably move to struct property so we arent recomputing
-        // on every event.
-        let mut menu_items = Vec::new();
-        for i in 0..self.components.len() {
-            let index = u8::try_from(i).expect("valid char") + 1;
-            let item = (index + b'0') as char;
-
-            menu_items.push(item);
-        }
-
         let app_event = match key_event.code {
             KeyCode::Esc => Some(AppEvent::Quit),
             KeyCode::Tab => Some(AppEvent::SelectNextWidget),
-            KeyCode::Char(c) if menu_items.contains(&c) => {
+            KeyCode::Char(c) if self.menu_item_chars.contains(&c) => {
                 let digit = c.to_digit(10).expect("valid digit") - 1;
                 let selected = digit as usize;
 
