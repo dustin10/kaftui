@@ -10,7 +10,6 @@ use crate::{
 };
 
 use anyhow::Context;
-use bounded_vec_deque::BoundedVecDeque;
 use chrono::{DateTime, Duration, Utc};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::DefaultTerminal;
@@ -18,7 +17,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     rc::Rc,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use tokio::sync::mpsc::Receiver;
 
@@ -176,10 +175,7 @@ const CONSUMER_CHANNEL_SIZE: usize = 64;
 
 impl App {
     /// Creates a new [`App`] with the specified dependencies.
-    pub fn new(
-        config: Config,
-        logs: Option<Arc<Mutex<BoundedVecDeque<Log>>>>,
-    ) -> anyhow::Result<Self> {
+    pub fn new(config: Config) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let event_bus = Arc::new(EventBus::new(event_tx));
@@ -229,10 +225,10 @@ impl App {
         let mut components: Vec<Rc<RefCell<dyn Component>>> =
             vec![records_component.clone(), stats_component];
 
-        if let Some(logs) = logs {
+        if config.logs_enabled {
             let logs_component = Rc::new(RefCell::new(Logs::new(
                 LogsConfig::builder()
-                    .logs(logs)
+                    .max_history(config.logs_max_history as usize)
                     .theme(&config.theme)
                     .build()
                     .expect("valid Notifications config"),
@@ -265,10 +261,17 @@ impl App {
         })
     }
     /// Run the main loop of the application.
-    pub async fn run(mut self, mut terminal: DefaultTerminal) -> anyhow::Result<()> {
-        self.event_bus.start();
-
+    pub async fn run(
+        mut self,
+        mut terminal: DefaultTerminal,
+        logs_rx: Option<Receiver<Log>>,
+    ) -> anyhow::Result<()> {
+        self.start_event_bus();
         self.start_consumer_async();
+
+        if let Some(rx) = logs_rx {
+            self.start_receive_logs_async(rx);
+        }
 
         while self.state.running {
             terminal
@@ -316,6 +319,10 @@ impl App {
 
         Ok(())
     }
+    /// Starts application event consumption on the [`EventBus`].
+    fn start_event_bus(&self) {
+        self.event_bus.start();
+    }
     /// Starts the consumer asynchronously. The result of the consumer startup is sent back to the
     /// application through the [`EventBus`].
     fn start_consumer_async(&self) {
@@ -350,6 +357,18 @@ impl App {
             start_consumer_task.run().await;
         });
     }
+    /// Spawns a task that will receive [`Log`] messages on the specified [`Receiver`] and then
+    /// publish an [`AppEvent::LogEmitted`] application event.
+    fn start_receive_logs_async(&self, rx: Receiver<Log>) {
+        let receive_logs_task = ReceiveLogsTask {
+            rx,
+            event_bus: Arc::clone(&self.event_bus),
+        };
+
+        tokio::spawn(async move {
+            receive_logs_task.run().await;
+        });
+    }
     /// Handles the consumer started event emitted by the [`EventBus`].
     fn on_consumer_started(&mut self) {
         tracing::debug!("consumer started");
@@ -360,6 +379,7 @@ impl App {
         tracing::debug!("Kafka record received");
         self.event_bus.send(AppEvent::RecordReceived(record)).await;
     }
+    /// Invoked when a new filtered [`Record`] is received on the consumer channel.
     async fn on_record_filtered(&mut self, record: Record) {
         tracing::debug!("Kafka record filtered");
         self.event_bus.send(AppEvent::RecordFiltered(record)).await;
@@ -500,5 +520,26 @@ impl StartConsumerTask {
             Ok(_) => self.event_bus.send(AppEvent::ConsumerStarted).await,
             Err(e) => self.event_bus.send(AppEvent::ConsumerStartFailure(e)).await,
         };
+    }
+}
+
+/// Asynchronous task that receives logs emitted from the logging system and emits them as
+/// application events.
+struct ReceiveLogsTask {
+    /// Channel receiver that is used to receive logs emitted by the application.
+    rx: Receiver<Log>,
+    /// [`EventBus`] on which the results of the startup task will be published.
+    event_bus: Arc<EventBus>,
+}
+
+impl ReceiveLogsTask {
+    /// Runs the task. Receives [`Log`]s emitted by the application and dispatches the
+    /// [`AppEvent::LogEmitted`] event on the [`EventBus`].
+    async fn run(mut self) {
+        loop {
+            if let Some(log) = self.rx.recv().await {
+                self.event_bus.send(AppEvent::LogEmitted(log)).await;
+            }
+        }
     }
 }

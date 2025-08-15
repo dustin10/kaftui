@@ -1,4 +1,3 @@
-use bounded_vec_deque::BoundedVecDeque;
 use chrono::{
     format::{DelayedFormat, StrftimeItems},
     DateTime, Local,
@@ -6,8 +5,8 @@ use chrono::{
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
-    sync::{Arc, Mutex},
 };
+use tokio::sync::mpsc::Sender;
 use tracing::{
     field::{Field, Visit},
     Event, Subscriber,
@@ -68,7 +67,7 @@ impl From<&tracing::Level> for Level {
 
 /// The [`Log`] struct contains all relevant data collected when a log is emitted by the
 /// application.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Log {
     // [`Level`] of the log message.
     pub level: Level,
@@ -93,14 +92,13 @@ impl Log {
 /// display in the UI.
 #[derive(Debug)]
 pub struct CaptureLayer {
-    /// Buffered log messages with a bounded size.
-    logs: Arc<Mutex<BoundedVecDeque<Log>>>,
+    tx: Sender<Log>,
 }
 
 impl CaptureLayer {
     /// Creates a new [`CaptureLayer`].
-    pub fn new(logs: Arc<Mutex<BoundedVecDeque<Log>>>) -> Self {
-        Self { logs }
+    pub fn new(tx: Sender<Log>) -> Self {
+        Self { tx }
     }
 }
 
@@ -113,7 +111,7 @@ where
         let mut visitor = CaptureVisitor::default();
         event.record(&mut visitor);
 
-        let entry = Log {
+        let log = Log {
             level: event.metadata().level().into(),
             timestamp: Local::now(),
             file: event.metadata().file().unwrap_or(NO_FILE_VALUE).to_owned(),
@@ -125,7 +123,13 @@ where
                 .to_owned(),
         };
 
-        self.logs.lock().expect("lock acquired").push_front(entry);
+        let tx = self.tx.clone();
+
+        tokio::spawn(async move {
+            if let Err(e) = tx.send(log).await {
+                tracing::error!("failed to send log to channel: {}", e);
+            }
+        });
     }
 }
 

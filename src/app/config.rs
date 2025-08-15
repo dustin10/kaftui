@@ -18,6 +18,9 @@ const DEFAULT_SCROLL_FACTOR: u16 = 3;
 /// Default value for the file export directory.
 const DEFAULT_EXPORT_DIRECTORY: &str = ".";
 
+/// Default maximum number of logs that should be stored in memory.
+const DEFAULT_LOGS_MAX_HISTORY: u16 = 2048;
+
 /// Configuration values which drive the behavior of the application.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -49,6 +52,11 @@ pub struct Config {
     pub theme: Theme,
     /// Directory on the file system where exported files will be saved.
     pub export_directory: String,
+    /// If true, indicates that logs have been enabled by the user.
+    pub logs_enabled: bool,
+    /// Maximum number of logs that should be held in memory at any given time when logging is
+    /// enabled.
+    pub logs_max_history: u16,
 }
 
 impl Config {
@@ -131,6 +139,13 @@ impl Source for Defaults {
         cfg.insert(
             String::from("export_directory"),
             Value::from(String::from(DEFAULT_EXPORT_DIRECTORY)),
+        );
+
+        cfg.insert(String::from("logs_enabled"), Value::from(false));
+
+        cfg.insert(
+            String::from("logs_max_history"),
+            Value::from(DEFAULT_LOGS_MAX_HISTORY),
         );
 
         Ok(cfg)

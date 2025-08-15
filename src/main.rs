@@ -10,15 +10,11 @@ use crate::{
 };
 
 use anyhow::Context;
-use bounded_vec_deque::BoundedVecDeque;
 use chrono::Utc;
 use clap::Parser;
 use config::{ConfigError, Map, Source, Value};
-use std::{
-    fs::File,
-    io::BufReader,
-    sync::{Arc, Mutex},
-};
+use std::{fs::File, io::BufReader};
+use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
@@ -132,14 +128,14 @@ impl Source for Args {
 /// Main entry point for the application.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let logs = init_env();
+    let logs_rx = init_env();
 
     let args = Args::parse();
     let profile_name = args.profile.clone();
 
     let config = Config::new(args, profile_name).context("create application config")?;
 
-    run_app(config, logs).await
+    run_app(config, logs_rx).await
 }
 
 /// Environment variable that can be used to enable capturing logs to a file for debugging.
@@ -150,18 +146,9 @@ const LOGS_ENABLED_ENV_VAR: &str = "KAFTUI_LOGS_ENABLED";
 /// the present working directory, i.e. `.`, will be used.
 const LOGS_DIR_ENV_VAR: &str = "KAFTUI_LOGS_DIR";
 
-/// Environment variable that can be used to specify the maximum number of logs that should be held
-/// in memory at any given time. After the maximum size is reached, when new logs are emitted then
-/// the old ones are purged. This environment variable is only applicable if `KAFTUI_LOGS_ENABLED`
-/// is set to `true`.
-const LOGS_MAX_HISTORY: &str = "KAFTUI_LOGS_MAX_HISTORY";
-
-/// Default maximum number of logs that should be stored in memory.
-const DEFAULT_LOGS_MAX_HISTORY: usize = 2048;
-
 /// Initializes the environment that the application will run in. If logging is enabled, returns
 /// the log history that will be written to by the [`CaptureLayer`].
-fn init_env() -> Option<Arc<Mutex<BoundedVecDeque<Log>>>> {
+fn init_env() -> Option<Receiver<Log>> {
     let dot_env_result = dotenvy::dotenv();
 
     let enable_logs = std::env::var(LOGS_ENABLED_ENV_VAR)
@@ -195,23 +182,21 @@ fn init_env() -> Option<Arc<Mutex<BoundedVecDeque<Log>>>> {
         .with_thread_ids(true)
         .with_thread_names(true);
 
-    let max_history = std::env::var(LOGS_MAX_HISTORY)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_LOGS_MAX_HISTORY);
+    let (logs_rx, logs_tx) = tokio::sync::mpsc::channel(64);
 
-    let log_history = Arc::new(Mutex::new(BoundedVecDeque::new(max_history)));
-
-    let capture_layer = CaptureLayer::new(Arc::clone(&log_history));
+    let capture_layer = CaptureLayer::new(logs_rx);
 
     // default to INFO level logs but respect the RUST_LOG env var.
     let global_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
+    let console_layer = console_subscriber::spawn();
+
     Registry::default()
         .with(file_layer)
         .with(capture_layer)
+        .with(console_layer)
         .with(global_filter)
         .init();
 
@@ -227,20 +212,16 @@ fn init_env() -> Option<Arc<Mutex<BoundedVecDeque<Log>>>> {
         },
     };
 
-    // TODO: maybe return a receiver here and use a channel instead of a shared collection?
-    Some(log_history)
+    Some(logs_tx)
 }
 
 /// Runs the application.
-async fn run_app(
-    config: Config,
-    logs: Option<Arc<Mutex<BoundedVecDeque<Log>>>>,
-) -> anyhow::Result<()> {
+async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Result<()> {
     let terminal = ratatui::init();
 
-    let result = App::new(config, logs)
+    let result = App::new(config)
         .context("initialize application")?
-        .run(terminal)
+        .run(terminal, logs_rx)
         .await;
 
     ratatui::restore();
