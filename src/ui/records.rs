@@ -2,7 +2,7 @@ use crate::{
     app::{config::Theme, BufferedKeyPress},
     event::AppEvent,
     kafka::{ConsumerMode, Record},
-    ui::{Component, ConsumerStatusLine},
+    ui::{widget::ConsumerStatusLine, Component},
 };
 
 use bounded_vec_deque::BoundedVecDeque;

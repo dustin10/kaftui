@@ -6,10 +6,7 @@ use crate::{
     event::{AppEvent, Event, EventBus},
     kafka::{Consumer, ConsumerMode, PartitionOffset, Record, RecordState},
     trace::Log,
-    ui::{
-        Component, Logs, LogsConfig, Notifications, NotificationsConfig, Records, RecordsConfig,
-        Stats, StatsConfig,
-    },
+    ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
 };
 
 use anyhow::Context;
@@ -83,39 +80,31 @@ pub struct Notification {
     /// Summary text for the notification. The summary is displayed in the header for a short
     /// period of time.
     pub summary: String,
-    /// Detailed text for the notification. The full message details are displayed to the user on
-    /// the notificaiton history screen.
-    pub details: String,
     /// Timestamp when the notification was created by the application.
     pub created: DateTime<Utc>,
 }
 
 impl Notification {
     /// Creates a new notification for the user with the specified data.
-    pub fn new(
-        status: NotificationStatus,
-        summary: impl Into<String>,
-        details: impl Into<String>,
-    ) -> Self {
+    pub fn new(status: NotificationStatus, summary: impl Into<String>) -> Self {
         Self {
             status,
             summary: summary.into(),
-            details: details.into(),
             created: Utc::now(),
         }
     }
     /// Creates a new success notification for the user with the specified data.
-    pub fn success(summary: impl Into<String>, details: impl Into<String>) -> Self {
-        Self::new(NotificationStatus::Success, summary, details)
+    pub fn success(summary: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Success, summary)
     }
     /// Creates a new warn notification for the user with the specified data.
     #[allow(dead_code)]
-    pub fn warn(summary: impl Into<String>, details: impl Into<String>) -> Self {
-        Self::new(NotificationStatus::Warn, summary, details)
+    pub fn warn(summary: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Warn, summary)
     }
     /// Creates a new failure notification for the user with the specified data.
-    pub fn failure(summary: impl Into<String>, details: impl Into<String>) -> Self {
-        Self::new(NotificationStatus::Failure, summary, details)
+    pub fn failure(summary: impl Into<String>) -> Self {
+        Self::new(NotificationStatus::Failure, summary)
     }
     /// Determines if the notification has expired and should no longer be visible.
     pub fn is_expired(&self) -> bool {
@@ -134,15 +123,14 @@ pub struct State {
     pub consumer_mode: Rc<Cell<ConsumerMode>>,
     /// [`Component`] that the user is curently viewing and interacting with.
     pub active_component: Rc<RefCell<dyn Component>>,
-    /// Stores the history of [`Notification`]s displayed to the user.
-    pub notification_history: Rc<RefCell<BoundedVecDeque<Notification>>>,
+    /// Contains any [`Notification`]s that should be displayed to the user.
+    pub notification: Option<Notification>,
 }
 
 impl State {
     /// Creates a new [`State`] with the given dependencies.
     pub fn new(
         consumer_mode: Rc<Cell<ConsumerMode>>,
-        notification_history: Rc<RefCell<BoundedVecDeque<Notification>>>,
         active_component: Rc<RefCell<dyn Component>>,
     ) -> Self {
         Self {
@@ -150,7 +138,7 @@ impl State {
             initializing: true,
             consumer_mode,
             active_component,
-            notification_history,
+            notification: None,
         }
     }
 }
@@ -236,21 +224,8 @@ impl App {
                 .expect("valid Stats config"),
         )));
 
-        let notification_history = Rc::new(RefCell::new(BoundedVecDeque::new(512)));
-
-        let notifications_component = Rc::new(RefCell::new(Notifications::new(
-            NotificationsConfig::builder()
-                .history(Rc::clone(&notification_history))
-                .theme(&config.theme)
-                .build()
-                .expect("valid Notifications config"),
-        )));
-
-        let mut components: Vec<Rc<RefCell<dyn Component>>> = vec![
-            records_component.clone(),
-            stats_component,
-            notifications_component,
-        ];
+        let mut components: Vec<Rc<RefCell<dyn Component>>> =
+            vec![records_component.clone(), stats_component];
 
         if let Some(logs) = logs {
             let logs_component = Rc::new(RefCell::new(Logs::new(
@@ -264,7 +239,7 @@ impl App {
             components.push(logs_component);
         }
 
-        let state = State::new(consumer_mode, notification_history, records_component);
+        let state = State::new(consumer_mode, records_component);
 
         Ok(Self {
             config,
@@ -306,6 +281,9 @@ impl App {
                         AppEvent::ExportRecord(record) => self.on_export_record(record).await,
                         AppEvent::PauseProcessing => self.on_pause_processing().await,
                         AppEvent::ResumeProcessing => self.on_resume_processing().await,
+                        AppEvent::DisplayNotification(notification) => {
+                            self.on_display_notification(notification)
+                        }
                         _ => {
                             self.components
                                 .iter()
@@ -423,16 +401,10 @@ impl App {
         tracing::debug!("exporting selected record");
 
         let notification = match self.exporter.export_record(&record) {
-            Ok(file_path) => Notification::success(
-                "Record Exported Successfully",
-                format!("Record succesfully exported to file {}", file_path),
-            ),
+            Ok(_) => Notification::success("Record Exported Successfully"),
             Err(e) => {
                 tracing::error!("export record failure: {}", e);
-                Notification::failure(
-                    "Record Export Failed",
-                    format!("Failed to export the selected record: {}", e),
-                )
+                Notification::failure("Record Export Failed")
             }
         };
 
@@ -448,16 +420,10 @@ impl App {
             self.state.consumer_mode.set(ConsumerMode::Paused);
 
             let notification = match self.consumer.pause() {
-                Ok(_) => Notification::success(
-                    "Consumer Paused Successfully",
-                    "Kafka consumer was successfully paused at the request of the user",
-                ),
+                Ok(_) => Notification::success("Consumer Paused Successfully"),
                 Err(e) => {
                     tracing::error!("failed to pause consumer: {}", e);
-                    Notification::failure(
-                        "Pause Consumer Failed",
-                        format!("Failed to pause the Kafka consumer: {}", e),
-                    )
+                    Notification::failure("Pause Consumer Failed")
                 }
             };
 
@@ -474,16 +440,10 @@ impl App {
             self.state.consumer_mode.set(ConsumerMode::Processing);
 
             let notification = match self.consumer.resume() {
-                Ok(_) => Notification::success(
-                    "Consumer Resumed Successfully",
-                    "Kafka consumer was successfully resumed at the request of the user",
-                ),
+                Ok(_) => Notification::success("Consumer Resumed Successfully"),
                 Err(e) => {
                     tracing::error!("failed to resume consumer: {}", e);
-                    Notification::failure(
-                        "Resume Consumer Failed",
-                        format!("Failed to resume the Kafka consumer: {}", e),
-                    )
+                    Notification::failure("Resume Consumer Failed")
                 }
             };
 
@@ -491,6 +451,10 @@ impl App {
                 .send(AppEvent::DisplayNotification(notification))
                 .await;
         }
+    }
+    /// Handles the [`AppEvent::DisplayNotification`] event emitted by the [`EventBus`].
+    fn on_display_notification(&mut self, notification: Notification) {
+        self.state.notification = Some(notification);
     }
     /// Handles the [`AppEvent::Quit`] event emitted by the [`EventBus`].
     fn on_quit(&mut self) {

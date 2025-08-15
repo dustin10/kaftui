@@ -1,15 +1,12 @@
 mod logs;
-mod notifications;
 mod records;
 mod stats;
-pub mod widget;
+mod widget;
 
 pub use crate::ui::{
     logs::{Logs, LogsConfig},
-    notifications::{Notifications, NotificationsConfig},
     records::{Records, RecordsConfig},
     stats::{Stats, StatsConfig},
-    widget::ConsumerStatusLine,
 };
 
 use crate::{
@@ -180,7 +177,7 @@ impl App {
         frame.render_widget(menu, left_panel);
         frame.render_widget(outer, area);
 
-        if let Some(notification) = self.state.notification_history.borrow().front()
+        if let Some(notification) = &self.state.notification
             && !notification.is_expired()
         {
             let notification_color = match notification.status {

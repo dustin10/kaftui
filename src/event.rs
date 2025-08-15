@@ -53,14 +53,6 @@ pub enum AppEvent {
     SelectComponent(usize),
     /// Fires when a new [`Notification`] should be displayed to the user.
     DisplayNotification(Notification),
-    /// Fires when the user wants to scroll to the top of notification list.
-    ScrollNotificationsTop,
-    /// Fires when the user wants to scroll the notification list up.
-    ScrollNotificationsUp,
-    /// Fires when the user wants to scroll the notification list down.
-    ScrollNotificationsDown,
-    /// Fires when the user wants to scroll to the bottom of notification list.
-    ScrollNotificationsBottom,
     /// Fires when the user wants to scroll to the top of the logs list.
     ScrollLogsTop,
     /// Fires when the user wants to scroll the logs list up.
