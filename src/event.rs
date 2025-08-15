@@ -1,4 +1,4 @@
-use crate::{app::Notification, kafka::Record};
+use crate::{app::Notification, kafka::Record, trace::Log};
 
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
@@ -61,6 +61,8 @@ pub enum AppEvent {
     ScrollLogsDown,
     /// Fires when the user wants to scroll to the bottom of the logs list.
     ScrollLogsBottom,
+    /// Fires when a [`Log`] is emitted by the application.
+    LogEmitted(Log),
 }
 
 /// The bus over which [`Event`]s are published and consumed.
@@ -112,7 +114,7 @@ impl EventTask {
 
             tokio::select! {
                 _ = self.sender.closed() => {
-                    tracing::info!("exiting event loop because sender was closed");
+                    tracing::warn!("exiting event loop because sender was closed");
                     break;
                 }
                 Some(Ok(e)) = crossterm_event => {

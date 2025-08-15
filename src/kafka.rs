@@ -207,13 +207,18 @@ impl Consumer {
 
         // apply default config
         client_config.set("auto.offset.reset", "latest");
-        client_config.set("statistics.interval.ms", "60000");
+        client_config.set("statistics.interval.ms", "20000");
 
         // apply user config
         client_config.extend(config);
 
         // apply enforced config
         client_config.set("enable.auto.commit", "false");
+
+        tracing::debug!(
+            "creating Kafka consumer with properties: {:?}",
+            client_config
+        );
 
         let consumer: StreamConsumer<ConsumerContext> = client_config
             .set_log_level(RDKafkaLogLevel::Debug)
@@ -234,6 +239,8 @@ impl Consumer {
         filter: Option<String>,
     ) -> anyhow::Result<()> {
         let to_assign = if partitions.is_empty() {
+            tracing::debug!("fetching topic metadata from broker");
+
             let topic_metadata = self
                 .consumer
                 .fetch_metadata(Some(topic.as_ref()), Duration::from_secs(10))
@@ -248,8 +255,11 @@ impl Consumer {
                 .map(|mp| mp.id())
                 .collect()
         } else {
+            tracing::debug!("partition assignments specified by user");
             partitions
         };
+
+        tracing::info!("assigning partitions to Kafka consumer: {:?}", to_assign);
 
         let mut assignments_list = TopicPartitionList::with_capacity(to_assign.len());
 
@@ -303,6 +313,8 @@ impl Consumer {
     }
     /// Pauses the consumption of records from the topic.
     pub fn pause(&self) -> anyhow::Result<()> {
+        tracing::debug!("attemping to pause Kafka consumer");
+
         let assignment = self
             .consumer
             .assignment()
@@ -314,6 +326,8 @@ impl Consumer {
     }
     /// Resumes the consumption of records from the topic.
     pub fn resume(&self) -> anyhow::Result<()> {
+        tracing::debug!("attemping to resume Kafka consumer");
+
         let assignment = self
             .consumer
             .assignment()

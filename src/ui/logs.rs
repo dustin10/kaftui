@@ -16,10 +16,7 @@ use ratatui::{
     },
     Frame,
 };
-use std::{
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::str::FromStr;
 
 /// Key bindings that are displayed to the user in the footer when viewing the logs screen.
 const LOGS_KEY_BINDINGS: [&str; 5] = [
@@ -33,7 +30,7 @@ const LOGS_KEY_BINDINGS: [&str; 5] = [
 #[derive(Debug)]
 struct LogsState {
     /// Bounded collection of log messages emitted by the application.
-    logs: Arc<Mutex<BoundedVecDeque<Log>>>,
+    logs: BoundedVecDeque<Log>,
     /// [`TableState`] for the table that log messages are rendered into.
     list_state: TableState,
     /// [`ScrollbarState`] for the table that logs messages are rendered into.
@@ -41,11 +38,10 @@ struct LogsState {
 }
 
 impl LogsState {
-    /// Creates a new [`LogsState`] using the specified shared reference to the collection that
-    /// contains the logs messages emitted by the application.
-    fn new(logs: Arc<Mutex<BoundedVecDeque<Log>>>) -> Self {
+    /// Creates a new [`LogsState`].
+    fn new(max_history: usize) -> Self {
         Self {
-            logs,
+            logs: BoundedVecDeque::new(max_history),
             list_state: TableState::default(),
             list_scroll_state: ScrollbarState::default(),
         }
@@ -57,13 +53,9 @@ impl LogsState {
     }
     /// Moves the logs list scroll state up by one line.
     fn scroll_list_up(&mut self) {
-        let logs = self.logs.lock().expect("lock acquired");
-
-        if logs.is_empty() {
+        if self.logs.is_empty() {
             return;
         }
-
-        std::mem::drop(logs);
 
         self.list_state.select_previous();
 
@@ -73,19 +65,15 @@ impl LogsState {
     }
     /// Moves the logs list scroll state down by one line.
     fn scroll_list_down(&mut self) {
-        let logs = self.logs.lock().expect("lock acquired");
-
-        if logs.is_empty() {
+        if self.logs.is_empty() {
             return;
         }
 
         if let Some(curr_idx) = self.list_state.selected()
-            && curr_idx == logs.len() - 1
+            && curr_idx == self.logs.len() - 1
         {
             return;
         }
-
-        std::mem::drop(logs);
 
         self.list_state.select_next();
 
@@ -95,12 +83,13 @@ impl LogsState {
     }
     /// Moves the logs list scroll state to the bottom.
     fn scroll_list_bottom(&mut self) {
-        let logs = self.logs.lock().expect("lock acquired");
-        let bottom = logs.len() - 1;
-        std::mem::drop(logs);
+        let bottom = self.logs.len() - 1;
 
         self.list_state.select(Some(bottom));
         self.list_scroll_state = self.list_scroll_state.position(bottom);
+    }
+    fn on_log_emitted(&mut self, log: &Log) {
+        self.logs.push_front(log.clone());
     }
 }
 
@@ -138,8 +127,8 @@ impl From<&Theme> for LogsTheme {
 /// Configuration used to create a new [`Logs`] component.
 #[derive(Builder, Debug)]
 pub struct LogsConfig<'a> {
-    /// Stores the log messages that have been emitted by the application.
-    logs: Arc<Mutex<BoundedVecDeque<Log>>>,
+    /// Maximum number of logs that should be held in memory at any given time.
+    max_history: usize,
     /// Reference to the application [`Theme`].
     theme: &'a Theme,
 }
@@ -165,7 +154,7 @@ pub struct Logs {
 impl Logs {
     /// Creates a new [`Logs`] component using the specified [`LogsConfig`].
     pub fn new(config: LogsConfig) -> Self {
-        let state = LogsState::new(config.logs);
+        let state = LogsState::new(config.max_history);
 
         let theme = config.theme.into();
 
@@ -204,6 +193,7 @@ impl Component for Logs {
             AppEvent::ScrollLogsUp => self.state.scroll_list_up(),
             AppEvent::ScrollLogsDown => self.state.scroll_list_down(),
             AppEvent::ScrollLogsBottom => self.state.scroll_list_bottom(),
+            AppEvent::LogEmitted(log) => self.state.on_log_emitted(log),
             _ => {}
         }
     }
@@ -222,10 +212,9 @@ impl Component for Logs {
             .border_style(self.theme.panel_border_color)
             .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
-        let logs = self.state.logs.lock().expect("lock acquired");
-        let num_logs = logs.len();
-
-        let table_rows: Vec<Row> = logs
+        let table_rows: Vec<Row> = self
+            .state
+            .logs
             .iter()
             .map(|l| {
                 Row::new([
@@ -236,8 +225,6 @@ impl Component for Logs {
                 ])
             })
             .collect();
-
-        std::mem::drop(logs);
 
         let table = Table::new(
             table_rows,
@@ -260,7 +247,10 @@ impl Component for Logs {
 
         frame.render_stateful_widget(table, area, &mut self.state.list_state);
 
-        self.state.list_scroll_state = self.state.list_scroll_state.content_length(num_logs);
+        self.state.list_scroll_state = self
+            .state
+            .list_scroll_state
+            .content_length(self.state.logs.len());
 
         let scrollbar = Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
