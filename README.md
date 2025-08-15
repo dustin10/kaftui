@@ -75,6 +75,15 @@ other than the bootstrap servers and group id. Typically used for configuring au
 the Kafka topic. Defaults to `256`.
 * `--help, -h` - Prints the help text for the application to the terminal.
 
+### Enabling Logs
+
+Application logs can be enabled by specifying a value of `true` for the `KAFTUI_LOGS_ENABLED` environment variable when
+running `kaftui`. When enabled, a `Logs` menu item will appear in the header that allows the user to view the logs in
+the application. A `.json` file is also written to on disk that contains more verbose log information.
+
+The `KAFTUI_LOGS_DIR` environment variable can be used to set the directory that log files will be stored in. If not
+set, the log files will be saved in the present working directory.
+
 ## Key Bindings
 
 There are some key bindings for the `kaftui` application which are global while others are dependent upon the currently
@@ -84,7 +93,6 @@ active widget.The following key bindings apply no matter which widget is current
 * `tab` - Changes focus from the current widget to the next available one.
 * `1` - View the `Records` screen.
 * `2` - View the `Stats` screen.
-* `3` - View the `Notifications` screen.
 
 The active key bindings will be displayed in the UI on the right side of the footer and will vary depending on the 
 screen that is currently being viewed within the application.
