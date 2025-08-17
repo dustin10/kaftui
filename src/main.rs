@@ -3,6 +3,7 @@ mod event;
 mod kafka;
 mod trace;
 mod ui;
+mod util;
 
 use crate::{
     app::{config::Config, App},
@@ -164,18 +165,11 @@ const DEFAULT_LOGS_MAX_HISTORY: usize = 2048;
 fn init_env() -> Option<Arc<Mutex<BoundedVecDeque<Log>>>> {
     let dot_env_result = dotenvy::dotenv();
 
-    let enable_logs = std::env::var(LOGS_ENABLED_ENV_VAR)
-        .ok()
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    if !enable_logs {
+    if !logs_enabled() {
         return None;
     }
 
-    let logs_dir = std::env::var(LOGS_DIR_ENV_VAR)
-        .ok()
-        .unwrap_or(String::from("."));
+    let logs_dir = logs_dir();
 
     let file_appender = tracing_appender::rolling::never(
         logs_dir,
@@ -229,6 +223,22 @@ fn init_env() -> Option<Arc<Mutex<BoundedVecDeque<Log>>>> {
 
     // TODO: maybe return a receiver here and use a channel instead of a shared collection?
     Some(log_history)
+}
+
+/// Returns true if the user has enabled application logging, false otherwise.
+fn logs_enabled() -> bool {
+    util::read_env_transformed(
+        LOGS_ENABLED_ENV_VAR,
+        |v| v.eq_ignore_ascii_case("true"),
+        bool::default,
+    )
+}
+
+/// Resolves the directory on the file system where the file containing the application logs should
+/// be written. If not configured explicitly by the user with the `KAFTUI_LOGS_DIR` environment
+/// variable, then the present working directory, i.e. `.`, will be used.
+fn logs_dir() -> String {
+    util::read_env(LOGS_DIR_ENV_VAR, || String::from("."))
 }
 
 /// Runs the application.
