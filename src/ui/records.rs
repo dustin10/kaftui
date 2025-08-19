@@ -1,6 +1,6 @@
 use crate::{
     app::{config::Theme, BufferedKeyPress},
-    event::AppEvent,
+    event::Event,
     kafka::{ConsumerMode, Record},
     ui::{widget::ConsumerStatusLine, Component},
 };
@@ -564,38 +564,34 @@ impl Component for Records {
 
         frame.render_widget(text, area);
     }
-    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
-    fn map_key_event(
-        &self,
-        event: KeyEvent,
-        buffered: Option<&BufferedKeyPress>,
-    ) -> Option<AppEvent> {
+    fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
                 'e' => self
                     .state
                     .selected
                     .as_ref()
-                    .map(|r| AppEvent::ExportRecord(r.clone())),
-                'p' => Some(AppEvent::PauseProcessing),
-                'r' => Some(AppEvent::ResumeProcessing),
+                    .map(|r| Event::ExportRecord(r.clone())),
+                'p' => Some(Event::PauseProcessing),
+                'r' => Some(Event::ResumeProcessing),
                 _ => match self.state.active_widget {
                     RecordsWidget::List => match c {
                         'g' if buffered.map(|kp| kp.is('g')).is_some() => {
-                            Some(AppEvent::SelectFirstRecord)
+                            Some(Event::SelectFirstRecord)
                         }
-                        'j' => Some(AppEvent::SelectNextRecord),
-                        'k' => Some(AppEvent::SelectPrevRecord),
-                        'G' => Some(AppEvent::SelectLastRecord),
+                        'j' => Some(Event::SelectNextRecord),
+                        'k' => Some(Event::SelectPrevRecord),
+                        'G' => Some(Event::SelectLastRecord),
                         _ => None,
                     },
                     RecordsWidget::Value => match c {
                         'g' if buffered.map(|kp| kp.is('g')).is_some() => {
-                            Some(AppEvent::ScrollRecordValueTop)
+                            Some(Event::ScrollRecordValueTop)
                         }
-                        'j' => Some(AppEvent::ScrollRecordValueDown),
-                        'k' => Some(AppEvent::ScrollRecordValueUp),
+                        'j' => Some(Event::ScrollRecordValueDown),
+                        'k' => Some(Event::ScrollRecordValueUp),
                         _ => None,
                     },
                 },
@@ -603,19 +599,19 @@ impl Component for Records {
             _ => None,
         }
     }
-    /// Allows the [`Component`] to handle any [`AppEvent`] that was not handled by the main
+    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
     /// application.
-    fn on_app_event(&mut self, event: &AppEvent) {
+    fn on_app_event(&mut self, event: &Event) {
         match event {
-            AppEvent::SelectFirstRecord => self.state.select_first(),
-            AppEvent::SelectPrevRecord => self.state.select_prev(),
-            AppEvent::SelectNextRecord => self.state.select_next(),
-            AppEvent::SelectLastRecord => self.state.select_last(),
-            AppEvent::SelectNextWidget => self.state.select_next_widget(),
-            AppEvent::ScrollRecordValueTop => self.state.scroll_value_top(),
-            AppEvent::ScrollRecordValueDown => self.state.scroll_value_down(self.scroll_factor),
-            AppEvent::ScrollRecordValueUp => self.state.scroll_value_up(self.scroll_factor),
-            AppEvent::RecordReceived(record) => self.state.push_record(record.clone()),
+            Event::SelectFirstRecord => self.state.select_first(),
+            Event::SelectPrevRecord => self.state.select_prev(),
+            Event::SelectNextRecord => self.state.select_next(),
+            Event::SelectLastRecord => self.state.select_last(),
+            Event::SelectNextWidget => self.state.select_next_widget(),
+            Event::ScrollRecordValueTop => self.state.scroll_value_top(),
+            Event::ScrollRecordValueDown => self.state.scroll_value_down(self.scroll_factor),
+            Event::ScrollRecordValueUp => self.state.scroll_value_up(self.scroll_factor),
+            Event::RecordReceived(record) => self.state.push_record(record.clone()),
             _ => {}
         }
     }

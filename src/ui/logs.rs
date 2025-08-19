@@ -1,6 +1,6 @@
 use crate::{
     app::{config::Theme, BufferedKeyPress},
-    event::AppEvent,
+    event::Event,
     trace::Log,
     ui::Component,
 };
@@ -174,33 +174,29 @@ impl Component for Logs {
     fn name(&self) -> &'static str {
         "Logs"
     }
-    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
-    fn map_key_event(
-        &self,
-        event: KeyEvent,
-        buffered: Option<&BufferedKeyPress>,
-    ) -> Option<AppEvent> {
+    fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
-                'g' if buffered.map(|kp| kp.is('g')).is_some() => Some(AppEvent::ScrollLogsTop),
-                'j' => Some(AppEvent::ScrollLogsDown),
-                'k' => Some(AppEvent::ScrollLogsUp),
-                'G' => Some(AppEvent::ScrollLogsBottom),
+                'g' if buffered.map(|kp| kp.is('g')).is_some() => Some(Event::ScrollLogsTop),
+                'j' => Some(Event::ScrollLogsDown),
+                'k' => Some(Event::ScrollLogsUp),
+                'G' => Some(Event::ScrollLogsBottom),
                 _ => None,
             },
             _ => None,
         }
     }
-    /// Allows the [`Component`] to handle any [`AppEvent`] that was not handled by the main
+    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
     /// application.
-    fn on_app_event(&mut self, event: &AppEvent) {
+    fn on_app_event(&mut self, event: &Event) {
         match event {
-            AppEvent::ScrollLogsTop => self.state.scroll_list_top(),
-            AppEvent::ScrollLogsUp => self.state.scroll_list_up(),
-            AppEvent::ScrollLogsDown => self.state.scroll_list_down(),
-            AppEvent::ScrollLogsBottom => self.state.scroll_list_bottom(),
-            AppEvent::LogEmitted(log) => self.state.on_log_emitted(log),
+            Event::ScrollLogsTop => self.state.scroll_list_top(),
+            Event::ScrollLogsUp => self.state.scroll_list_up(),
+            Event::ScrollLogsDown => self.state.scroll_list_down(),
+            Event::ScrollLogsBottom => self.state.scroll_list_bottom(),
+            Event::LogEmitted(log) => self.state.on_log_emitted(log),
             _ => {}
         }
     }

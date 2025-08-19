@@ -1,6 +1,6 @@
 use crate::{
     app::{config::Theme, BufferedKeyPress},
-    event::AppEvent,
+    event::Event,
     kafka::{ConsumerMode, Record},
     ui::{widget::ConsumerStatusLine, Component},
 };
@@ -691,29 +691,29 @@ impl Component for Stats {
 
         frame.render_widget(text, area);
     }
-    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
     fn map_key_event(
         &self,
         event: KeyEvent,
         _buffered: Option<&BufferedKeyPress>,
-    ) -> Option<AppEvent> {
+    ) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
-                'p' => Some(AppEvent::PauseProcessing),
-                'r' => Some(AppEvent::ResumeProcessing),
+                'p' => Some(Event::PauseProcessing),
+                'r' => Some(Event::ResumeProcessing),
                 _ => None,
             },
             _ => None,
         }
     }
-    /// Allows the [`Component`] to handle any [`AppEvent`] that was not handled by the main
+    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
     /// application.
-    fn on_app_event(&mut self, event: &AppEvent) {
+    fn on_app_event(&mut self, event: &Event) {
         match event {
-            AppEvent::RecordReceived(record) => self.state.on_record_received(record),
-            AppEvent::RecordFiltered(record) => self.state.on_record_filtered(record),
-            AppEvent::StatisticsReceived(stats) => self.state.on_statistics_received(stats),
+            Event::RecordReceived(record) => self.state.on_record_received(record),
+            Event::RecordFiltered(record) => self.state.on_record_filtered(record),
+            Event::StatisticsReceived(stats) => self.state.on_statistics_received(stats),
             _ => {}
         }
     }

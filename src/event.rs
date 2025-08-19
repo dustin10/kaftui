@@ -1,24 +1,11 @@
 use crate::{app::Notification, kafka::Record, trace::Log};
 
-use futures::{FutureExt, StreamExt};
-use ratatui::crossterm::event::Event as CrosstermEvent;
 use rdkafka::Statistics;
 use tokio::sync::mpsc::Sender;
 
-// TODO: split these events into separate channels?
-
-/// Enumeration of events which can be sent on the [`EventBus`].
-#[derive(Debug)]
-pub enum Event {
-    /// Crossterm events. These events are emitted by the terminal backend.
-    Crossterm(CrosstermEvent),
-    /// Application events. These are events emitted related to the application domain.
-    App(AppEvent),
-}
-
 /// Enumeration of events which can be produced by the application.
 #[derive(Debug)]
-pub enum AppEvent {
+pub enum Event {
     /// Fires when the user requests to quit the application.
     Quit,
     /// Fires when the Kafka consumer was started successfully.
@@ -70,7 +57,7 @@ pub enum AppEvent {
     LogEmitted(Log),
 }
 
-/// The bus over which [`Event`]s are published and consumed.
+/// The bus over which [`Event`]s are published.
 #[derive(Debug)]
 pub struct EventBus {
     /// Event channel sender.
@@ -82,57 +69,10 @@ impl EventBus {
     pub fn new(sender: Sender<Event>) -> Self {
         Self { sender }
     }
-    /// Starts the the background thread that will emit the backend terminal events onto the event
-    /// channel..
-    pub fn start(&self) {
-        let task = EventTask::new(self.sender.clone());
-
-        tokio::spawn(async move { task.run().await });
-    }
     /// Publishes an application event to on the bus for processing.
-    pub async fn send(&self, app_event: AppEvent) {
-        if let Err(e) = self.sender.send(Event::App(app_event)).await {
-            tracing::error!("error sending event: {}", e);
-        }
-    }
-}
-
-/// A task which is executed in a background thread that handles reading Crossterm events and emitting tick
-/// events on a regular schedule.
-struct EventTask {
-    /// Event channel sender.
-    sender: Sender<Event>,
-}
-
-impl EventTask {
-    /// Constructs a new instance of [`EventTask`].
-    fn new(sender: Sender<Event>) -> Self {
-        Self { sender }
-    }
-    /// Runs the task. The task polls for crossterm events and emits them into the event channel.
-    /// The task will exit when the sender for the event channel is closed.
-    async fn run(self) {
-        let mut reader = crossterm::event::EventStream::new();
-
-        loop {
-            let crossterm_event = reader.next().fuse();
-
-            tokio::select! {
-                _ = self.sender.closed() => {
-                    tracing::warn!("exiting event loop because sender was closed");
-                    break;
-                }
-                Some(Ok(e)) = crossterm_event => {
-                    tracing::debug!("dispatching crossterm event: {:?}", e);
-                    self.send(Event::Crossterm(e)).await;
-                }
-            };
-        }
-    }
-    /// Publishes an event to the bus for processing.
-    async fn send(&self, event: Event) {
-        if let Err(e) = self.sender.send(event).await {
-            tracing::error!("error sending event: {}", e);
+    pub async fn send(&self, app_event: Event) {
+        if let Err(e) = self.sender.send(app_event).await {
+            tracing::error!("error sending event over channel: {}", e);
         }
     }
 }

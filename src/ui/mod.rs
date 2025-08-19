@@ -11,7 +11,7 @@ pub use crate::ui::{
 
 use crate::{
     app::{App, BufferedKeyPress, NotificationStatus},
-    event::AppEvent,
+    event::Event,
 };
 
 use crossterm::event::KeyEvent;
@@ -61,18 +61,18 @@ pub trait Component {
     fn name(&self) -> &'static str;
     /// Renders the component-specific widgets to the terminal.
     fn render(&mut self, frame: &mut Frame, area: Rect);
-    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`AppEvent`] which will be published
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
     fn map_key_event(
         &self,
         _event: KeyEvent,
         _buffered: Option<&BufferedKeyPress>,
-    ) -> Option<AppEvent> {
+    ) -> Option<Event> {
         None
     }
-    /// Allows the component to handle any [`AppEvent`] that was not handled by the main
+    /// Allows the component to handle any [`Event`] that was not handled by the main
     /// application.
-    fn on_app_event(&mut self, _event: &AppEvent) {}
+    fn on_app_event(&mut self, _event: &Event) {}
     /// Allows the [`Component`] to render the status line text into the footer.
     fn render_status_line(&self, _frame: &mut Frame, _area: Rect) {}
     /// Allows the [`Component`] to render the key bindings text into the footer.
