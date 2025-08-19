@@ -9,7 +9,7 @@ use rdkafka::{
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
-    ClientConfig, ClientContext, Message, Offset, TopicPartitionList,
+    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -115,7 +115,20 @@ impl Record {
 
 /// The [`ConsumerContext`] is a struct that is used to implement a custom Kafka consumer context
 /// to hook into key events in the lifecycle of a Kafka consumer.
-struct ConsumerContext;
+#[derive(Debug)]
+struct ConsumerContext {
+    /// [`Sender`] that is used to publish the [`ConsumerEvent::Statistics`] event when the latest
+    /// statistics are received from the librdkafka library.
+    consumer_tx: Sender<ConsumerEvent>,
+}
+
+impl ConsumerContext {
+    /// Creates a new [`ConsumerContext`] which uses the specified [`Sender`] to publish events to
+    /// the consumer channel.
+    fn new(consumer_tx: Sender<ConsumerEvent>) -> Self {
+        Self { consumer_tx }
+    }
+}
 
 impl ClientContext for ConsumerContext {
     /// Receives log lines from the underlying librdkafka library.
@@ -133,6 +146,18 @@ impl ClientContext for ConsumerContext {
             }
             RDKafkaLogLevel::Debug => tracing::debug!("{} {}", fac, log_message),
         }
+    }
+    /// Receives the decoded statistics from the librdkafka client at the configured interval.
+    fn stats(&self, statistics: rdkafka::Statistics) {
+        let boxed_stats = statistics.into();
+
+        let tx = self.consumer_tx.clone();
+
+        tokio::spawn(async move {
+            if let Err(e) = tx.send(ConsumerEvent::Statistics(boxed_stats)).await {
+                tracing::error!("failed to send statistics event consumer channel: {}", e);
+            }
+        });
     }
 }
 
@@ -179,13 +204,18 @@ impl RDConsumerContext for ConsumerContext {
     }
 }
 
+// TODO: rdkafka::Statistics boxed because it has a large memory footprint and triggers a clippy
+// lint - maybe create a custom struct that is smaller?
+
 /// Enumeration of the states of a [`Record`] that was consumed from the Kafka topic.
 #[derive(Clone, Debug)]
-pub enum RecordState {
+pub enum ConsumerEvent {
     /// A [`Record`] was consumed and it should be displayed to the user.
     Received(Record),
     /// A [`Record`] was consumed but it does not match the configured JSONPath filter.
     Filtered(Record),
+    /// Updated [`Statistics`] were emitted by the Kafka consumer.
+    Statistics(Box<Statistics>),
 }
 
 /// High-level Kafka consumer. Through this struct the application can easily start, pause and
@@ -194,20 +224,20 @@ pub struct Consumer {
     /// Underlying Kafka consumer.
     consumer: Arc<StreamConsumer<ConsumerContext>>,
     /// Sender for the Kafka consumer channel.
-    consumer_tx: Sender<RecordState>,
+    consumer_tx: Sender<ConsumerEvent>,
 }
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
     pub fn new(
         config: HashMap<String, String>,
-        consumer_tx: Sender<RecordState>,
+        consumer_tx: Sender<ConsumerEvent>,
     ) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
 
         // apply default config
         client_config.set("auto.offset.reset", "latest");
-        client_config.set("statistics.interval.ms", "20000");
+        client_config.set("statistics.interval.ms", "5000");
 
         // apply user config
         client_config.extend(config);
@@ -220,9 +250,11 @@ impl Consumer {
             client_config
         );
 
+        let context = ConsumerContext::new(consumer_tx.clone());
+
         let consumer: StreamConsumer<ConsumerContext> = client_config
             .set_log_level(RDKafkaLogLevel::Debug)
-            .create_with_context(ConsumerContext)
+            .create_with_context(context)
             .context("create Kafka consumer")?;
 
         Ok(Self {
@@ -455,7 +487,7 @@ struct PartitionConsumerTask {
     /// Any filter to apply to the record.
     filter: Option<String>,
     /// Sender for the Kafka consumer channel.
-    consumer_tx: Sender<RecordState>,
+    consumer_tx: Sender<ConsumerEvent>,
 }
 
 impl PartitionConsumerTask {
@@ -464,7 +496,7 @@ impl PartitionConsumerTask {
         consumer: Arc<StreamConsumer<ConsumerContext>>,
         partition_queue: Arc<StreamPartitionQueue<ConsumerContext>>,
         filter: Option<String>,
-        consumer_tx: Sender<RecordState>,
+        consumer_tx: Sender<ConsumerEvent>,
     ) -> Self {
         Self {
             consumer,
@@ -482,12 +514,12 @@ impl PartitionConsumerTask {
                 let record = Record::from(&msg);
 
                 let record_state = match &self.filter {
-                    Some(filter) if !record.matches(filter) => RecordState::Filtered(record),
-                    _ => RecordState::Received(record),
+                    Some(filter) if !record.matches(filter) => ConsumerEvent::Filtered(record),
+                    _ => ConsumerEvent::Received(record),
                 };
 
                 if let Err(e) = self.consumer_tx.send(record_state).await {
-                    tracing::error!("failed to send record state over consumer channel: {}", e);
+                    tracing::error!("failed to send record event over consumer channel: {}", e);
                 }
 
                 if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {

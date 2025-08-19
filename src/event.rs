@@ -2,7 +2,10 @@ use crate::{app::Notification, kafka::Record, trace::Log};
 
 use futures::{FutureExt, StreamExt};
 use ratatui::crossterm::event::Event as CrosstermEvent;
+use rdkafka::Statistics;
 use tokio::sync::mpsc::Sender;
+
+// TODO: split these events into separate channels?
 
 /// Enumeration of events which can be sent on the [`EventBus`].
 #[derive(Debug)]
@@ -27,6 +30,8 @@ pub enum AppEvent {
     /// Fires when the Kafka consumer receives a new [`Record`] but it does not match the
     /// configured JSONPath filter.
     RecordFiltered(Record),
+    /// Fires when the Kafka consumer receives updated [`Statistics`] from the librdkafka library.
+    StatisticsReceived(Box<Statistics>),
     /// Fires when the user wants to select the first record in the list.
     SelectFirstRecord,
     /// Fires when the user wants to select the previous record in the list.

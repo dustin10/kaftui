@@ -295,6 +295,13 @@ pub struct Records {
     state: RecordsState,
 }
 
+impl From<RecordsConfig<'_>> for Records {
+    /// Converts an owned [`RecordsConfig`] to an owned [`Records`].
+    fn from(value: RecordsConfig) -> Self {
+        Self::new(value)
+    }
+}
+
 impl Records {
     /// Creates a new [`Records`] component using the specified [`RecordsConfig`].
     pub fn new(config: RecordsConfig) -> Self {

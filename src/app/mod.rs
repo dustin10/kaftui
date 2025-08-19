@@ -4,7 +4,7 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{AppEvent, Event, EventBus},
-    kafka::{Consumer, ConsumerMode, PartitionOffset, Record, RecordState},
+    kafka::{Consumer, ConsumerEvent, ConsumerMode, PartitionOffset, Record},
     trace::Log,
     ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
 };
@@ -13,6 +13,7 @@ use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::DefaultTerminal;
+use rdkafka::Statistics;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -158,7 +159,7 @@ pub struct App {
     /// [`EventBus`].
     event_rx: Receiver<Event>,
     /// Channel receiver that is used to receive records from the Kafka consumer.
-    consumer_rx: Receiver<RecordState>,
+    consumer_rx: Receiver<ConsumerEvent>,
     /// Emits events to be handled by the application.
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
@@ -309,8 +310,9 @@ impl App {
 
             if let Ok(consumed_record) = self.consumer_rx.try_recv() {
                 match consumed_record {
-                    RecordState::Received(record) => self.on_record_received(record).await,
-                    RecordState::Filtered(record) => self.on_record_filtered(record).await,
+                    ConsumerEvent::Received(record) => self.on_record_received(record).await,
+                    ConsumerEvent::Filtered(record) => self.on_record_filtered(record).await,
+                    ConsumerEvent::Statistics(stats) => self.on_consumer_statistics(stats).await,
                 }
             }
         }
@@ -383,6 +385,13 @@ impl App {
     async fn on_record_filtered(&mut self, record: Record) {
         tracing::debug!("Kafka record filtered");
         self.event_bus.send(AppEvent::RecordFiltered(record)).await;
+    }
+    /// Invoked when updated [`Statistics`] are received on the consumer channel.
+    async fn on_consumer_statistics(&mut self, stats: Box<Statistics>) {
+        tracing::debug!("Kafka statistics received");
+        self.event_bus
+            .send(AppEvent::StatisticsReceived(stats))
+            .await;
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].

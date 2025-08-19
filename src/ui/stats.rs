@@ -6,20 +6,21 @@ use crate::{
 };
 
 use bounded_vec_deque::BoundedVecDeque;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     symbols::Marker,
-    text::Line,
+    text::{Line, Span, ToSpan},
     widgets::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Chart, Dataset, GraphType, Padding,
-        Paragraph,
+        Paragraph, Row, Table,
     },
     Frame,
 };
+use rdkafka::Statistics;
 use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 
 /// Number of columns to render between bars in a bar chart.
@@ -55,6 +56,9 @@ struct StatsState {
     /// Contains the timestamps corresponding to when [`Record`]s were consumed from the Kafka
     /// topic. These timestamps are used to display the throughput chart.
     timestamps: BoundedVecDeque<i64>,
+    /// [`Statistics`] emitted periodically from the librdkafka library which are displayed to the
+    /// user.
+    statistics: Option<Statistics>,
 }
 
 impl StatsState {
@@ -66,6 +70,7 @@ impl StatsState {
             filtered: u64::default(),
             partition_totals: BTreeMap::default(),
             timestamps: BoundedVecDeque::new(MAX_THROUGHPUT_CAPTURE),
+            statistics: None,
         }
     }
     /// Computes the total number of records consumed. The total is sum of the number of records
@@ -85,6 +90,10 @@ impl StatsState {
         self.filtered += 1;
         self.push_timestamp();
         self.inc_total_for_partition(record.partition);
+    }
+    /// Invoked when updated [`Statistics`] are received from the librdkafka library.
+    fn on_statistics_received(&mut self, statistics: &Statistics) {
+        self.statistics = Some(statistics.clone());
     }
     /// Increments the total number of [`Record`]s consumed on a partition.
     fn inc_total_for_partition(&mut self, partition: i32) {
@@ -203,6 +212,13 @@ pub struct Stats {
     theme: StatsTheme,
 }
 
+impl From<StatsConfig<'_>> for Stats {
+    /// Converts an owned [`StatsConfig`] to an owned [`Stats`].
+    fn from(value: StatsConfig) -> Self {
+        Self::new(value)
+    }
+}
+
 impl Stats {
     /// Creates a new [`Stats`] component using the specified [`StatsConfig`].
     pub fn new(config: StatsConfig) -> Self {
@@ -282,11 +298,205 @@ impl Stats {
 
         let [bottom_left_panel, bottom_right_panel] = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
             .areas(bottom_panel);
 
-        self.render_empty_panel(frame, bottom_left_panel);
-        self.render_empty_panel(frame, bottom_right_panel);
+        if let Some(stats) = self.state.statistics.as_ref() {
+            self.render_consumer_stats(stats, frame, bottom_left_panel);
+            self.render_partition_stats(stats, frame, bottom_right_panel);
+        } else {
+            self.render_waiting_panel(frame, bottom_left_panel);
+            self.render_waiting_panel(frame, bottom_right_panel);
+        }
+    }
+    /// Renders the panel that displays the statistics relevant to the Kafka consumer that are
+    /// emitted by the librdkafka library.
+    fn render_consumer_stats(&self, stats: &Statistics, frame: &mut Frame, area: Rect) {
+        let consumer_stats_block = Block::bordered()
+            .title(" Consumer ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let age_secs = format!("{}s", (stats.age / 1000000));
+
+        let mut consumer_stats_rows = vec![
+            Row::new([
+                String::from("Client ID")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.client_id.to_span(),
+            ]),
+            Row::new([
+                String::from("Client Type")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.client_type.to_span(),
+            ]),
+            Row::new([
+                String::from("Age").bold().style(self.theme.label_color),
+                age_secs.to_span(),
+            ]),
+            Row::new([
+                String::from("Queued Ops")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.replyq.to_span(),
+            ]),
+            Row::new([
+                String::from("Broker Reqs")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.tx.to_span(),
+            ]),
+            Row::new([
+                String::from("Broker Req Bytes")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.tx_bytes.to_span(),
+            ]),
+            Row::new([
+                String::from("Broker Resps")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.rx.to_span(),
+            ]),
+            Row::new([
+                String::from("Broker Resp Bytes")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.rx_bytes.to_span(),
+            ]),
+            Row::new([
+                String::from("Msg Consumed Bytes")
+                    .bold()
+                    .style(self.theme.label_color),
+                stats.rxmsg_bytes.to_span(),
+            ]),
+        ];
+
+        if let Some(group) = stats.cgrp.as_ref() {
+            let state_age_secs = format!("{}s", (group.stateage / 1000));
+
+            let group_rows = vec![
+                Row::new([
+                    String::from("State").bold().style(self.theme.label_color),
+                    group.state.to_span(),
+                ]),
+                Row::new([
+                    String::from("State Age")
+                        .bold()
+                        .style(self.theme.label_color),
+                    Span::raw(state_age_secs),
+                ]),
+            ];
+
+            consumer_stats_rows.extend(group_rows);
+        }
+
+        let consumer_stats_table = Table::new(
+            consumer_stats_rows,
+            [Constraint::Min(1), Constraint::Fill(3)],
+        )
+        .column_spacing(1)
+        .style(self.theme.bar_color)
+        .block(consumer_stats_block);
+
+        frame.render_widget(consumer_stats_table, area);
+    }
+    /// Renders the panel that displays the statistics relevant to the topic partitions that are
+    /// emitted by the librdkafka library.
+    fn render_partition_stats(&self, stats: &Statistics, frame: &mut Frame, area: Rect) {
+        let partition_stats_block = Block::bordered()
+            .title(" Partitions ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let topic = stats.topics.values().next().expect("valid topic stats");
+
+        let partition_stats_row: Vec<Row> = BTreeMap::from_iter(topic.partitions.iter())
+            .values()
+            .filter(|p| p.partition >= 0)
+            .map(|p| {
+                Row::new([
+                    p.partition.to_span(),
+                    p.broker.to_span(),
+                    p.leader.to_span(),
+                    p.desired.to_span(),
+                    p.unknown.to_span(),
+                    p.fetchq_cnt.to_span(),
+                    p.fetchq_size.to_span(),
+                    p.fetch_state.to_span(),
+                    p.next_offset.to_span(),
+                    p.app_offset.to_span(),
+                    p.stored_offset.to_span(),
+                    p.committed_offset.to_span(),
+                    p.eof_offset.to_span(),
+                    p.lo_offset.to_span(),
+                    p.hi_offset.to_span(),
+                    p.ls_offset.to_span(),
+                    p.consumer_lag.to_span(),
+                    p.rxmsgs.to_span(),
+                    p.rxbytes.to_span(),
+                    p.rx_ver_drops.to_span(),
+                    p.msgs_inflight.to_span(),
+                ])
+            })
+            .collect();
+
+        let partition_stats_table = Table::new(
+            partition_stats_row,
+            [
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+                Constraint::Min(1),
+            ],
+        )
+        .column_spacing(1)
+        .header(Row::new([
+            "ID".bold().style(self.theme.label_color),
+            "Brkr".bold().style(self.theme.label_color),
+            "Ldr".bold().style(self.theme.label_color),
+            "Dsrd".bold().style(self.theme.label_color),
+            "Unkwn".bold().style(self.theme.label_color),
+            "FetCt".bold().style(self.theme.label_color),
+            "FetSz".bold().style(self.theme.label_color),
+            "FetSt".bold().style(self.theme.label_color),
+            "NxtOf".bold().style(self.theme.label_color),
+            "AppOf".bold().style(self.theme.label_color),
+            "StdOf".bold().style(self.theme.label_color),
+            "CmtOf".bold().style(self.theme.label_color),
+            "EofOf".bold().style(self.theme.label_color),
+            "LoOf".bold().style(self.theme.label_color),
+            "HiOf".bold().style(self.theme.label_color),
+            "StbOf".bold().style(self.theme.label_color),
+            "Lag".bold().style(self.theme.label_color),
+            "Msgs".bold().style(self.theme.label_color),
+            "MsgBs".bold().style(self.theme.label_color),
+            "Drpd".bold().style(self.theme.label_color),
+            "InFlt".bold().style(self.theme.label_color),
+        ]))
+        .style(self.theme.bar_color)
+        .block(partition_stats_block);
+
+        frame.render_widget(partition_stats_table, area);
     }
     /// Renders the chart that displays the total throughput of records being consumed from the
     /// Kafka topic per second.
@@ -333,14 +543,14 @@ impl Stats {
 
         let now_time = now.format("%H:%M:%S").to_string();
 
-        let past_min = (area.width as f32 / 60.0).ceil();
+        let past_min = (area.width as f32 / 60.0).round() as i64;
+        let past = now - Duration::minutes(past_min);
+        let past_time = past.format("%H:%M:%S").to_string();
 
         let x_axis = Axis::default()
             .style(self.theme.text_color)
             .labels([
-                format!("-{}m", past_min)
-                    .bold()
-                    .style(self.theme.label_color),
+                past_time.bold().style(self.theme.label_color),
                 now_time.bold().style(self.theme.label_color),
             ])
             .bounds([0.0, area.width as f64]);
@@ -407,8 +617,9 @@ impl Stats {
 
         frame.render_widget(per_partition_chart, area);
     }
-    /// Renders an empty panel with a border into the specified area.
-    fn render_empty_panel(&self, frame: &mut Frame, area: Rect) {
+    /// Renders a panel with text indicating data is being waited on with a border into the
+    /// specified area.
+    fn render_waiting_panel(&self, frame: &mut Frame, area: Rect) {
         let [empty_area, text_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -420,7 +631,7 @@ impl Stats {
                 .border_style(self.theme.panel_border_color),
         );
 
-        let shrug_text = Paragraph::new("¯\\_(ツ)_/¯")
+        let waiting_text = Paragraph::new("Waiting...")
             .style(self.theme.panel_border_color)
             .block(
                 Block::default()
@@ -430,7 +641,7 @@ impl Stats {
             .centered();
 
         frame.render_widget(empty_text, empty_area);
-        frame.render_widget(shrug_text, text_area);
+        frame.render_widget(waiting_text, text_area);
     }
 }
 
@@ -502,6 +713,7 @@ impl Component for Stats {
         match event {
             AppEvent::RecordReceived(record) => self.state.on_record_received(record),
             AppEvent::RecordFiltered(record) => self.state.on_record_filtered(record),
+            AppEvent::StatisticsReceived(stats) => self.state.on_statistics_received(stats),
             _ => {}
         }
     }

@@ -151,6 +151,13 @@ pub struct Logs {
     theme: LogsTheme,
 }
 
+impl From<LogsConfig<'_>> for Logs {
+    /// Converts an owned [`LogsConfig`] to an owned [`Logs`].
+    fn from(value: LogsConfig) -> Self {
+        Self::new(value)
+    }
+}
+
 impl Logs {
     /// Creates a new [`Logs`] component using the specified [`LogsConfig`].
     pub fn new(config: LogsConfig) -> Self {
