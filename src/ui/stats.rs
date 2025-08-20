@@ -541,25 +541,36 @@ impl Stats {
             .graph_type(GraphType::Bar)
             .data(&data);
 
-        let now_time = now.format("%H:%M:%S").to_string();
+        let max_x_label = now.format("%H:%M:%S").to_string();
 
-        let past_min = (area.width as f32 / 60.0).round() as i64;
-        let past = now - Duration::minutes(past_min);
-        let past_time = past.format("%H:%M:%S").to_string();
+        let min_x = now - Duration::seconds(area.width as i64);
+        let min_x_label = min_x.format("%H:%M:%S").to_string();
+
+        let mid = (area.width as f32 / 2.0).round() as i64;
+        let mid_x = now - Duration::seconds(mid);
+        let mid_x_label = mid_x.format("%H:%M:%S").to_string();
 
         let x_axis = Axis::default()
             .style(self.theme.text_color)
             .labels([
-                past_time.bold().style(self.theme.label_color),
-                now_time.bold().style(self.theme.label_color),
+                min_x_label.bold().style(self.theme.label_color),
+                mid_x_label.bold().style(self.theme.label_color),
+                max_x_label.bold().style(self.theme.label_color),
             ])
             .bounds([0.0, area.width as f64]);
+
+        let mid_y = max as f64 / 2.0;
 
         let y_axis = Axis::default()
             .style(self.theme.text_color)
             .bounds([0.0, max as f64])
             .labels([
                 "0".bold().style(self.theme.label_color),
+                mid_y
+                    .round()
+                    .to_string()
+                    .bold()
+                    .style(self.theme.label_color),
                 max.to_string().bold().style(self.theme.label_color),
             ]);
 
