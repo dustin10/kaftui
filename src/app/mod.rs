@@ -21,7 +21,10 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    Mutex,
+};
 
 /// Maximum bound on the number of messages that can be in the event channel.
 const EVENT_CHANNEL_SIZE: usize = 1024;
@@ -168,7 +171,7 @@ pub struct App {
     /// Channel receiver that is used to receive application events.
     event_rx: Receiver<Event>,
     /// Channel receiver that is used to receive records from the Kafka consumer.
-    consumer_rx: Receiver<ConsumerEvent>,
+    consumer_rx: Arc<Mutex<Receiver<ConsumerEvent>>>,
     /// Emits events to be handled by the application.
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
@@ -255,7 +258,7 @@ impl App {
             config,
             state,
             event_rx,
-            consumer_rx,
+            consumer_rx: Arc::new(Mutex::new(consumer_rx)),
             event_bus,
             consumer: Arc::new(consumer),
             exporter,
@@ -310,14 +313,6 @@ impl App {
                             .iter()
                             .for_each(|c| c.borrow_mut().on_app_event(&event));
                     }
-                }
-            }
-
-            if let Ok(consumed_record) = self.consumer_rx.try_recv() {
-                match consumed_record {
-                    ConsumerEvent::Received(record) => self.on_record_received(record).await,
-                    ConsumerEvent::Filtered(record) => self.on_record_filtered(record).await,
-                    ConsumerEvent::Statistics(stats) => self.on_consumer_statistics(stats).await,
                 }
             }
         }
@@ -384,21 +379,15 @@ impl App {
     fn on_consumer_started(&mut self) {
         tracing::info!("Kafka consumer started");
         self.state.initializing = false;
-    }
-    /// Invoked when a new [`Record`] is received on the consumer channel.
-    async fn on_record_received(&mut self, record: Record) {
-        tracing::debug!("Kafka record received");
-        self.event_bus.send(Event::RecordReceived(record)).await;
-    }
-    /// Invoked when a new filtered [`Record`] is received on the consumer channel.
-    async fn on_record_filtered(&mut self, record: Record) {
-        tracing::debug!("Kafka record filtered");
-        self.event_bus.send(Event::RecordFiltered(record)).await;
-    }
-    /// Invoked when updated [`Statistics`] are received on the consumer channel.
-    async fn on_consumer_statistics(&mut self, stats: Box<Statistics>) {
-        tracing::debug!("Kafka statistics received");
-        self.event_bus.send(Event::StatisticsReceived(stats)).await;
+
+        let poll_consumer_task = PollConsumerTask {
+            rx: Arc::clone(&self.consumer_rx),
+            event_bus: Arc::clone(&self.event_bus),
+        };
+
+        tokio::spawn(async move {
+            poll_consumer_task.run().await;
+        });
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
@@ -540,6 +529,44 @@ impl StartConsumerTask {
             Ok(_) => self.event_bus.send(Event::ConsumerStarted).await,
             Err(e) => self.event_bus.send(Event::ConsumerStartFailure(e)).await,
         };
+    }
+}
+
+struct PollConsumerTask {
+    /// Channel [`Receiver`] that is used to receive [`ConsumerEvent`]s emitted by the Kafka
+    /// consumer.
+    rx: Arc<Mutex<Receiver<ConsumerEvent>>>,
+    event_bus: Arc<EventBus>,
+}
+
+impl PollConsumerTask {
+    async fn run(self) {
+        let mut rx = self.rx.lock().await;
+
+        loop {
+            if let Some(consumer_event) = rx.recv().await {
+                match consumer_event {
+                    ConsumerEvent::Received(record) => self.on_record_received(record).await,
+                    ConsumerEvent::Filtered(record) => self.on_record_filtered(record).await,
+                    ConsumerEvent::Statistics(stats) => self.on_consumer_statistics(stats).await,
+                }
+            }
+        }
+    }
+    /// Invoked when a new [`Record`] is received on the consumer channel.
+    async fn on_record_received(&self, record: Record) {
+        tracing::debug!("Kafka record received");
+        self.event_bus.send(Event::RecordReceived(record)).await;
+    }
+    /// Invoked when a new filtered [`Record`] is received on the consumer channel.
+    async fn on_record_filtered(&self, record: Record) {
+        tracing::debug!("Kafka record filtered");
+        self.event_bus.send(Event::RecordFiltered(record)).await;
+    }
+    /// Invoked when updated [`Statistics`] are received on the consumer channel.
+    async fn on_consumer_statistics(&self, stats: Box<Statistics>) {
+        tracing::debug!("Kafka statistics received");
+        self.event_bus.send(Event::StatisticsReceived(stats)).await;
     }
 }
 
