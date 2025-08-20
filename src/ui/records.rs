@@ -296,15 +296,15 @@ pub struct Records {
 }
 
 impl From<RecordsConfig<'_>> for Records {
-    /// Converts an owned [`RecordsConfig`] to an owned [`Records`].
-    fn from(value: RecordsConfig) -> Self {
+    /// Converts from an owned [`RecordsConfig`] to an owned [`Records`].
+    fn from(value: RecordsConfig<'_>) -> Self {
         Self::new(value)
     }
 }
 
 impl Records {
     /// Creates a new [`Records`] component using the specified [`RecordsConfig`].
-    pub fn new(config: RecordsConfig) -> Self {
+    pub fn new(config: RecordsConfig<'_>) -> Self {
         Self {
             topic: config.topic,
             filter: config.filter,

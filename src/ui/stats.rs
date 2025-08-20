@@ -20,7 +20,7 @@ use ratatui::{
     },
     Frame,
 };
-use rdkafka::Statistics;
+use rdkafka::{statistics::Partition, Statistics};
 use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 
 /// Number of columns to render between bars in a bar chart.
@@ -37,6 +37,47 @@ const MAX_THROUGHPUT_CAPTURE: usize = 4096;
 /// Key bindings that are displayed to the user in the footer no matter what the current state of
 /// the application is when viewing the stats screen.
 const STATS_STANDARD_KEY_BINDINGS: [&str; 1] = [super::KEY_BINDING_QUIT];
+
+/// Columns that are rendered in the table that displays per-[`Partition`] statistics.
+const PARTITION_COLS: [&str; 21] = [
+    "ID", "Brkr", "Ldr", "Dsrd", "Unkwn", "FetCt", "FetSz", "FetSt", "NxtOf", "AppOf", "StdOf",
+    "CmtOf", "EofOf", "LoOf", "HiOf", "StbOf", "Lag", "Msgs", "MsgBs", "Drpd", "InFlt",
+];
+
+/// Trait that allows for transformation of an arbitrary value to a [`Row`].
+trait ToRow<'a> {
+    /// Converts the value to a [`Row`].
+    fn to_row(&'a self) -> Row<'a>;
+}
+
+impl<'a> ToRow<'a> for &Partition {
+    /// Converts from a reference to a [`Partition`] to a [`Row`].
+    fn to_row(&'a self) -> Row<'a> {
+        Row::new([
+            self.partition.to_span(),
+            self.broker.to_span(),
+            self.leader.to_span(),
+            self.desired.to_span(),
+            self.unknown.to_span(),
+            self.fetchq_cnt.to_span(),
+            self.fetchq_size.to_span(),
+            self.fetch_state.to_span(),
+            self.next_offset.to_span(),
+            self.app_offset.to_span(),
+            self.stored_offset.to_span(),
+            self.committed_offset.to_span(),
+            self.eof_offset.to_span(),
+            self.lo_offset.to_span(),
+            self.hi_offset.to_span(),
+            self.ls_offset.to_span(),
+            self.consumer_lag.to_span(),
+            self.rxmsgs.to_span(),
+            self.rxbytes.to_span(),
+            self.rx_ver_drops.to_span(),
+            self.msgs_inflight.to_span(),
+        ])
+    }
+}
 
 /// Manages state related to application statistics and the UI that renders them to the user.
 #[derive(Debug)]
@@ -109,6 +150,8 @@ impl StatsState {
     }
 }
 
+/// Contains the [`Color`]s from the application [`Theme`] required to render the [`Stats`]
+/// component.
 #[derive(Debug)]
 struct StatsTheme {
     /// Color used for the borders of the main info panels.
@@ -201,7 +244,7 @@ impl<'a> StatsConfig<'a> {
 /// The application [`Component`] that is responsible for displaying the statistics gathered by the
 /// application while consuming records from the Kafka topic.
 #[derive(Debug)]
-pub struct Stats {
+pub struct Stats<'a> {
     /// Topic name that records are being consumed from.
     topic: String,
     /// Any filter that was configured by the user.
@@ -210,27 +253,42 @@ pub struct Stats {
     state: StatsState,
     /// Color scheme for the component.
     theme: StatsTheme,
+    /// Pre-constructed labels that are rendered for the column headers of the partition stats
+    /// table.
+    partition_labels: Vec<Span<'a>>,
+    /// Pre-constructed constraints that are used for the columns of the partition stats table.
+    partition_constraints: Vec<Constraint>,
 }
 
-impl From<StatsConfig<'_>> for Stats {
-    /// Converts an owned [`StatsConfig`] to an owned [`Stats`].
-    fn from(value: StatsConfig) -> Self {
+impl<'a> From<StatsConfig<'_>> for Stats<'a> {
+    /// Converts from an owned [`StatsConfig`] to an owned [`Stats`].
+    fn from(value: StatsConfig<'_>) -> Self {
         Self::new(value)
     }
 }
 
-impl Stats {
+impl<'a> Stats<'a> {
     /// Creates a new [`Stats`] component using the specified [`StatsConfig`].
-    pub fn new(config: StatsConfig) -> Self {
+    pub fn new(config: StatsConfig<'_>) -> Self {
         let state = StatsState::new(config.consumer_mode);
 
-        let theme = config.theme.into();
+        let theme: StatsTheme = config.theme.into();
+
+        let constraints: Vec<Constraint> =
+            PARTITION_COLS.iter().map(|_| Constraint::Min(1)).collect();
+
+        let labels: Vec<Span> = PARTITION_COLS
+            .iter()
+            .map(|h| h.bold().style(theme.label_color))
+            .collect();
 
         Self {
             topic: config.topic,
             filter: config.filter,
             state,
             theme,
+            partition_labels: labels,
+            partition_constraints: constraints,
         }
     }
     /// Renders the count of records received, filtered and the total.
@@ -413,88 +471,22 @@ impl Stats {
 
         let topic = stats.topics.values().next().expect("valid topic stats");
 
-        let partition_stats_row: Vec<Row> = BTreeMap::from_iter(topic.partitions.iter())
+        let ordered = BTreeMap::from_iter(topic.partitions.iter());
+
+        let partition_stats_row: Vec<Row> = ordered
             .values()
             .filter(|p| p.partition >= 0)
-            .map(|p| {
-                Row::new([
-                    p.partition.to_span(),
-                    p.broker.to_span(),
-                    p.leader.to_span(),
-                    p.desired.to_span(),
-                    p.unknown.to_span(),
-                    p.fetchq_cnt.to_span(),
-                    p.fetchq_size.to_span(),
-                    p.fetch_state.to_span(),
-                    p.next_offset.to_span(),
-                    p.app_offset.to_span(),
-                    p.stored_offset.to_span(),
-                    p.committed_offset.to_span(),
-                    p.eof_offset.to_span(),
-                    p.lo_offset.to_span(),
-                    p.hi_offset.to_span(),
-                    p.ls_offset.to_span(),
-                    p.consumer_lag.to_span(),
-                    p.rxmsgs.to_span(),
-                    p.rxbytes.to_span(),
-                    p.rx_ver_drops.to_span(),
-                    p.msgs_inflight.to_span(),
-                ])
-            })
+            .map(ToRow::to_row)
             .collect();
 
-        let partition_stats_table = Table::new(
-            partition_stats_row,
-            [
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-                Constraint::Min(1),
-            ],
-        )
-        .column_spacing(1)
-        .header(Row::new([
-            "ID".bold().style(self.theme.label_color),
-            "Brkr".bold().style(self.theme.label_color),
-            "Ldr".bold().style(self.theme.label_color),
-            "Dsrd".bold().style(self.theme.label_color),
-            "Unkwn".bold().style(self.theme.label_color),
-            "FetCt".bold().style(self.theme.label_color),
-            "FetSz".bold().style(self.theme.label_color),
-            "FetSt".bold().style(self.theme.label_color),
-            "NxtOf".bold().style(self.theme.label_color),
-            "AppOf".bold().style(self.theme.label_color),
-            "StdOf".bold().style(self.theme.label_color),
-            "CmtOf".bold().style(self.theme.label_color),
-            "EofOf".bold().style(self.theme.label_color),
-            "LoOf".bold().style(self.theme.label_color),
-            "HiOf".bold().style(self.theme.label_color),
-            "StbOf".bold().style(self.theme.label_color),
-            "Lag".bold().style(self.theme.label_color),
-            "Msgs".bold().style(self.theme.label_color),
-            "MsgBs".bold().style(self.theme.label_color),
-            "Drpd".bold().style(self.theme.label_color),
-            "InFlt".bold().style(self.theme.label_color),
-        ]))
-        .style(self.theme.bar_color)
-        .block(partition_stats_block);
+        // TODO: can this clone be avoided?
+        let header = Row::new(self.partition_labels.clone());
+
+        let partition_stats_table = Table::new(partition_stats_row, &self.partition_constraints)
+            .column_spacing(1)
+            .header(header)
+            .style(self.theme.bar_color)
+            .block(partition_stats_block);
 
         frame.render_widget(partition_stats_table, area);
     }
@@ -668,7 +660,7 @@ fn calculate_bar_width(area: &Rect, num_bars: u16, bar_gap: u16) -> u16 {
     (area.width - total_gap) / num_bars
 }
 
-impl Component for Stats {
+impl<'a> Component for Stats<'a> {
     /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str {
         "Stats"

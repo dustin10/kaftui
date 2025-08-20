@@ -152,15 +152,15 @@ pub struct Logs {
 }
 
 impl From<LogsConfig<'_>> for Logs {
-    /// Converts an owned [`LogsConfig`] to an owned [`Logs`].
-    fn from(value: LogsConfig) -> Self {
+    /// Converts from an owned [`LogsConfig`] to an owned [`Logs`].
+    fn from(value: LogsConfig<'_>) -> Self {
         Self::new(value)
     }
 }
 
 impl Logs {
     /// Creates a new [`Logs`] component using the specified [`LogsConfig`].
-    pub fn new(config: LogsConfig) -> Self {
+    pub fn new(config: LogsConfig<'_>) -> Self {
         let state = LogsState::new(config.max_history);
 
         let theme = config.theme.into();
