@@ -11,10 +11,9 @@ use crate::{
 
 use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent};
 use futures::{FutureExt, StreamExt};
-use ratatui::{crossterm::event::Event as CrosstermEvent, DefaultTerminal};
-use rdkafka::Statistics;
+use ratatui::{crossterm::event::Event as TerminalEvent, DefaultTerminal};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -23,14 +22,20 @@ use std::{
 };
 use tokio::sync::mpsc::{Receiver, Sender};
 
-/// Maximum bound on the number of messages that can be in the event channel.
-const EVENT_CHANNEL_SIZE: usize = 1024;
+/// Maximum bound on the number of messages that can be in the application event channel.
+const APP_EVENTS_CHANNEL_SIZE: usize = 1024;
+
+/// Size of the buffer that polled application events are placed into.
+const APP_EVENTS_BUFFER_SIZE: usize = 4;
 
 /// Maximum bound on the nunber of messages that can be in the consumer channel.
-const CONSUMER_CHANNEL_SIZE: usize = 64;
+const CONSUMER_EVENTS_CHANNEL_SIZE: usize = 1024;
+
+/// Size of the buffer that polled consumer events are placed into.
+const CONSUMER_EVENTS_BUFFER_SIZE: usize = 32;
 
 /// Maximum bound on the nunber of messages that can be in the terminal channel.
-const TERMINAL_CHANNEL_SIZE: usize = 64;
+const TERMINAL_EVENT_CHANNEL_SIZE: usize = 64;
 
 /// Number of notification seconds after a [`Notification`] is created that it should not be
 /// eligible to visible to the user any longer.
@@ -180,11 +185,11 @@ pub struct App {
 impl App {
     /// Creates a new [`App`] with the specified dependencies.
     pub fn new(config: Config) -> anyhow::Result<Self> {
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(EVENT_CHANNEL_SIZE);
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(APP_EVENTS_CHANNEL_SIZE);
 
         let event_bus = Arc::new(EventBus::new(event_tx));
 
-        let (consumer_tx, consumer_rx) = tokio::sync::mpsc::channel(CONSUMER_CHANNEL_SIZE);
+        let (consumer_tx, consumer_rx) = tokio::sync::mpsc::channel(CONSUMER_EVENTS_CHANNEL_SIZE);
 
         let mut consumer_config = HashMap::new();
 
@@ -270,7 +275,8 @@ impl App {
         mut terminal: DefaultTerminal,
         logs_rx: Option<Receiver<Log>>,
     ) -> anyhow::Result<()> {
-        let (terminal_tx, mut terminal_rx) = tokio::sync::mpsc::channel(TERMINAL_CHANNEL_SIZE);
+        let (terminal_tx, mut terminal_rx) =
+            tokio::sync::mpsc::channel(TERMINAL_EVENT_CHANNEL_SIZE);
 
         self.start_poll_terminal_async(terminal_tx);
 
@@ -280,54 +286,50 @@ impl App {
             self.start_receive_logs_async(rx);
         }
 
+        let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(1));
+
         while self.state.running {
             terminal
                 .draw(|frame| self.draw(frame))
                 .context("draw UI to screen")?;
 
-            if let Ok(event) = terminal_rx.try_recv()
-                && let crossterm::event::Event::Key(key_event) = event
-            {
-                self.on_key_event(key_event).await;
-            }
+            let mut app_events_buffer = Vec::with_capacity(APP_EVENTS_BUFFER_SIZE);
 
-            if let Ok(event) = self.event_rx.try_recv() {
-                match event {
-                    Event::Quit => self.on_quit(),
-                    Event::ConsumerStarted => self.on_consumer_started(),
-                    Event::ConsumerStartFailure(e) => {
-                        anyhow::bail!("failed to start Kafka consumer: {}", e)
-                    }
-                    Event::SelectComponent(idx) => self.on_select_component(idx),
-                    Event::ExportRecord(record) => self.on_export_record(record).await,
-                    Event::PauseProcessing => self.on_pause_processing().await,
-                    Event::ResumeProcessing => self.on_resume_processing().await,
-                    Event::DisplayNotification(notification) => {
-                        self.on_display_notification(notification)
-                    }
-                    _ => {
-                        self.components
-                            .iter()
-                            .for_each(|c| c.borrow_mut().on_app_event(&event));
+            let mut consumer_events_buffer = Vec::with_capacity(CONSUMER_EVENTS_BUFFER_SIZE);
+
+            tokio::select! {
+                biased;
+                Some(crossterm_event) = terminal_rx.recv() => {
+                    if let CrosstermEvent::Key(key_event) = crossterm_event {
+                        self.on_key_event(key_event).await;
                     }
                 }
-            }
-
-            if let Ok(consumed_record) = self.consumer_rx.try_recv() {
-                match consumed_record {
-                    ConsumerEvent::Received(record) => self.on_record_received(record).await,
-                    ConsumerEvent::Filtered(record) => self.on_record_filtered(record).await,
-                    ConsumerEvent::Statistics(stats) => self.on_consumer_statistics(stats).await,
+                app_events_count =
+                    self.event_rx.recv_many(&mut app_events_buffer, APP_EVENTS_BUFFER_SIZE) => {
+                    if app_events_count > 0 {
+                        for app_event in app_events_buffer.into_iter() {
+                            self.on_app_event(app_event).await;
+                        }
+                    }
+                },
+                consumer_events_count =
+                    self.consumer_rx.recv_many(&mut consumer_events_buffer, CONSUMER_EVENTS_BUFFER_SIZE) => {
+                    if consumer_events_count > 0 {
+                        for consumer_event in consumer_events_buffer.into_iter() {
+                            self.on_consumer_event(consumer_event).await;
+                        }
+                    }
                 }
+                _ = tick.tick() => self.on_tick(),
             }
         }
 
-        tracing::info!("exited main loop");
+        tracing::info!("exited main application loop");
 
         Ok(())
     }
     /// Starts the asynchronous task which polls the terminal for events.
-    fn start_poll_terminal_async(&self, tx: Sender<CrosstermEvent>) {
+    fn start_poll_terminal_async(&self, tx: Sender<TerminalEvent>) {
         let poll_terminal_task = PollTerminalTask { tx };
 
         tokio::spawn(async move {
@@ -385,20 +387,8 @@ impl App {
         tracing::info!("Kafka consumer started");
         self.state.initializing = false;
     }
-    /// Invoked when a new [`Record`] is received on the consumer channel.
-    async fn on_record_received(&mut self, record: Record) {
-        tracing::debug!("Kafka record received");
-        self.event_bus.send(Event::RecordReceived(record)).await;
-    }
-    /// Invoked when a new filtered [`Record`] is received on the consumer channel.
-    async fn on_record_filtered(&mut self, record: Record) {
-        tracing::debug!("Kafka record filtered");
-        self.event_bus.send(Event::RecordFiltered(record)).await;
-    }
-    /// Invoked when updated [`Statistics`] are received on the consumer channel.
-    async fn on_consumer_statistics(&mut self, stats: Box<Statistics>) {
-        tracing::debug!("Kafka statistics received");
-        self.event_bus.send(Event::StatisticsReceived(stats)).await;
+    fn on_tick(&self) {
+        // TODO: remove active notification here when it expires
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
@@ -412,26 +402,50 @@ impl App {
 
                 Some(Event::SelectComponent(selected))
             }
-            _ => {
-                let event = self
-                    .state
-                    .active_component
-                    .borrow()
-                    .map_key_event(key_event, self.buffered_key_press.as_ref());
-
-                if event.is_some() {
-                    self.buffered_key_press = None;
-                } else if let KeyCode::Char(c) = key_event.code {
-                    self.buffered_key_press = Some(BufferedKeyPress::new(c));
-                }
-
-                event
-            }
+            _ => self
+                .state
+                .active_component
+                .borrow()
+                .map_key_event(key_event, self.buffered_key_press.as_ref()),
         };
 
         if let Some(e) = app_event {
-            self.event_bus.send(e).await;
+            self.buffered_key_press = None;
+            self.on_app_event(e).await;
+        } else if let KeyCode::Char(c) = key_event.code {
+            self.buffered_key_press = Some(BufferedKeyPress::new(c));
         }
+    }
+    /// Handles application [`Event`]s either received over the [`EventBus`] or mapped directly by
+    /// the application when events are received on other channels.
+    async fn on_app_event(&mut self, event: Event) {
+        match event {
+            Event::Quit => self.on_quit(),
+            Event::ConsumerStarted => self.on_consumer_started(),
+            Event::ConsumerStartFailure(e) => {
+                panic!("failed to start Kafka consumer: {}", e)
+            }
+            Event::SelectComponent(idx) => self.on_select_component(idx),
+            Event::ExportRecord(record) => self.on_export_record(record).await,
+            Event::PauseProcessing => self.on_pause_processing().await,
+            Event::ResumeProcessing => self.on_resume_processing().await,
+            Event::DisplayNotification(notification) => self.on_display_notification(notification),
+            _ => {
+                self.components
+                    .iter()
+                    .for_each(|c| c.borrow_mut().on_app_event(&event));
+            }
+        }
+    }
+    /// Handles [`ConsumerEvent`]s received on the Kafka consumer channel.
+    async fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
+        let app_event = match consumer_event {
+            ConsumerEvent::Received(record) => Event::RecordReceived(record),
+            ConsumerEvent::Filtered(record) => Event::RecordFiltered(record),
+            ConsumerEvent::Statistics(stats) => Event::StatisticsReceived(stats),
+        };
+
+        self.on_app_event(app_event).await;
     }
     /// Handles the [`Event::ExportRecord`] event emitted by the [`EventBus`].
     async fn on_export_record(&mut self, record: Record) {
@@ -506,7 +520,7 @@ impl App {
         tracing::debug!("attemping to select component {}", idx);
 
         if let Some(component) = self.components.get(idx) {
-            tracing::debug!("activiating {} component", component.borrow().name());
+            tracing::debug!("activating {} component", component.borrow().name());
             self.state.active_component = Rc::clone(component);
         }
     }
@@ -545,8 +559,8 @@ impl StartConsumerTask {
 
 /// Asynchronous task that polls the terminal backend for events for the application to handle.
 struct PollTerminalTask {
-    /// Channel [`Sender`] that is used to send [`CrosstermEvent`]s as they are polled.
-    tx: Sender<CrosstermEvent>,
+    /// Channel [`Sender`] that is used to send [`TerminalEvent`]s as they are polled.
+    tx: Sender<TerminalEvent>,
 }
 
 impl PollTerminalTask {
