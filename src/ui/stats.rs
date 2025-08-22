@@ -507,10 +507,13 @@ impl<'a> Stats<'a> {
 
             let seconds_past = now_secs - timestamp_secs;
 
-            partitioned
-                .entry(seconds_past as u32)
-                .and_modify(|t| *t += 1)
-                .or_insert(1);
+            // TODO: failing this test means the entry can be removed from the map
+            if seconds_past < area.width as i64 {
+                partitioned
+                    .entry(seconds_past as u32)
+                    .and_modify(|t| *t += 1)
+                    .or_insert(1);
+            }
         }
 
         let max = match partitioned.values().max() {
