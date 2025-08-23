@@ -126,8 +126,13 @@ where
         let tx = self.tx.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = tx.send(log).await {
-                tracing::error!("failed to send log to channel: {}", e);
+            tokio::select! {
+                _ = tx.closed() => {
+                    tracing::warn!("sender for logs channel is closed");
+                }
+                Err(e) = tx.send(log) => {
+                    tracing::error!("failed to send log to channel: {}", e);
+                }
             }
         });
     }

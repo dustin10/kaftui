@@ -1,7 +1,7 @@
 use crate::{app::Notification, kafka::Record, trace::Log};
 
 use rdkafka::Statistics;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// Enumeration of events which can be produced by the application.
 #[derive(Debug)]
@@ -60,19 +60,19 @@ pub enum Event {
 /// The bus over which [`Event`]s are published.
 #[derive(Debug)]
 pub struct EventBus {
-    /// Event channel sender.
-    sender: Sender<Event>,
+    /// Underlying [`UnboundedSender`] for the application event channel.
+    tx: UnboundedSender<Event>,
 }
 
 impl EventBus {
     /// Constructs a new instance of [`EventBus`] and spawns a new thread to handle events.
-    pub fn new(sender: Sender<Event>) -> Self {
-        Self { sender }
+    pub fn new(tx: UnboundedSender<Event>) -> Self {
+        Self { tx }
     }
     /// Publishes an application event to on the bus for processing.
-    pub async fn send(&self, app_event: Event) {
-        if let Err(e) = self.sender.send(app_event).await {
-            tracing::error!("error sending event over channel: {}", e);
+    pub fn send(&self, app_event: Event) {
+        if let Err(e) = self.tx.send(app_event) {
+            tracing::error!("error sending application event over channel: {}", e);
         }
     }
 }

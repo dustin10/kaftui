@@ -157,11 +157,14 @@ impl Source for Defaults {
 /// timestamp milliseconds value will be used in it's place.
 fn generate_group_id() -> String {
     match gethostname::gethostname().into_string() {
-        Ok(name) => format!("{}-{}", DEFAULT_CONSUMER_GROUP_ID_PREFIX, name),
-        Err(_) => {
-            tracing::error!("failed to get hostname");
+        Ok(name) => format!("{}{}", DEFAULT_CONSUMER_GROUP_ID_PREFIX, name),
+        Err(e) => {
+            tracing::warn!(
+                "falling back to timestamp because hostname could not be resolved: {:?}",
+                e
+            );
             format!(
-                "{}-{}",
+                "{}{}",
                 DEFAULT_CONSUMER_GROUP_ID_PREFIX,
                 Utc::now().timestamp_millis()
             )

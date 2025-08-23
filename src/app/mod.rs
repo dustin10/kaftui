@@ -11,7 +11,7 @@ use crate::{
 
 use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
-use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{crossterm::event::Event as TerminalEvent, DefaultTerminal};
 use std::{
@@ -20,22 +20,22 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
-use tokio::sync::mpsc::{Receiver, Sender};
-
-/// Maximum bound on the number of messages that can be in the application event channel.
-const APP_EVENTS_CHANNEL_SIZE: usize = 1024;
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver};
 
 /// Size of the buffer that polled application events are placed into.
-const APP_EVENTS_BUFFER_SIZE: usize = 4;
+const APP_EVENTS_BUFFER_SIZE: usize = 16;
 
 /// Maximum bound on the nunber of messages that can be in the consumer channel.
 const CONSUMER_EVENTS_CHANNEL_SIZE: usize = 1024;
 
 /// Size of the buffer that polled consumer events are placed into.
-const CONSUMER_EVENTS_BUFFER_SIZE: usize = 32;
+const CONSUMER_EVENTS_BUFFER_SIZE: usize = 64;
 
 /// Maximum bound on the nunber of messages that can be in the terminal channel.
 const TERMINAL_EVENT_CHANNEL_SIZE: usize = 64;
+
+/// Size of the buffer that polled log events are placed into.
+const LOG_EVENT_BUFFER_SIZE: usize = 16;
 
 /// Number of notification seconds after a [`Notification`] is created that it should not be
 /// eligible to visible to the user any longer.
@@ -171,7 +171,7 @@ pub struct App {
     /// If available, contains the last key pressed that did not map to an active key binding.
     buffered_key_press: Option<BufferedKeyPress>,
     /// Channel receiver that is used to receive application events.
-    event_rx: Receiver<Event>,
+    event_rx: UnboundedReceiver<Event>,
     /// Channel receiver that is used to receive records from the Kafka consumer.
     consumer_rx: Receiver<ConsumerEvent>,
     /// Emits events to be handled by the application.
@@ -185,7 +185,7 @@ pub struct App {
 impl App {
     /// Creates a new [`App`] with the specified dependencies.
     pub fn new(config: Config) -> anyhow::Result<Self> {
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(APP_EVENTS_CHANNEL_SIZE);
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let event_bus = Arc::new(EventBus::new(event_tx));
 
@@ -280,10 +280,10 @@ impl App {
 
         self.start_poll_terminal_async(terminal_tx);
 
-        self.start_consumer_async();
+        self.start_poll_consumer_async();
 
         if let Some(rx) = logs_rx {
-            self.start_receive_logs_async(rx);
+            self.start_poll_logs_async(rx);
         }
 
         let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(1));
@@ -299,16 +299,16 @@ impl App {
 
             tokio::select! {
                 biased;
-                Some(crossterm_event) = terminal_rx.recv() => {
-                    if let CrosstermEvent::Key(key_event) = crossterm_event {
-                        self.on_key_event(key_event).await;
+                Some(terminal_event) = terminal_rx.recv() => {
+                    if let TerminalEvent::Key(key_event) = terminal_event {
+                        self.on_key_event(key_event);
                     }
                 }
                 app_events_count =
                     self.event_rx.recv_many(&mut app_events_buffer, APP_EVENTS_BUFFER_SIZE) => {
                     if app_events_count > 0 {
                         for app_event in app_events_buffer.into_iter() {
-                            self.on_app_event(app_event).await;
+                            self.on_app_event(app_event);
                         }
                     }
                 },
@@ -316,7 +316,7 @@ impl App {
                     self.consumer_rx.recv_many(&mut consumer_events_buffer, CONSUMER_EVENTS_BUFFER_SIZE) => {
                     if consumer_events_count > 0 {
                         for consumer_event in consumer_events_buffer.into_iter() {
-                            self.on_consumer_event(consumer_event).await;
+                            self.on_consumer_event(consumer_event);
                         }
                     }
                 }
@@ -338,7 +338,7 @@ impl App {
     }
     /// Starts the consumer asynchronously. The result of the consumer startup is sent back to the
     /// application through the [`EventBus`].
-    fn start_consumer_async(&self) {
+    fn start_poll_consumer_async(&self) {
         let partitions = self
             .config
             .partitions
@@ -372,8 +372,8 @@ impl App {
     }
     /// Spawns a task that will receive [`Log`] messages on the specified [`Receiver`] and then
     /// publish an [`Event::LogEmitted`] application event.
-    fn start_receive_logs_async(&self, rx: Receiver<Log>) {
-        let receive_logs_task = ReceiveLogsTask {
+    fn start_poll_logs_async(&self, rx: Receiver<Log>) {
+        let receive_logs_task = PollLogsTask {
             rx,
             event_bus: Arc::clone(&self.event_bus),
         };
@@ -392,7 +392,7 @@ impl App {
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
-    async fn on_key_event(&mut self, key_event: KeyEvent) {
+    fn on_key_event(&mut self, key_event: KeyEvent) {
         let app_event = match key_event.code {
             KeyCode::Esc => Some(Event::Quit),
             KeyCode::Tab => Some(Event::SelectNextWidget),
@@ -411,14 +411,14 @@ impl App {
 
         if let Some(e) = app_event {
             self.buffered_key_press = None;
-            self.on_app_event(e).await;
+            self.on_app_event(e);
         } else if let KeyCode::Char(c) = key_event.code {
             self.buffered_key_press = Some(BufferedKeyPress::new(c));
         }
     }
     /// Handles application [`Event`]s either received over the [`EventBus`] or mapped directly by
     /// the application when events are received on other channels.
-    async fn on_app_event(&mut self, event: Event) {
+    fn on_app_event(&mut self, event: Event) {
         match event {
             Event::Quit => self.on_quit(),
             Event::ConsumerStarted => self.on_consumer_started(),
@@ -426,9 +426,9 @@ impl App {
                 panic!("failed to start Kafka consumer: {}", e)
             }
             Event::SelectComponent(idx) => self.on_select_component(idx),
-            Event::ExportRecord(record) => self.on_export_record(record).await,
-            Event::PauseProcessing => self.on_pause_processing().await,
-            Event::ResumeProcessing => self.on_resume_processing().await,
+            Event::ExportRecord(record) => self.on_export_record(record),
+            Event::PauseProcessing => self.on_pause_processing(),
+            Event::ResumeProcessing => self.on_resume_processing(),
             Event::DisplayNotification(notification) => self.on_display_notification(notification),
             _ => {
                 self.components
@@ -438,17 +438,17 @@ impl App {
         }
     }
     /// Handles [`ConsumerEvent`]s received on the Kafka consumer channel.
-    async fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
+    fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
         let app_event = match consumer_event {
             ConsumerEvent::Received(record) => Event::RecordReceived(record),
             ConsumerEvent::Filtered(record) => Event::RecordFiltered(record),
             ConsumerEvent::Statistics(stats) => Event::StatisticsReceived(stats),
         };
 
-        self.on_app_event(app_event).await;
+        self.on_app_event(app_event);
     }
     /// Handles the [`Event::ExportRecord`] event emitted by the [`EventBus`].
-    async fn on_export_record(&mut self, record: Record) {
+    fn on_export_record(&mut self, record: Record) {
         tracing::debug!("exporting selected record");
 
         let notification = match self.exporter.export_record(&record) {
@@ -463,11 +463,10 @@ impl App {
         };
 
         self.event_bus
-            .send(Event::DisplayNotification(notification))
-            .await;
+            .send(Event::DisplayNotification(notification));
     }
     /// Handles the [`Event::PauseProcessing`] event emitted by the [`EventBus`].
-    async fn on_pause_processing(&mut self) {
+    fn on_pause_processing(&mut self) {
         if self.state.consumer_mode.get() == ConsumerMode::Processing {
             tracing::info!("pausing Kafka consumer");
 
@@ -482,12 +481,11 @@ impl App {
             };
 
             self.event_bus
-                .send(Event::DisplayNotification(notification))
-                .await;
+                .send(Event::DisplayNotification(notification));
         }
     }
     /// Handles the [`Event::ResumeProcessing`] event emitted by the [`EventBus`].
-    async fn on_resume_processing(&mut self) {
+    fn on_resume_processing(&mut self) {
         if self.state.consumer_mode.get() == ConsumerMode::Paused {
             tracing::info!("resuming Kafka consumer");
 
@@ -502,8 +500,7 @@ impl App {
             };
 
             self.event_bus
-                .send(Event::DisplayNotification(notification))
-                .await;
+                .send(Event::DisplayNotification(notification));
         }
     }
     /// Handles the [`Event::DisplayNotification`] event emitted by the [`EventBus`].
@@ -551,8 +548,8 @@ impl StartConsumerTask {
             .consumer
             .start(self.topic, self.partitions, self.seek_to, self.filter)
         {
-            Ok(_) => self.event_bus.send(Event::ConsumerStarted).await,
-            Err(e) => self.event_bus.send(Event::ConsumerStartFailure(e)).await,
+            Ok(_) => self.event_bus.send(Event::ConsumerStarted),
+            Err(e) => self.event_bus.send(Event::ConsumerStartFailure(e)),
         };
     }
 }
@@ -570,41 +567,66 @@ impl PollTerminalTask {
         let mut reader = crossterm::event::EventStream::new();
 
         loop {
-            let crossterm_event = reader.next().fuse();
+            let terminal_event = reader.next().fuse();
 
             tokio::select! {
                 _ = self.tx.closed() => {
-                    tracing::warn!("exiting event loop because sender was closed");
+                    tracing::warn!("exiting poll terminal event loop because sender was closed");
                     break;
                 }
-                Some(Ok(event)) = crossterm_event => {
-                    tracing::debug!("dispatching crossterm event: {:?}", event);
-
-                    if let Err(e) = self.tx.send(event).await {
-                        tracing::error!("error sending crossterm event: {}", e);
-                    }
+                Some(Ok(event)) = terminal_event => {
+                    self.on_terminal_event(event).await;
                 }
             };
+        }
+    }
+    /// Invoked when a [`TerminalEvent`] is received from the event stream.
+    async fn on_terminal_event(&self, event: TerminalEvent) {
+        match event {
+            TerminalEvent::Key(key_event) => {
+                tracing::debug!(
+                    "application received key event with code '{}'",
+                    key_event.code
+                );
+
+                if let Err(e) = self.tx.send(event).await {
+                    tracing::error!("failed to send terminal event on channel: {}", e);
+                }
+            }
+            TerminalEvent::FocusGained => tracing::debug!("application gained focus"),
+            TerminalEvent::FocusLost => tracing::debug!("application lost focus"),
+            TerminalEvent::Resize(w, h) => tracing::debug!("application resized to {}x{}", w, h),
+            TerminalEvent::Mouse(_) => tracing::debug!("application received mouse event"),
+            TerminalEvent::Paste(_) => tracing::debug!("application received paste event"),
         }
     }
 }
 
 /// Asynchronous task that receives logs emitted from the logging system and emits them as
 /// application events.
-struct ReceiveLogsTask {
+struct PollLogsTask {
     /// Channel receiver that is used to receive logs emitted by the application.
     rx: Receiver<Log>,
     /// [`EventBus`] on which the results of the startup task will be published.
     event_bus: Arc<EventBus>,
 }
 
-impl ReceiveLogsTask {
+impl PollLogsTask {
     /// Runs the task. Receives [`Log`]s emitted by the application and dispatches the
     /// [`Event::LogEmitted`] event on the [`EventBus`].
     async fn run(mut self) {
         loop {
-            if let Some(log) = self.rx.recv().await {
-                self.event_bus.send(Event::LogEmitted(log)).await;
+            let mut logs_buffer = Vec::with_capacity(LOG_EVENT_BUFFER_SIZE);
+
+            if self
+                .rx
+                .recv_many(&mut logs_buffer, LOG_EVENT_BUFFER_SIZE)
+                .await
+                > 0
+            {
+                for log in logs_buffer.into_iter() {
+                    self.event_bus.send(Event::LogEmitted(log));
+                }
             }
         }
     }

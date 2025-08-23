@@ -245,10 +245,11 @@ impl Consumer {
         // apply enforced config
         client_config.set("enable.auto.commit", "false");
 
-        tracing::debug!(
-            "creating Kafka consumer with properties: {:?}",
-            client_config
-        );
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            for (k, v) in client_config.config_map().iter() {
+                tracing::debug!("consumer property {} set to {}", k, v,);
+            }
+        }
 
         let context = ConsumerContext::new(consumer_tx.clone());
 
@@ -271,11 +272,13 @@ impl Consumer {
         filter: Option<String>,
     ) -> anyhow::Result<()> {
         let to_assign = if partitions.is_empty() {
-            tracing::debug!("fetching topic metadata from broker");
+            let topic = topic.as_ref();
+
+            tracing::debug!("fetching metadata for topic {} from broker", topic);
 
             let topic_metadata = self
                 .consumer
-                .fetch_metadata(Some(topic.as_ref()), Duration::from_secs(10))
+                .fetch_metadata(Some(topic), Duration::from_secs(10))
                 .context("fetch topic metadata from broker")?;
 
             topic_metadata
@@ -336,7 +339,7 @@ impl Consumer {
         tokio::spawn(async move {
             let message = task_consumer.recv().await;
             panic!(
-                "main stream consumer queue unexpectedly received message: {:?}",
+                "StreamConsumer unexpectedly received message: {:?}",
                 message
             );
         });
@@ -440,7 +443,7 @@ struct FilterableRecord {
 }
 
 impl From<&Record> for FilterableRecord {
-    /// Creates a new [`FilterableRecord`] from the given [`Record`] reference.
+    /// Creates a new [`FilterableRecord`] from a [`Record`] reference.
     fn from(record: &Record) -> Self {
         let mut info = Vec::new();
 
@@ -513,13 +516,13 @@ impl PartitionConsumerTask {
             .try_for_each(|msg| async move {
                 let record = Record::from(&msg);
 
-                let record_state = match &self.filter {
+                let consumer_event = match &self.filter {
                     Some(filter) if !record.matches(filter) => ConsumerEvent::Filtered(record),
                     _ => ConsumerEvent::Received(record),
                 };
 
-                if let Err(e) = self.consumer_tx.send(record_state).await {
-                    tracing::error!("failed to send record event over consumer channel: {}", e);
+                if let Err(e) = self.consumer_tx.send(consumer_event).await {
+                    tracing::error!("failed to send consumer event over channel: {}", e);
                 }
 
                 if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
