@@ -319,12 +319,12 @@ impl Consumer {
                 .split_partition_queue(topic.as_ref(), *partition)
                 .expect("partition queue created");
 
-            let task = PartitionConsumerTask::new(
-                Arc::clone(&self.consumer),
-                Arc::new(partition_queue),
-                filter.clone(),
-                self.consumer_tx.clone(),
-            );
+            let task = PartitionConsumerTask {
+                consumer: Arc::clone(&self.consumer),
+                partition_queue: Arc::new(partition_queue),
+                filter: filter.clone(),
+                consumer_tx: self.consumer_tx.clone(),
+            };
 
             tokio::spawn(async move { task.run().await });
         }
@@ -482,32 +482,26 @@ impl From<&Record> for FilterableRecord {
 
 /// A task which is executed in a background thread that handles consuming messages from a Kafka
 /// topic.
-struct PartitionConsumerTask {
+struct PartitionConsumerTask<Con, Ctx>
+where
+    Con: RDConsumer<Ctx>,
+    Ctx: RDConsumerContext,
+{
     /// Raw Kafka consumer.
-    consumer: Arc<StreamConsumer<ConsumerContext>>,
+    consumer: Arc<Con>,
     /// The partition queue that the task is handling Kafka records for.
-    partition_queue: Arc<StreamPartitionQueue<ConsumerContext>>,
+    partition_queue: Arc<StreamPartitionQueue<Ctx>>,
     /// Any filter to apply to the record.
     filter: Option<String>,
     /// Sender for the Kafka consumer channel.
     consumer_tx: Sender<ConsumerEvent>,
 }
 
-impl PartitionConsumerTask {
-    /// Creates a new [`ConsumerTask`] with the specified dependencies.
-    fn new(
-        consumer: Arc<StreamConsumer<ConsumerContext>>,
-        partition_queue: Arc<StreamPartitionQueue<ConsumerContext>>,
-        filter: Option<String>,
-        consumer_tx: Sender<ConsumerEvent>,
-    ) -> Self {
-        Self {
-            consumer,
-            partition_queue,
-            filter,
-            consumer_tx,
-        }
-    }
+impl<Con, Ctx> PartitionConsumerTask<Con, Ctx>
+where
+    Con: RDConsumer<Ctx>,
+    Ctx: RDConsumerContext,
+{
     /// Runs the task by subscribing to the specified topic and then consuming messages from it.
     async fn run(&self) -> anyhow::Result<()> {
         let stream_procesor = self
