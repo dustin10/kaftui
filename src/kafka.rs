@@ -19,8 +19,8 @@ use tokio::sync::mpsc::Sender;
 /// deserialization operations.
 pub const SEEK_TO_NONE: &str = "none";
 
-/// Special value passed for the seek to argument which can be used to reset the offset for the
-/// consumer group to 0 for all partitions.
+/// String representation of the [`SeekTo::Reset`] enum variant. Used in serialization and
+/// deserialization operations.
 pub const SEEK_TO_RESET: &str = "reset";
 
 /// Enumerates the different states that the Kafka consumer can be in.
