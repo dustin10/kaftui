@@ -11,9 +11,17 @@ use rdkafka::{
     message::{BorrowedMessage, Headers},
     ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
-use serde::Serialize;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fmt::Display, sync::Arc, time::Duration};
 use tokio::sync::mpsc::Sender;
+
+/// String representation of the [`SeekTo::None`] enum variant. Used in serialization and
+/// deserialization operations.
+pub const SEEK_TO_NONE: &str = "none";
+
+/// Special value passed for the seek to argument which can be used to reset the offset for the
+/// consumer group to 0 for all partitions.
+pub const SEEK_TO_RESET: &str = "reset";
 
 /// Enumerates the different states that the Kafka consumer can be in.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -25,7 +33,7 @@ pub enum ConsumerMode {
 }
 
 /// A tuple struct that contains a partition and an offset.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PartitionOffset {
     /// Partition number.
     partition: i32,
@@ -38,7 +46,7 @@ impl From<&str> for PartitionOffset {
     ///
     /// # Panics
     ///
-    /// This function will panic if the string is not of the correct format.
+    /// This function will panic if the string is not in the correct format.
     fn from(value: &str) -> Self {
         let mut pair_itr = value.split(":");
 
@@ -61,7 +69,7 @@ impl From<&String> for PartitionOffset {
     ///
     /// # Panics
     ///
-    /// This function will panic if the string is not of the correct format.
+    /// This function will panic if the string is not in the correct format.
     fn from(value: &String) -> Self {
         Self::from(value.as_str())
     }
@@ -72,9 +80,162 @@ impl From<String> for PartitionOffset {
     ///
     /// # Panics
     ///
-    /// This function will panic if the string is not of the correct format.
+    /// This function will panic if the string is not in the correct format.
     fn from(value: String) -> Self {
         Self::from(&value)
+    }
+}
+
+impl Display for PartitionOffset {
+    /// Writes a string representation of the [`PartitionOffset`] value to the
+    /// [`std::fmt::Formatter`].
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{}", self.partition, self.offset))
+    }
+}
+
+/// Enumerates the available ways which the user can configure seeking the consumer to offsets on
+/// the partitions that make up the topic.
+#[derive(Clone, Debug)]
+pub enum SeekTo {
+    /// Do no seek to an offset for any partition.
+    None,
+    /// Reset offset to 0 on ALL partitions for the topic.
+    Reset,
+    /// Reset offsets to the values for partitions on the topic specified by the user.
+    Custom(Vec<PartitionOffset>),
+}
+
+impl From<Option<&String>> for SeekTo {
+    /// Converts an [`Option`] containing the seek to argument to the corresponding [`SeekTo`]
+    /// value.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string in the option is specifying custom partition and
+    /// offset pairs but they are not in the correct format.
+    fn from(value: Option<&String>) -> Self {
+        match value {
+            Some(s) => s.into(),
+            None => SeekTo::None,
+        }
+    }
+}
+
+impl From<Option<String>> for SeekTo {
+    /// Converts an [`Option`] containing the seek to argument to the corresponding [`SeekTo`]
+    /// value.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string in the option is specifying custom partition and
+    /// offset pairs but they are not in the correct format.
+    fn from(value: Option<String>) -> Self {
+        Self::from(value.as_ref())
+    }
+}
+
+impl From<&str> for SeekTo {
+    /// Converts the owned [`String`] to the corresponding [`SeekTo`].
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string is not in the correct format for parsing the
+    /// partition and offset pairs.
+    fn from(value: &str) -> Self {
+        if value.is_empty() || value.eq_ignore_ascii_case(SEEK_TO_NONE) {
+            SeekTo::None
+        } else if value.eq_ignore_ascii_case(SEEK_TO_RESET) {
+            SeekTo::Reset
+        } else {
+            let partitions = value.split(",").map(Into::into).collect();
+            SeekTo::Custom(partitions)
+        }
+    }
+}
+
+impl From<&String> for SeekTo {
+    /// Converts the owned [`String`] to the corresponding [`SeekTo`].
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string is not in the correct format for parsing the
+    /// partition and offset pairs.
+    fn from(value: &String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+impl From<String> for SeekTo {
+    /// Converts the owned [`String`] to the corresponding [`SeekTo`].
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the string is not in the correct format for parsing the
+    /// partition and offset pairs.
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+impl Display for SeekTo {
+    /// Writes a string representation of the [`SeekTo`] value to the [`std::fmt::Formatter`].
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SeekTo::None => f.write_str(SEEK_TO_NONE),
+            SeekTo::Reset => f.write_str(SEEK_TO_RESET),
+            SeekTo::Custom(partition_offsets) => {
+                let po_strs: Vec<String> =
+                    partition_offsets.iter().map(ToString::to_string).collect();
+
+                let csv = po_strs.join(",");
+
+                f.write_str(&csv)
+            }
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SeekTo {
+    /// Deserialize this value into the given [`serde::Deserializer`].
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(SeekToVisitor)
+    }
+}
+
+impl serde::Serialize for SeekTo {
+    /// Serialize this value into the given [`serde::Serializer`].
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let str = self.to_string();
+        serializer.serialize_str(&str)
+    }
+}
+
+/// Simple [`serde::de::Visitor`] implementation that is capable of deserializing a [`str`]
+/// reference to a [`SeekTo`] enum variant.
+struct SeekToVisitor;
+
+impl<'de> serde::de::Visitor<'de> for SeekToVisitor {
+    type Value = SeekTo;
+
+    /// Format a message stating what data this Visitor expects to receive.
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a valid SeekTo string representation")
+    }
+    /// Attempts to convert the [`str`] slice to a valie [`SeekTo`] variant based on the contents
+    /// of the string.
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        // TODO: should probably prefer to implement [`TryFrom`] and not panic
+        Ok(v.into())
     }
 }
 
@@ -268,7 +429,7 @@ impl Consumer {
         &self,
         topic: impl AsRef<str>,
         partitions: Vec<i32>,
-        seek_to: Vec<PartitionOffset>,
+        seek_to: SeekTo,
         filter: Option<String>,
     ) -> anyhow::Result<()> {
         let to_assign = if partitions.is_empty() {
@@ -299,12 +460,29 @@ impl Consumer {
         let mut assignments_list = TopicPartitionList::with_capacity(to_assign.len());
 
         for partition in to_assign.iter() {
-            match seek_to.iter().find(|po| po.partition == *partition) {
-                Some(po) => assignments_list
-                    .add_partition_offset(topic.as_ref(), *partition, Offset::Offset(po.offset))
-                    .context("add partition offset")?,
-                None => {
+            match seek_to {
+                SeekTo::None => {
                     let _ = assignments_list.add_partition(topic.as_ref(), *partition);
+                }
+                SeekTo::Reset => assignments_list
+                    .add_partition_offset(topic.as_ref(), *partition, Offset::Offset(0))
+                    .context("add partition offset")?,
+                SeekTo::Custom(ref partition_offsets) => {
+                    match partition_offsets
+                        .iter()
+                        .find(|po| po.partition == *partition)
+                    {
+                        Some(po) => assignments_list
+                            .add_partition_offset(
+                                topic.as_ref(),
+                                *partition,
+                                Offset::Offset(po.offset),
+                            )
+                            .context("add partition offset")?,
+                        None => {
+                            let _ = assignments_list.add_partition(topic.as_ref(), *partition);
+                        }
+                    }
                 }
             }
         }
@@ -502,7 +680,7 @@ where
     Con: RDConsumer<Ctx>,
     Ctx: RDConsumerContext,
 {
-    /// Runs the task by subscribing to the specified topic and then consuming messages from it.
+    /// Runs the task by subscribing to the paritition queue and then consuming messages from it.
     async fn run(&self) -> anyhow::Result<()> {
         let stream_procesor = self
             .partition_queue

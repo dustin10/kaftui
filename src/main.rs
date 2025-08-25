@@ -7,6 +7,7 @@ mod util;
 
 use crate::{
     app::{config::Config, App},
+    kafka::SeekTo,
     trace::{CaptureLayer, Log},
 };
 
@@ -22,7 +23,7 @@ use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
 #[command()]
-struct Args {
+struct Cli {
     /// Host value for the Kafka brokers that the application will connect to when consuming
     /// records.
     #[arg(short, long)]
@@ -67,7 +68,7 @@ struct Args {
     max_records: Option<usize>,
 }
 
-impl Source for Args {
+impl Source for Cli {
     /// Clones the [`Source`] and lifts it into a [`Box`].
     fn clone_into_box(&self) -> Box<dyn Source + Send + Sync> {
         Box::new(self.clone())
@@ -95,9 +96,8 @@ impl Source for Args {
             cfg.insert(String::from("group_id"), Value::from(group_id.clone()));
         }
 
-        if let Some(seek_to) = self.seek_to.as_ref() {
-            cfg.insert(String::from("seek_to"), Value::from(seek_to.clone()));
-        }
+        let seek_to: SeekTo = self.seek_to.as_ref().into();
+        cfg.insert(String::from("seek_to"), Value::from(seek_to));
 
         if let Some(filter) = self.filter.as_ref() {
             cfg.insert(String::from("filter"), config::Value::from(filter.clone()));
@@ -131,7 +131,7 @@ impl Source for Args {
 async fn main() -> anyhow::Result<()> {
     let logs_rx = init_env();
 
-    let args = Args::parse();
+    let args = Cli::parse();
     let profile_name = args.profile.clone();
 
     let config = Config::new(args, profile_name).context("create application config")?;

@@ -4,7 +4,7 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
-    kafka::{Consumer, ConsumerEvent, ConsumerMode, PartitionOffset, Record},
+    kafka::{Consumer, ConsumerEvent, ConsumerMode, Record, SeekTo},
     trace::Log,
     ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
 };
@@ -350,18 +350,11 @@ impl App {
             })
             .unwrap_or_default();
 
-        let seek_to = self
-            .config
-            .seek_to
-            .as_ref()
-            .map(|csv| csv.split(",").map(Into::into).collect())
-            .unwrap_or_default();
-
         let start_consumer_task = StartConsumerTask {
             consumer: Arc::clone(&self.consumer),
             topic: self.config.topic.clone(),
             partitions,
-            seek_to,
+            seek_to: self.config.seek_to.clone(),
             filter: self.config.filter.clone(),
             event_bus: Arc::clone(&self.event_bus),
         };
@@ -531,9 +524,9 @@ struct StartConsumerTask {
     topic: String,
     /// [`Vec`] of partitions that should be assigned to the Kafka consumer.
     partitions: Vec<i32>,
-    /// [`Vec`] of partition and offset pairs that the Kafka consumer should seek to before starting to
-    /// consume records.
-    seek_to: Vec<PartitionOffset>,
+    /// Variant of the [`SeekTo`] enum that drives the partitions offsets the Kafka consumer seeks
+    /// to before starting to consume records. Defaults to [`SeekTo::None`].
+    seek_to: SeekTo,
     /// JSONPath filter to apply to the consumed records.
     filter: Option<String>,
     /// [`EventBus`] on which the results of the startup task will be published.

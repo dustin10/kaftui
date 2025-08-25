@@ -1,3 +1,5 @@
+use crate::kafka::SeekTo;
+
 use anyhow::Context;
 use chrono::Utc;
 use config::{Config as ConfigRs, ConfigError, Environment, Map, Source, Value, ValueKind};
@@ -21,8 +23,15 @@ const DEFAULT_EXPORT_DIRECTORY: &str = ".";
 /// Default maximum number of logs that should be stored in memory.
 const DEFAULT_LOGS_MAX_HISTORY: u16 = 2048;
 
+impl From<SeekTo> for ValueKind {
+    /// Converts from an owned [`SeekTo`] to a [`ValueKind`].
+    fn from(value: SeekTo) -> Self {
+        Self::String(value.to_string())
+    }
+}
+
 /// Configuration values which drive the behavior of the application.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Kafka bootstrap servers host value that the application will connect to.
     pub bootstrap_servers: String,
@@ -34,9 +43,9 @@ pub struct Config {
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     pub group_id: String,
-    /// CSV of color separated pairs of partition and offset that the Kafka consumer will seek to
-    /// before starting to consume records.
-    pub seek_to: Option<String>,
+    /// Variant of the [`SeekTo`] enum that drives the partitions offsets the Kafka consumer seeks
+    /// to before starting to consume records. Defaults to [`SeekTo::None`].
+    pub seek_to: SeekTo,
     /// Additional configuration properties that will be applied to the Kafka consumer.
     pub consumer_properties: Option<HashMap<String, String>>,
     /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
@@ -147,6 +156,8 @@ impl Source for Defaults {
             String::from("logs_max_history"),
             Value::from(DEFAULT_LOGS_MAX_HISTORY),
         );
+
+        cfg.insert(String::from("seek_to"), Value::from(SeekTo::None));
 
         Ok(cfg)
     }
