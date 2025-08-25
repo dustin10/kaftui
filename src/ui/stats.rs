@@ -340,7 +340,7 @@ impl<'a> Stats<'a> {
         frame.render_widget(total_paragraph, total_panel);
     }
     /// Renders the various charts for the stats UI.
-    fn render_charts(&self, frame: &mut Frame, area: Rect) {
+    fn render_charts(&mut self, frame: &mut Frame, area: Rect) {
         let [top_panel, bottom_panel] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -492,7 +492,7 @@ impl<'a> Stats<'a> {
     }
     /// Renders the chart that displays the total throughput of records being consumed from the
     /// Kafka topic per second.
-    fn render_throughput(&self, frame: &mut Frame, area: Rect) {
+    fn render_throughput(&mut self, frame: &mut Frame, area: Rect) {
         let throughput_block = Block::bordered()
             .title(" Records Per Second ")
             .border_style(self.theme.panel_border_color)
@@ -502,19 +502,26 @@ impl<'a> Stats<'a> {
         let now_secs = now.timestamp_millis() / 1000;
 
         let mut partitioned: BTreeMap<u32, u32> = BTreeMap::new();
-        for timestamp in self.state.timestamps.iter() {
+        let mut to_remove = Vec::new();
+
+        for (i, timestamp) in self.state.timestamps.iter().enumerate() {
             let timestamp_secs = timestamp / 1000;
 
             let seconds_past = now_secs - timestamp_secs;
 
-            // TODO: failing this test means the entry can be removed from the map
             if seconds_past < area.width as i64 {
                 partitioned
                     .entry(seconds_past as u32)
                     .and_modify(|t| *t += 1)
                     .or_insert(1);
+            } else {
+                to_remove.push(i);
             }
         }
+
+        to_remove.into_iter().for_each(|i| {
+            let _ = self.state.timestamps.remove(i);
+        });
 
         let max = match partitioned.values().max() {
             Some(m) => *m,
