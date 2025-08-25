@@ -41,14 +41,17 @@ pub struct PartitionOffset {
     offset: i64,
 }
 
-impl From<&str> for PartitionOffset {
-    /// Converts a string slice to a [`PartitionOffset`].
+impl<T> From<T> for PartitionOffset
+where
+    T: AsRef<str>,
+{
+    /// Converts the value to a [`PartitionOffset`].
     ///
     /// # Panics
     ///
     /// This function will panic if the string is not in the correct format.
-    fn from(value: &str) -> Self {
-        let mut pair_itr = value.split(":");
+    fn from(value: T) -> Self {
+        let mut pair_itr = value.as_ref().split(":");
 
         let partition = pair_itr
             .next()
@@ -61,28 +64,6 @@ impl From<&str> for PartitionOffset {
             .expect("offset value set");
 
         Self { partition, offset }
-    }
-}
-
-impl From<&String> for PartitionOffset {
-    /// Converts a reference to a [`String`] to a [`PartitionOffset`].
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the string is not in the correct format.
-    fn from(value: &String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-impl From<String> for PartitionOffset {
-    /// Converts a [`String`] to a [`PartitionOffset`].
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the string is not in the correct format.
-    fn from(value: String) -> Self {
-        Self::from(&value)
     }
 }
 
@@ -106,75 +87,27 @@ pub enum SeekTo {
     Custom(Vec<PartitionOffset>),
 }
 
-impl From<Option<&String>> for SeekTo {
-    /// Converts an [`Option`] containing the seek to argument to the corresponding [`SeekTo`]
-    /// value.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the string in the option is specifying custom partition and
-    /// offset pairs but they are not in the correct format.
-    fn from(value: Option<&String>) -> Self {
-        match value {
-            Some(s) => s.into(),
-            None => SeekTo::None,
-        }
-    }
-}
-
-impl From<Option<String>> for SeekTo {
-    /// Converts an [`Option`] containing the seek to argument to the corresponding [`SeekTo`]
-    /// value.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the string in the option is specifying custom partition and
-    /// offset pairs but they are not in the correct format.
-    fn from(value: Option<String>) -> Self {
-        Self::from(value.as_ref())
-    }
-}
-
-impl From<&str> for SeekTo {
-    /// Converts the owned [`String`] to the corresponding [`SeekTo`].
+impl<T> From<T> for SeekTo
+where
+    T: AsRef<str>,
+{
+    /// Converts the value to the corresponding [`SeekTo`].
     ///
     /// # Panics
     ///
     /// This function will panic if the string is not in the correct format for parsing the
     /// partition and offset pairs.
-    fn from(value: &str) -> Self {
-        if value.is_empty() || value.eq_ignore_ascii_case(SEEK_TO_NONE) {
+    fn from(value: T) -> Self {
+        let s = value.as_ref();
+
+        if s.is_empty() || s.eq_ignore_ascii_case(SEEK_TO_NONE) {
             SeekTo::None
-        } else if value.eq_ignore_ascii_case(SEEK_TO_RESET) {
+        } else if s.eq_ignore_ascii_case(SEEK_TO_RESET) {
             SeekTo::Reset
         } else {
-            let partitions = value.split(",").map(Into::into).collect();
+            let partitions = s.split(",").map(Into::into).collect();
             SeekTo::Custom(partitions)
         }
-    }
-}
-
-impl From<&String> for SeekTo {
-    /// Converts the owned [`String`] to the corresponding [`SeekTo`].
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the string is not in the correct format for parsing the
-    /// partition and offset pairs.
-    fn from(value: &String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-impl From<String> for SeekTo {
-    /// Converts the owned [`String`] to the corresponding [`SeekTo`].
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the string is not in the correct format for parsing the
-    /// partition and offset pairs.
-    fn from(value: String) -> Self {
-        Self::from(value.as_str())
     }
 }
 
