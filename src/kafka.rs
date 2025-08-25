@@ -87,6 +87,13 @@ pub enum SeekTo {
     Custom(Vec<PartitionOffset>),
 }
 
+impl Default for SeekTo {
+    /// Returns the default value for a value of [`SeekTo`].
+    fn default() -> Self {
+        SeekTo::None
+    }
+}
+
 impl<T> From<T> for SeekTo
 where
     T: AsRef<str>,
@@ -139,17 +146,6 @@ impl<'de> serde::Deserialize<'de> for SeekTo {
     }
 }
 
-impl serde::Serialize for SeekTo {
-    /// Serialize this value into the given [`serde::Serializer`].
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let str = self.to_string();
-        serializer.serialize_str(&str)
-    }
-}
-
 /// Simple [`serde::de::Visitor`] implementation that is capable of deserializing a [`str`]
 /// reference to a [`SeekTo`] enum variant.
 struct SeekToVisitor;
@@ -169,6 +165,17 @@ impl<'de> serde::de::Visitor<'de> for SeekToVisitor {
     {
         // TODO: should probably prefer to implement [`TryFrom`] and not panic
         Ok(v.into())
+    }
+}
+
+impl serde::Serialize for SeekTo {
+    /// Serialize this value into the given [`serde::Serializer`].
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let str = self.to_string();
+        serializer.serialize_str(&str)
     }
 }
 

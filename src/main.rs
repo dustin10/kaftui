@@ -96,12 +96,7 @@ impl Source for Cli {
             cfg.insert(String::from("group_id"), Value::from(group_id.clone()));
         }
 
-        let seek_to: SeekTo = self
-            .seek_to
-            .as_ref()
-            .map(Into::into)
-            .unwrap_or(SeekTo::None);
-
+        let seek_to: SeekTo = self.seek_to.as_ref().map(Into::into).unwrap_or_default();
         cfg.insert(String::from("seek_to"), Value::from(seek_to));
 
         if let Some(filter) = self.filter.as_ref() {
