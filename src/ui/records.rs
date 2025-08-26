@@ -36,6 +36,7 @@ const KEY_BINDING_EXPORT: &str = "(e) export";
 enum RecordsWidget {
     List,
     Value,
+    Headers,
 }
 
 /// Configuration used to create a new [`Records`] component.
@@ -84,6 +85,10 @@ struct RecordsState {
     list_scroll_state: ScrollbarState,
     /// Contains the current scolling state for the record value text.
     value_scroll: (u16, u16),
+    /// [`TableState`] for the table that record headers are rendered into.
+    headers_state: TableState,
+    /// [`ScrollbarState`] for the table that record headers are rendered into.
+    headers_scroll_state: ScrollbarState,
 }
 
 impl RecordsState {
@@ -98,6 +103,8 @@ impl RecordsState {
             list_state: TableState::default(),
             list_scroll_state: ScrollbarState::default(),
             value_scroll: (0, 0),
+            headers_state: TableState::default(),
+            headers_scroll_state: ScrollbarState::default(),
         }
     }
     /// Determines if there is a [`Record`] currently selected.
@@ -118,6 +125,58 @@ impl RecordsState {
             self.value_scroll.0 -= n;
         }
     }
+    /// Moves the record headers scroll state to the top.
+    fn scroll_headers_top(&mut self) {
+        self.headers_state.select_first();
+        self.headers_scroll_state = self.headers_scroll_state.position(0);
+    }
+    /// Moves the record headers scroll state down by one line.
+    fn scroll_headers_down(&mut self) {
+        let headers = &self.selected.as_ref().expect("record selected").headers;
+
+        if headers.is_empty() {
+            return;
+        }
+
+        if let Some(curr_idx) = self.list_state.selected()
+            && curr_idx == headers.len() - 1
+        {
+            return;
+        }
+
+        self.headers_state.select_next();
+
+        let idx = self.headers_state.selected().expect("header selected");
+
+        self.headers_scroll_state = self.headers_scroll_state.position(idx);
+    }
+    /// Moves the record headers scroll state up by one line.
+    fn scroll_headers_up(&mut self) {
+        let headers = &self.selected.as_ref().expect("record selected").headers;
+
+        if headers.is_empty() {
+            return;
+        }
+
+        self.headers_state.select_previous();
+
+        let idx = self.headers_state.selected().expect("header selected");
+
+        self.headers_scroll_state = self.headers_scroll_state.position(idx);
+    }
+    /// Moves the record headers scroll state to the bottom.
+    fn scroll_headers_bottom(&mut self) {
+        let bottom = self
+            .selected
+            .as_ref()
+            .expect("record selected")
+            .headers
+            .len()
+            - 1;
+
+        self.headers_state.select(Some(bottom));
+        self.headers_scroll_state = self.headers_scroll_state.position(bottom);
+    }
     /// Pushes a new [`Record`] onto the current list when a new one is received from the Kafka
     /// consumer.
     fn push_record(&mut self, record: Record) {
@@ -128,6 +187,13 @@ impl RecordsState {
             self.list_state.select(Some(new_idx));
             self.list_scroll_state = self.list_scroll_state.position(new_idx);
         }
+    }
+    /// Resets the state of the record details widgets to their default values.
+    fn reset_details_state(&mut self) {
+        self.headers_state.select(None);
+        self.headers_scroll_state = self.headers_scroll_state.position(0);
+
+        self.value_scroll = (0, 0);
     }
     /// Updates the state such so the first [`Record`] in the list will be selected.
     fn select_first(&mut self) {
@@ -140,7 +206,7 @@ impl RecordsState {
 
         self.selected = self.records.front().cloned();
 
-        self.value_scroll = (0, 0);
+        self.reset_details_state();
     }
     /// Updates the state such so the previous [`Record`] in the list will be selected.
     fn select_prev(&mut self) {
@@ -155,7 +221,7 @@ impl RecordsState {
         self.list_scroll_state = self.list_scroll_state.position(idx);
         self.selected = self.records.get(idx).cloned();
 
-        self.value_scroll = (0, 0);
+        self.reset_details_state();
     }
     /// Updates the state such so the next [`Record`] in the list will be selected.
     fn select_next(&mut self) {
@@ -176,7 +242,7 @@ impl RecordsState {
         self.list_scroll_state = self.list_scroll_state.position(idx);
         self.selected = self.records.get(idx).cloned();
 
-        self.value_scroll = (0, 0);
+        self.reset_details_state();
     }
     /// Updates the state such so the last [`Record`] in the list will be selected.
     fn select_last(&mut self) {
@@ -191,12 +257,13 @@ impl RecordsState {
         self.list_scroll_state = self.list_scroll_state.position(idx);
         self.selected = self.records.back().cloned();
 
-        self.value_scroll = (0, 0);
+        self.reset_details_state();
     }
     /// Cycles the focus to the next available widget based on the currently selected widget.
     fn select_next_widget(&mut self) {
         let next_widget = match self.active_widget {
-            RecordsWidget::List if self.selected.is_some() => Some(RecordsWidget::Value),
+            RecordsWidget::List if self.selected.is_some() => Some(RecordsWidget::Headers),
+            RecordsWidget::Headers => Some(RecordsWidget::Value),
             _ => Some(RecordsWidget::List),
         };
 
@@ -385,7 +452,7 @@ impl Records {
         }
     }
     /// Renders the panel containing the details of the selected [`Record`].
-    fn render_record_details(&self, frame: &mut Frame, area: Rect) {
+    fn render_record_details(&mut self, frame: &mut Frame, area: Rect) {
         let record = self.state.selected.clone().expect("selected Record exists");
 
         let [info_slice, headers_slice, value_slice] = Layout::default()
@@ -430,10 +497,16 @@ impl Records {
             .style(self.theme.record_info_text_color)
             .block(info_block);
 
-        let headers_block = Block::bordered()
+        let mut headers_block = Block::bordered()
             .title(" Headers ")
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
+
+        if self.state.active_widget == RecordsWidget::Headers {
+            headers_block = headers_block
+                .border_type(BorderType::Thick)
+                .border_style(self.theme.selected_panel_border_color);
+        }
 
         let header_rows: Vec<Row> = BTreeMap::from_iter(record.headers.iter())
             .into_iter()
@@ -446,8 +519,19 @@ impl Records {
                 "Key".bold().style(self.theme.label_color),
                 "Value".bold().style(self.theme.label_color),
             ]))
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
             .style(self.theme.record_headers_text_color)
             .block(headers_block);
+
+        self.state.headers_scroll_state = self
+            .state
+            .headers_scroll_state
+            .content_length(record.headers.len());
+
+        let headers_scrollbar = Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
 
         let mut value_block = Block::bordered()
             .title(" Value ")
@@ -480,7 +564,18 @@ impl Records {
             .scroll(self.state.value_scroll);
 
         frame.render_widget(info_table, info_slice);
-        frame.render_widget(headers_table, headers_slice);
+
+        frame.render_stateful_widget(headers_table, headers_slice, &mut self.state.headers_state);
+
+        frame.render_stateful_widget(
+            headers_scrollbar,
+            headers_slice.inner(Margin {
+                horizontal: 1,
+                vertical: 1,
+            }),
+            &mut self.state.headers_scroll_state,
+        );
+
         frame.render_widget(value_paragraph, value_slice);
     }
     /// Renders the panel containing the details of a [`Record`] when there is currently none
@@ -550,6 +645,12 @@ impl Component for Records {
                 key_bindings.push(super::KEY_BINDING_SCROLL_DOWN);
                 key_bindings.push(super::KEY_BINDING_SCROLL_UP);
             }
+            RecordsWidget::Headers => {
+                key_bindings.push(super::KEY_BINDING_TOP);
+                key_bindings.push(super::KEY_BINDING_NEXT);
+                key_bindings.push(super::KEY_BINDING_PREV);
+                key_bindings.push(super::KEY_BINDING_BOTTOM);
+            }
         };
 
         key_bindings.push(consumer_mode_key_binding);
@@ -578,7 +679,7 @@ impl Component for Records {
                 'r' => Some(Event::ResumeProcessing),
                 _ => match self.state.active_widget {
                     RecordsWidget::List => match c {
-                        'g' if buffered.map(|kp| kp.is('g')).is_some() => {
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             Some(Event::SelectFirstRecord)
                         }
                         'j' => Some(Event::SelectNextRecord),
@@ -587,11 +688,20 @@ impl Component for Records {
                         _ => None,
                     },
                     RecordsWidget::Value => match c {
-                        'g' if buffered.map(|kp| kp.is('g')).is_some() => {
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             Some(Event::ScrollRecordValueTop)
                         }
                         'j' => Some(Event::ScrollRecordValueDown),
                         'k' => Some(Event::ScrollRecordValueUp),
+                        _ => None,
+                    },
+                    RecordsWidget::Headers => match c {
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                            Some(Event::ScrollRecordHeadersTop)
+                        }
+                        'j' => Some(Event::ScrollRecordHeadersDown),
+                        'k' => Some(Event::ScrollRecordHeadersUp),
+                        'G' => Some(Event::ScrollRecordHeadersBottom),
                         _ => None,
                     },
                 },
@@ -611,6 +721,10 @@ impl Component for Records {
             Event::ScrollRecordValueTop => self.state.scroll_value_top(),
             Event::ScrollRecordValueDown => self.state.scroll_value_down(self.scroll_factor),
             Event::ScrollRecordValueUp => self.state.scroll_value_up(self.scroll_factor),
+            Event::ScrollRecordHeadersTop => self.state.scroll_headers_top(),
+            Event::ScrollRecordHeadersDown => self.state.scroll_headers_down(),
+            Event::ScrollRecordHeadersUp => self.state.scroll_headers_up(),
+            Event::ScrollRecordHeadersBottom => self.state.scroll_headers_bottom(),
             Event::RecordReceived(record) => self.state.push_record(record.clone()),
             _ => {}
         }

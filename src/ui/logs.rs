@@ -179,7 +179,7 @@ impl Component for Logs {
     fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
-                'g' if buffered.map(|kp| kp.is('g')).is_some() => Some(Event::ScrollLogsTop),
+                'g' if buffered.filter(|kp| kp.is('g')).is_some() => Some(Event::ScrollLogsTop),
                 'j' => Some(Event::ScrollLogsDown),
                 'k' => Some(Event::ScrollLogsUp),
                 'G' => Some(Event::ScrollLogsBottom),

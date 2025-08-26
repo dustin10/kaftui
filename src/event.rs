@@ -41,6 +41,14 @@ pub enum Event {
     ScrollRecordValueDown,
     /// Fires when the user wants to scroll the record value widget up.
     ScrollRecordValueUp,
+    /// Fires when the user wants to scroll the record headers widget to the top.
+    ScrollRecordHeadersTop,
+    /// Fires when the user wants to scroll the record headers widget down.
+    ScrollRecordHeadersDown,
+    /// Fires when the user wants to scroll the record headers widget up.
+    ScrollRecordHeadersUp,
+    /// Fires when the user wants to scroll to the bottom of the record headers list.
+    ScrollRecordHeadersBottom,
     /// Fires when the user selects a [`crate::ui::Component`] to view in the UI.
     SelectComponent(usize),
     /// Fires when a new [`Notification`] should be displayed to the user.
