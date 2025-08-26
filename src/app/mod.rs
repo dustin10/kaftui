@@ -122,7 +122,7 @@ impl Notification {
         Self::new(NotificationStatus::Failure, summary)
     }
     /// Determines if the notification has expired and should no longer be visible.
-    pub fn is_expired(&self) -> bool {
+    fn is_expired(&self) -> bool {
         (self.created + Duration::seconds(NOTIFICATION_EXPIRATION_SECS)) < Utc::now()
     }
 }
@@ -380,8 +380,13 @@ impl App {
         tracing::info!("Kafka consumer started");
         self.state.initializing = false;
     }
-    fn on_tick(&self) {
-        // TODO: remove active notification here when it expires
+    /// Handles the tick event which fires every second.
+    fn on_tick(&mut self) {
+        if let Some(notification) = self.state.notification.as_ref()
+            && notification.is_expired()
+        {
+            self.state.notification = None;
+        }
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].

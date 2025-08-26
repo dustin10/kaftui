@@ -25,6 +25,7 @@ The following statistics are currently tracked.
 * Total number of Kafka records consumed
 * Throughput in records per second.
 * Number of Kafka records consumed per partition.
+* Detailed per-partition information.
 
 ## Quick Start
 
@@ -59,7 +60,8 @@ the set of partitions that will be consumed. If not specified, all partitions wi
 would cause only partitions `0` and `2` to be assigned to the Kafka consumer.
 * `--seek-to` - CSV of colon separated pairs of partition and offset values that the Kafka consumer will seek to before
 starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition `0`
-and offset `10` on partition `1`.
+and offset `10` on partition `1`. A value of `reset` can also be specified for this argument which will cause the
+consumer to seek to offset 0 for all partitions on the topic.
 * `--group-id, -g` - Id of the group that the application will use when consuming messages from the Kafka topic. By
 default a group id will be generated from the hostname of the machine that is executing the application.
 * `--filter, -f` - JSONPath filter that is applied to a record. Can be used to filter out any records from the Kafka
@@ -81,8 +83,8 @@ Application logs can be enabled by specifying a value of `true` for the `KAFTUI_
 running `kaftui`. When enabled, a `Logs` menu item will appear in the header that allows the user to view the logs in
 the application. A `.json` file is also written to on disk that contains more verbose log information.
 
-The `KAFTUI_LOGS_DIR` environment variable can be used to set the directory that log files will be stored in. If not
-set, the log files will be saved in the present working directory.
+The `KAFTUI_LOGS_DIR` environment variable can be used to configure the directory that log files will be stored in. If
+not set, the log files will be saved to the working directory.
 
 ## Key Bindings
 
@@ -93,6 +95,7 @@ active widget.The following key bindings apply no matter which widget is current
 * `tab` - Changes focus from the current widget to the next available one.
 * `1` - View the `Records` screen.
 * `2` - View the `Stats` screen.
+* `3` - View the `Logs` screen. This screen is only available when application logs have been enabled.
 
 The active key bindings will be displayed in the UI on the right side of the footer and will vary depending on the 
 screen that is currently being viewed within the application.

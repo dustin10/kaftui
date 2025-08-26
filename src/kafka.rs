@@ -24,7 +24,7 @@ pub const SEEK_TO_NONE: &str = "none";
 pub const SEEK_TO_RESET: &str = "reset";
 
 /// Enumerates the different states that the Kafka consumer can be in.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ConsumerMode {
     /// Consumer is paused and not processing records from the topic.
     Paused,
@@ -157,8 +157,7 @@ impl<'de> serde::de::Visitor<'de> for SeekToVisitor {
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("a valid SeekTo string representation")
     }
-    /// Attempts to convert the [`str`] slice to a valie [`SeekTo`] variant based on the contents
-    /// of the string.
+    /// Attempts to convert the [`str`] slice to a valid [`SeekTo`] variant based on it's contents.
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,

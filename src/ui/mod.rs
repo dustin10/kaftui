@@ -177,9 +177,7 @@ impl App {
         frame.render_widget(menu, left_panel);
         frame.render_widget(outer, area);
 
-        if let Some(notification) = &self.state.notification
-            && !notification.is_expired()
-        {
+        if let Some(notification) = self.state.notification.as_ref() {
             let notification_color = match notification.status {
                 NotificationStatus::Success => {
                     Color::from_str(&self.config.theme.notification_text_color_success)
