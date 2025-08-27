@@ -41,6 +41,10 @@ const LOG_EVENT_BUFFER_SIZE: usize = 16;
 /// eligible to visible to the user any longer.
 const NOTIFICATION_EXPIRATION_SECS: i64 = 3;
 
+/// Number of seconds that make up the interval between ticks. The tick event allows the
+/// application to perform any periodic operations that are not event-driven.
+const TICK_INTERVAL_SECS: u64 = 1;
+
 /// Holds data relevant to a key press that was buffered because it did not directly map to an
 /// action. This is used for a simple implementation of vim-style key bindings, e.g. `gg` is bound
 /// to selecting the first record in the list.
@@ -286,7 +290,7 @@ impl App {
             self.start_poll_logs_async(rx);
         }
 
-        let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(1));
+        let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(TICK_INTERVAL_SECS));
 
         while self.state.running {
             terminal
@@ -380,7 +384,8 @@ impl App {
         tracing::info!("Kafka consumer started");
         self.state.initializing = false;
     }
-    /// Handles the tick event which fires every second.
+    /// Handles the tick event which fires at a regular interval. This allows the application to
+    /// perform any periodic operations that are not event-driven.
     fn on_tick(&mut self) {
         if let Some(notification) = self.state.notification.as_ref()
             && notification.is_expired()
