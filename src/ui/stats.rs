@@ -356,7 +356,7 @@ impl<'a> Stats<'a> {
 
         let [bottom_left_panel, bottom_right_panel] = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
             .areas(bottom_panel);
 
         if let Some(stats) = self.state.statistics.as_ref() {
