@@ -370,13 +370,13 @@ impl App {
     /// Spawns a task that will receive [`Log`] messages on the specified [`Receiver`] and then
     /// publish an [`Event::LogEmitted`] application event.
     fn start_poll_logs_async(&self, rx: Receiver<Log>) {
-        let receive_logs_task = PollLogsTask {
+        let poll_logs_task = PollLogsTask {
             rx,
             event_bus: Arc::clone(&self.event_bus),
         };
 
         tokio::spawn(async move {
-            receive_logs_task.run().await;
+            poll_logs_task.run().await;
         });
     }
     /// Handles the consumer started event emitted by the [`EventBus`].

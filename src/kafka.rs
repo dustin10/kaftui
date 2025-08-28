@@ -248,7 +248,7 @@ impl ClientContext for ConsumerContext {
         }
     }
     /// Receives the decoded statistics from the librdkafka client at the configured interval.
-    fn stats(&self, statistics: rdkafka::Statistics) {
+    fn stats(&self, statistics: Statistics) {
         let boxed_stats = statistics.into();
 
         let tx = self.consumer_tx.clone();
@@ -443,7 +443,11 @@ impl Consumer {
                 consumer_tx: self.consumer_tx.clone(),
             };
 
-            tokio::spawn(async move { task.run().await });
+            tokio::spawn(async move {
+                if let Err(e) = task.run().await {
+                    tracing::error!("error during partition consumer task: {}", e);
+                }
+            });
         }
 
         let task_consumer = Arc::clone(&self.consumer);
