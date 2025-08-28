@@ -1,5 +1,5 @@
 use anyhow::Context;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use futures::TryStreamExt;
 use rdkafka::{
     config::RDKafkaLogLevel,
@@ -195,7 +195,7 @@ pub struct Record {
     /// Value of the Kafka record, if one exists.
     pub value: Option<String>,
     /// UTC timestamp represeting when the event was created.
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTime<Local>,
 }
 
 impl Record {
@@ -532,12 +532,14 @@ impl From<&BorrowedMessage<'_>> for Record {
             None => None,
         };
 
-        let timestamp = DateTime::from_timestamp_millis(
-            msg.timestamp()
-                .to_millis()
-                .expect("Kafka message has valid timestamp"),
-        )
-        .expect("DateTime created from millis");
+        let timestamp_millis = msg
+            .timestamp()
+            .to_millis()
+            .expect("Kafka message has valid timestamp");
+
+        let local_date_time = DateTime::from_timestamp_millis(timestamp_millis)
+            .expect("DateTime created from millis")
+            .into();
 
         Self {
             partition: msg.partition(),
@@ -545,7 +547,7 @@ impl From<&BorrowedMessage<'_>> for Record {
             key,
             headers,
             value,
-            timestamp,
+            timestamp: local_date_time,
             offset: msg.offset(),
         }
     }

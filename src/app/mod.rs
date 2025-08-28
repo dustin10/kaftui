@@ -10,7 +10,7 @@ use crate::{
 };
 
 use anyhow::Context;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Local};
 use crossterm::event::{KeyCode, KeyEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{crossterm::event::Event as TerminalEvent, DefaultTerminal};
@@ -53,7 +53,7 @@ pub struct BufferedKeyPress {
     /// Last key that was pressed that did not map to an action.
     key: char,
     /// Time that the buffered key press will expire.
-    ttl: DateTime<Utc>,
+    ttl: DateTime<Local>,
 }
 
 impl BufferedKeyPress {
@@ -61,7 +61,7 @@ impl BufferedKeyPress {
     fn new(key: char) -> Self {
         Self {
             key,
-            ttl: Utc::now() + Duration::seconds(1),
+            ttl: Local::now() + Duration::seconds(1),
         }
     }
     /// Determines if the key press matches the specified character. False will always be returned
@@ -72,7 +72,7 @@ impl BufferedKeyPress {
     /// Determines if the key press has expired based on the TTL that was set when it was initially
     /// buffered.
     fn is_expired(&self) -> bool {
-        self.ttl < Utc::now()
+        self.ttl < Local::now()
     }
 }
 
@@ -100,7 +100,7 @@ pub struct Notification {
     /// period of time.
     pub summary: String,
     /// Timestamp when the notification was created by the application.
-    pub created: DateTime<Utc>,
+    pub created: DateTime<Local>,
 }
 
 impl Notification {
@@ -109,7 +109,7 @@ impl Notification {
         Self {
             status,
             summary: summary.into(),
-            created: Utc::now(),
+            created: Local::now(),
         }
     }
     /// Creates a new success notification for the user with the specified data.
@@ -127,7 +127,7 @@ impl Notification {
     }
     /// Determines if the notification has expired and should no longer be visible.
     fn is_expired(&self) -> bool {
-        (self.created + Duration::seconds(NOTIFICATION_EXPIRATION_SECS)) < Utc::now()
+        (self.created + Duration::seconds(NOTIFICATION_EXPIRATION_SECS)) < Local::now()
     }
 }
 

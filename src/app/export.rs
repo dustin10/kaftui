@@ -1,7 +1,7 @@
 use crate::kafka::Record;
 
 use anyhow::Context;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ struct ExportedRecord {
     /// Value of the Kafka record, if one exists.
     value: Option<serde_json::Value>,
     /// UTC timestamp represeting when the event was created.
-    timestamp: DateTime<Utc>,
+    timestamp: DateTime<Local>,
 }
 
 impl From<&Record> for ExportedRecord {
@@ -88,7 +88,7 @@ impl Exporter {
             std::path::MAIN_SEPARATOR,
             exported_record.topic,
             name,
-            Utc::now().timestamp_millis()
+            Local::now().timestamp_millis()
         );
 
         let _ = std::fs::write(file_path.as_str(), json).context("write exported record to file");

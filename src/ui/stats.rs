@@ -6,7 +6,7 @@ use crate::{
 };
 
 use bounded_vec_deque::BoundedVecDeque;
-use chrono::{Duration, Utc};
+use chrono::{Duration, Local};
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
@@ -146,7 +146,7 @@ impl StatsState {
     /// Pushes a the current timestamp onto the timestamps [`BoundedVecDeque`] which indicates that
     /// a [`Record`] was consumed from the Kafka topic.
     fn push_timestamp(&mut self) {
-        self.timestamps.push_front(Utc::now().timestamp_millis());
+        self.timestamps.push_front(Local::now().timestamp_millis());
     }
 }
 
@@ -498,7 +498,7 @@ impl<'a> Stats<'a> {
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
-        let now = Utc::now();
+        let now = Local::now();
         let now_secs = now.timestamp_millis() / 1000;
 
         let mut partitioned: BTreeMap<u32, u32> = BTreeMap::new();

@@ -12,7 +12,7 @@ use crate::{
 };
 
 use anyhow::Context;
-use chrono::Utc;
+use chrono::Local;
 use clap::Parser;
 use config::{ConfigError, Map, Source, Value};
 use std::{fs::File, io::BufReader};
@@ -165,7 +165,7 @@ fn init_env() -> Option<Receiver<Log>> {
         logs_dir,
         format!(
             "kaftui-logs-{}.json",
-            Utc::now().format("%d.%m.%Y-%H.%M.%S")
+            Local::now().format("%d.%m.%Y-%H.%M.%S")
         ),
     );
 
