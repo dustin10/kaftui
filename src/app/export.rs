@@ -26,7 +26,7 @@ struct ExportedRecord {
     headers: HashMap<String, String>,
     /// Value of the Kafka record, if one exists.
     value: Option<serde_json::Value>,
-    /// UTC timestamp represeting when the event was created.
+    /// Local timestamp represeting when the event was created.
     timestamp: DateTime<Local>,
 }
 

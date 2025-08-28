@@ -90,7 +90,7 @@ pub enum SeekTo {
 impl Default for SeekTo {
     /// Returns the default value for a value of [`SeekTo`].
     fn default() -> Self {
-        SeekTo::None
+        Self::None
     }
 }
 
@@ -162,7 +162,7 @@ impl<'de> serde::de::Visitor<'de> for SeekToVisitor {
     where
         E: serde::de::Error,
     {
-        // TODO: should probably prefer to implement [`TryFrom`] and not panic
+        // TODO: should probably prefer to implement TryFrom here and not panic
         Ok(v.into())
     }
 }
@@ -194,7 +194,7 @@ pub struct Record {
     pub headers: HashMap<String, String>,
     /// Value of the Kafka record, if one exists.
     pub value: Option<String>,
-    /// UTC timestamp represeting when the event was created.
+    /// Local timestamp represeting when the event was created.
     pub timestamp: DateTime<Local>,
 }
 
