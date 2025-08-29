@@ -88,7 +88,7 @@ impl<'de> serde::Deserialize<'de> for RecordFormat {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_str(IntoVisitor::default())
+        deserializer.deserialize_str(FromStrVisitor::default())
     }
 }
 
@@ -213,7 +213,7 @@ impl<'de> serde::Deserialize<'de> for SeekTo {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_str(IntoVisitor::default())
+        deserializer.deserialize_str(FromStrVisitor::default())
     }
 }
 
@@ -231,14 +231,14 @@ impl serde::Serialize for SeekTo {
 /// A simple [`serde::de::Visitor`] implementation that is capable of deserializing any value as
 /// long as it can has a [`From`] implementation for a [`str`] reference.
 #[derive(Debug, Default)]
-struct IntoVisitor<T>
+struct FromStrVisitor<T>
 where
     T: for<'a> From<&'a str>,
 {
     _data: PhantomData<T>,
 }
 
-impl<'de, T> serde::de::Visitor<'de> for IntoVisitor<T>
+impl<'de, T> serde::de::Visitor<'de> for FromStrVisitor<T>
 where
     T: for<'a> From<&'a str>,
 {
@@ -712,6 +712,7 @@ where
             .partition_queue
             .stream()
             .try_for_each(|msg| async move {
+                // TODO: deserialize payload based on configured RecordFormat
                 let record = Record::from(&msg);
 
                 let consumer_event = match &self.filter {

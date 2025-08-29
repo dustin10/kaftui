@@ -21,7 +21,6 @@ gethostname = "1.0.2"
 java-properties = "2.0.0"
 ratatui = "0.29.0"
 rdkafka = { version = "0.38.0", features = ["dynamic-linking", "sasl", "ssl"] }
-schema_registry_converter = { version = "4.5.0", features = ["avro"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 serde_json_path = "0.7.2"
