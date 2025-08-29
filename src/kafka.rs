@@ -12,16 +12,24 @@ use rdkafka::{
     ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};
 use tokio::sync::mpsc::Sender;
 
 /// String representation of the [`SeekTo::None`] enum variant. Used in serialization and
 /// deserialization operations.
-pub const SEEK_TO_NONE: &str = "none";
+const SEEK_TO_NONE: &str = "none";
 
 /// String representation of the [`SeekTo::Reset`] enum variant. Used in serialization and
 /// deserialization operations.
-pub const SEEK_TO_RESET: &str = "reset";
+const SEEK_TO_RESET: &str = "reset";
+
+/// String representation of the [`RecordFormat::None`] enum variant. Used in serialization and
+/// deserialization operations.
+const RECORD_FORMAT_NONE: &str = "none";
+
+/// String representation of the [`RecordFormat::Json`] enum variant. Used in serialization and
+/// deserialization operations.
+const RECORD_FORMAT_JSON: &str = "json";
 
 /// Enumerates the different states that the Kafka consumer can be in.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -30,6 +38,69 @@ pub enum ConsumerMode {
     Paused,
     /// Consumer is processing records from the topic.
     Processing,
+}
+
+/// Enumerates the well-known formats for the data in a Kafka topic.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum RecordFormat {
+    /// Records in the topic pare produced with no particular format.
+    None,
+    /// Records in the topic are produced in JSON format.
+    Json,
+}
+
+impl Default for RecordFormat {
+    /// Returns the default value for a value of [`RecordFormat`].
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl Display for RecordFormat {
+    /// Writes a string representation of the [`RecordFormat`] value to the
+    /// [`std::fmt::Formatter`].
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::None => RECORD_FORMAT_NONE,
+            Self::Json => RECORD_FORMAT_JSON,
+        };
+
+        f.write_str(s)
+    }
+}
+
+impl<T> From<T> for RecordFormat
+where
+    T: AsRef<str>,
+{
+    /// Converts the value to the corresponding [`RecordFormat`].
+    fn from(value: T) -> Self {
+        match value.as_ref() {
+            RECORD_FORMAT_JSON => Self::Json,
+            _ => Self::None,
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for RecordFormat {
+    /// Deserialize this value into the given [`serde::Deserializer`].
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(IntoVisitor::default())
+    }
+}
+
+impl serde::Serialize for RecordFormat {
+    /// Serialize this value into the given [`serde::Serializer`].
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let str = self.to_string();
+        serializer.serialize_str(&str)
+    }
 }
 
 /// A tuple struct that contains a partition and an offset.
@@ -108,12 +179,12 @@ where
         let s = value.as_ref();
 
         if s.is_empty() || s.eq_ignore_ascii_case(SEEK_TO_NONE) {
-            SeekTo::None
+            Self::None
         } else if s.eq_ignore_ascii_case(SEEK_TO_RESET) {
-            SeekTo::Reset
+            Self::Reset
         } else {
             let partitions = s.split(",").map(Into::into).collect();
-            SeekTo::Custom(partitions)
+            Self::Custom(partitions)
         }
     }
 }
@@ -122,9 +193,9 @@ impl Display for SeekTo {
     /// Writes a string representation of the [`SeekTo`] value to the [`std::fmt::Formatter`].
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SeekTo::None => f.write_str(SEEK_TO_NONE),
-            SeekTo::Reset => f.write_str(SEEK_TO_RESET),
-            SeekTo::Custom(partition_offsets) => {
+            Self::None => f.write_str(SEEK_TO_NONE),
+            Self::Reset => f.write_str(SEEK_TO_RESET),
+            Self::Custom(partition_offsets) => {
                 let po_strs: Vec<String> =
                     partition_offsets.iter().map(ToString::to_string).collect();
 
@@ -142,28 +213,7 @@ impl<'de> serde::Deserialize<'de> for SeekTo {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_str(SeekToVisitor)
-    }
-}
-
-/// Simple [`serde::de::Visitor`] implementation that is capable of deserializing a [`str`]
-/// reference to a [`SeekTo`] enum variant.
-struct SeekToVisitor;
-
-impl<'de> serde::de::Visitor<'de> for SeekToVisitor {
-    type Value = SeekTo;
-
-    /// Format a message stating what data this Visitor expects to receive.
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a valid SeekTo string representation")
-    }
-    /// Attempts to convert the [`str`] slice to a valid [`SeekTo`] variant based on it's contents.
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        // TODO: should probably prefer to implement TryFrom here and not panic
-        Ok(v.into())
+        deserializer.deserialize_str(IntoVisitor::default())
     }
 }
 
@@ -175,6 +225,36 @@ impl serde::Serialize for SeekTo {
     {
         let str = self.to_string();
         serializer.serialize_str(&str)
+    }
+}
+
+/// A simple [`serde::de::Visitor`] implementation that is capable of deserializing any value as
+/// long as it can has a [`From`] implementation for a [`str`] reference.
+#[derive(Debug, Default)]
+struct IntoVisitor<T>
+where
+    T: for<'a> From<&'a str>,
+{
+    _data: PhantomData<T>,
+}
+
+impl<'de, T> serde::de::Visitor<'de> for IntoVisitor<T>
+where
+    T: for<'a> From<&'a str>,
+{
+    type Value = T;
+
+    /// Format a message stating what data this [`serde::de::Visitor`] expects to receive.
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a valid string representation")
+    }
+    /// Attempts to convert the [`str`] reference to a valid `T` based on it's contents.
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        // TODO: should probably prefer to implement TryFrom here and not panic
+        Ok(v.into())
     }
 }
 
@@ -331,6 +411,7 @@ impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
     pub fn new(
         config: HashMap<String, String>,
+        _format: RecordFormat,
         consumer_tx: Sender<ConsumerEvent>,
     ) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();

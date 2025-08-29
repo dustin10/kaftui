@@ -205,9 +205,11 @@ impl App {
             String::from("bootstrap.servers"),
             config.bootstrap_servers.clone(),
         );
+
         consumer_config.insert(String::from("group.id"), config.group_id.clone());
 
-        let consumer = Consumer::new(consumer_config, consumer_tx).context("create consumer")?;
+        let consumer = Consumer::new(consumer_config, config.format, consumer_tx)
+            .context("create consumer")?;
 
         let exporter = Exporter::new(config.export_directory.clone());
 

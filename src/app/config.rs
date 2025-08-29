@@ -1,4 +1,4 @@
-use crate::kafka::SeekTo;
+use crate::kafka::{RecordFormat, SeekTo};
 
 use anyhow::Context;
 use chrono::Utc;
@@ -30,6 +30,13 @@ impl From<SeekTo> for ValueKind {
     }
 }
 
+impl From<RecordFormat> for ValueKind {
+    /// Converts from an owned [`RecordFormat`] to a [`ValueKind`].
+    fn from(value: RecordFormat) -> Self {
+        Self::String(value.to_string())
+    }
+}
+
 /// Configuration values which drive the behavior of the application.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -40,6 +47,9 @@ pub struct Config {
     /// CSV of partitions numbers that the consumer should be assigned. If none, all of the
     /// partitions which make up the topic will be assigned.
     pub partitions: Option<String>,
+    /// Variant of the [`RecordFormat`] enum which specifies the format of the data in the Kafka
+    /// topic. Deafults to [`RecordFormat::None`].
+    pub format: RecordFormat,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     pub group_id: String,
@@ -131,6 +141,8 @@ impl Source for Defaults {
     fn collect(&self) -> Result<Map<String, Value>, ConfigError> {
         let mut cfg = Map::new();
 
+        cfg.insert(String::from("format"), Value::from(RecordFormat::default()));
+
         cfg.insert(String::from("group_id"), Value::from(generate_group_id()));
 
         cfg.insert(
@@ -157,7 +169,7 @@ impl Source for Defaults {
             Value::from(DEFAULT_LOGS_MAX_HISTORY),
         );
 
-        cfg.insert(String::from("seek_to"), Value::from(SeekTo::None));
+        cfg.insert(String::from("seek_to"), Value::from(SeekTo::default()));
 
         Ok(cfg)
     }
@@ -248,6 +260,8 @@ struct Profile {
     topic: Option<String>,
     /// CSV of partitions numbers that the consumer should be assigned.
     partitions: Option<String>,
+    /// Specifies the format of the data in the Kafka topic, for example `json`.
+    format: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     group_id: Option<String>,
@@ -280,6 +294,11 @@ impl Source for Profile {
 
         if let Some(partitions) = self.partitions.as_ref() {
             cfg.insert(String::from("partitions"), Value::from(partitions.clone()));
+        }
+
+        if let Some(format) = self.format.as_ref() {
+            let record_format: RecordFormat = format.into();
+            cfg.insert(String::from("format"), Value::from(record_format));
         }
 
         if let Some(group_id) = self.group_id.as_ref() {

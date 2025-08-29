@@ -7,7 +7,7 @@ mod util;
 
 use crate::{
     app::{config::Config, App},
-    kafka::SeekTo,
+    kafka::{RecordFormat, SeekTo},
     trace::{CaptureLayer, Log},
 };
 
@@ -36,6 +36,11 @@ struct Cli {
     /// be assigned.
     #[arg(long)]
     partitions: Option<String>,
+    /// Specifies the format of the data contained in the Kafka topic. By default the data is
+    /// assumed to be in no special format and no special handling will be applied to it when
+    /// displayed. Valid values: json.
+    #[arg(long)]
+    format: Option<String>,
     /// Id of the consumer group that the application will use when consuming records from the Kafka
     /// topic. By default a group id will be generated from the hostname of the machine that is
     /// execting the application.
@@ -90,6 +95,13 @@ impl Source for Cli {
 
         if let Some(partitions) = self.partitions.as_ref() {
             cfg.insert(String::from("partitions"), Value::from(partitions.clone()));
+        }
+
+        if let Some(format) = self.format.as_ref() {
+            cfg.insert(
+                String::from("format"),
+                Value::from(RecordFormat::from(format)),
+            );
         }
 
         if let Some(group_id) = self.group_id.as_ref() {
