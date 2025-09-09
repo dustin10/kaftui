@@ -4,7 +4,7 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
-    kafka::{Consumer, ConsumerEvent, ConsumerMode, Record, SeekTo},
+    kafka::{Consumer, ConsumerEvent, ConsumerMode, Record, RecordFormat, SeekTo},
     trace::Log,
     ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
 };
@@ -208,8 +208,7 @@ impl App {
 
         consumer_config.insert(String::from("group.id"), config.group_id.clone());
 
-        let consumer = Consumer::new(consumer_config, config.format, consumer_tx)
-            .context("create consumer")?;
+        let consumer = Consumer::new(consumer_config, consumer_tx).context("create consumer")?;
 
         let exporter = Exporter::new(config.export_directory.clone());
 
@@ -360,6 +359,7 @@ impl App {
             consumer: Arc::clone(&self.consumer),
             topic: self.config.topic.clone(),
             partitions,
+            format: self.config.format,
             seek_to: self.config.seek_to.clone(),
             filter: self.config.filter.clone(),
             event_bus: Arc::clone(&self.event_bus),
@@ -536,6 +536,8 @@ struct StartConsumerTask {
     topic: String,
     /// [`Vec`] of partitions that should be assigned to the Kafka consumer.
     partitions: Vec<i32>,
+    /// Specifies the format of the records contained in the Kafka topic.
+    format: RecordFormat,
     /// Variant of the [`SeekTo`] enum that drives the partitions offsets the Kafka consumer seeks
     /// to before starting to consume records. Defaults to [`SeekTo::None`].
     seek_to: SeekTo,
@@ -549,10 +551,13 @@ impl StartConsumerTask {
     /// Runs the task. Starts the consumer and send the appropriate [`Event`] based on the result
     /// of startup on the [`EventBus`].
     async fn run(self) {
-        match self
-            .consumer
-            .start(self.topic, self.partitions, self.seek_to, self.filter)
-        {
+        match self.consumer.start(
+            self.topic,
+            self.partitions,
+            self.format,
+            self.seek_to,
+            self.filter,
+        ) {
             Ok(_) => self.event_bus.send(Event::ConsumerStarted),
             Err(e) => self.event_bus.send(Event::ConsumerStartFailure(e)),
         };

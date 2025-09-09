@@ -410,7 +410,6 @@ impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
     pub fn new(
         config: HashMap<String, String>,
-        _format: RecordFormat,
         consumer_tx: Sender<ConsumerEvent>,
     ) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
@@ -448,6 +447,7 @@ impl Consumer {
         &self,
         topic: impl AsRef<str>,
         partitions: Vec<i32>,
+        format: RecordFormat,
         seek_to: SeekTo,
         filter: Option<String>,
     ) -> anyhow::Result<()> {
@@ -519,6 +519,7 @@ impl Consumer {
             let task = PartitionConsumerTask {
                 consumer: Arc::clone(&self.consumer),
                 partition_queue: Arc::new(partition_queue),
+                format,
                 filter: filter.clone(),
                 consumer_tx: self.consumer_tx.clone(),
             };
@@ -572,64 +573,6 @@ impl Consumer {
         self.consumer
             .resume(&assignment)
             .context("resume consumer assignments")
-    }
-}
-
-impl From<&BorrowedMessage<'_>> for Record {
-    /// Converts from a reference to a [`BorrowedMessage`] to a [`Record`].
-    fn from(msg: &BorrowedMessage<'_>) -> Self {
-        let key = msg
-            .key()
-            .and_then(|k| std::str::from_utf8(k).ok())
-            .map(ToString::to_string);
-
-        let headers: HashMap<String, String> = match msg.headers() {
-            Some(hs) => {
-                let mut headers = HashMap::new();
-                for h in hs.iter() {
-                    let value = match std::str::from_utf8(h.value.expect("header value exists")) {
-                        Ok(s) => String::from(s),
-                        Err(e) => {
-                            tracing::warn!("invalid UTF8 header value: {}", e);
-                            String::from("")
-                        }
-                    };
-
-                    headers.insert(String::from(h.key), value);
-                }
-
-                headers
-            }
-            None => HashMap::new(),
-        };
-
-        let value = match msg.payload_view::<str>() {
-            Some(Ok(data)) => Some(String::from(data)),
-            Some(Err(e)) => {
-                tracing::error!("non-UTF8 string value in message: {}", e);
-                None
-            }
-            None => None,
-        };
-
-        let timestamp_millis = msg
-            .timestamp()
-            .to_millis()
-            .expect("Kafka message has valid timestamp");
-
-        let local_date_time = DateTime::from_timestamp_millis(timestamp_millis)
-            .expect("DateTime created from millis")
-            .into();
-
-        Self {
-            partition: msg.partition(),
-            topic: String::from(msg.topic()),
-            key,
-            headers,
-            value,
-            timestamp: local_date_time,
-            offset: msg.offset(),
-        }
     }
 }
 
@@ -694,6 +637,8 @@ where
     consumer: Arc<Con>,
     /// The partition queue that the task is handling Kafka records for.
     partition_queue: Arc<StreamPartitionQueue<Ctx>>,
+    /// Specifies the format of the records contained in the Kafka topic.
+    format: RecordFormat,
     /// Any filter to apply to the record.
     filter: Option<String>,
     /// Sender for the Kafka consumer channel.
@@ -711,8 +656,7 @@ where
             .partition_queue
             .stream()
             .try_for_each(|msg| async move {
-                // TODO: deserialize payload based on configured RecordFormat
-                let record = Record::from(&msg);
+                let record = self.create_record(&msg);
 
                 let consumer_event = match &self.filter {
                     Some(filter) if !record.matches(filter) => ConsumerEvent::Filtered(record),
@@ -731,5 +675,73 @@ where
             });
 
         stream_procesor.await.context("process Kafka record stream")
+    }
+    /// Creates a new [`Record`] from the [`BorrowedMessage`] read from the Kafka topic.
+    fn create_record(&self, msg: &BorrowedMessage) -> Record {
+        let key = msg
+            .key()
+            .and_then(|k| std::str::from_utf8(k).ok())
+            .map(ToString::to_string);
+
+        let headers: HashMap<String, String> = match msg.headers() {
+            Some(hs) => {
+                let mut headers = HashMap::new();
+                for h in hs.iter() {
+                    let value = match std::str::from_utf8(h.value.expect("header value exists")) {
+                        Ok(s) => String::from(s),
+                        Err(e) => {
+                            tracing::warn!("invalid UTF8 header value: {}", e);
+                            String::from("")
+                        }
+                    };
+
+                    headers.insert(String::from(h.key), value);
+                }
+
+                headers
+            }
+            None => HashMap::new(),
+        };
+
+        let mut value = match msg.payload_view::<str>() {
+            Some(Ok(data)) => Some(String::from(data)),
+            Some(Err(e)) => {
+                tracing::error!("non-UTF8 string value in message: {}", e);
+                None
+            }
+            None => None,
+        };
+
+        if let Some(ref v) = value
+            && self.format == RecordFormat::Json
+        {
+            match serde_json::from_str(v)
+                .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
+            {
+                Ok(json) => {
+                    let _ = value.replace(json);
+                }
+                Err(e) => tracing::error!("invalid JSON value: {}", e),
+            }
+        }
+
+        let timestamp_millis = msg
+            .timestamp()
+            .to_millis()
+            .expect("Kafka message has valid timestamp");
+
+        let local_date_time = DateTime::from_timestamp_millis(timestamp_millis)
+            .expect("DateTime created from millis")
+            .into();
+
+        Record {
+            partition: msg.partition(),
+            topic: String::from(msg.topic()),
+            key,
+            headers,
+            value,
+            timestamp: local_date_time,
+            offset: msg.offset(),
+        }
     }
 }

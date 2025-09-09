@@ -58,6 +58,8 @@ To use a custom group id for the consumer simply specify it using the `--group-i
 * `--partitions` - CSV of the partition numbers that the consumer should be assigned. This argument is used to restrict
 the set of partitions that will be consumed. If not specified, all partitions will be assigned. For example, `0,2`
 would cause only partitions `0` and `2` to be assigned to the Kafka consumer.
+* `--format` - Specifies the format of the data contained in the Kafka topic. By default the data is assumed to be in no
+special format and no special handling will be applied to it when displayed. Valid values: `json`.
 * `--seek-to` - CSV of colon separated pairs of partition and offset values that the Kafka consumer will seek to before
 starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition `0`
 and offset `10` on partition `1`. A value of `reset` can also be specified for this argument which will cause the
@@ -135,6 +137,7 @@ The following properties are supported in profiles.
 * `bootstrapServers` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
 * `topic` - Name of the Kafka topic to consume records from.
 * `partitions` - CSV of partition numbers of the topic that should be assigned to the Kafka consumer.
+* `filter` - Format of the data contained in the Kafka topic.
 * `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
 * `filter` - JSONPath filter that is applied to a record.
 * `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and
@@ -204,7 +207,8 @@ values which can be used to configure the application using the `.kaftui.json` f
       "sasl.mechanisms": "PLAIN",
       "sasl.username": "<username>",
       "sasl.password": "<password>"
-    }
+    },
+    "format": "json"
   }],
   "theme": {
     "panelBorderColor": "#6272A4",

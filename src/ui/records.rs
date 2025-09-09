@@ -544,18 +544,7 @@ impl Records {
                 .border_style(self.theme.selected_panel_border_color);
         }
 
-        let value = match record.value {
-            Some(v) if !v.is_empty() => match serde_json::from_str(&v)
-                .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
-            {
-                Ok(json) => json,
-                Err(e) => {
-                    tracing::error!("invalid JSON value: {}", e);
-                    v
-                }
-            },
-            _ => String::from(""),
-        };
+        let value = record.value.unwrap_or_default();
 
         let value_paragraph = Paragraph::new(value)
             .block(value_block)
