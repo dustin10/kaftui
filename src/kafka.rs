@@ -229,7 +229,7 @@ impl serde::Serialize for SeekTo {
 }
 
 /// A simple [`serde::de::Visitor`] implementation that is capable of deserializing any value as
-/// long as it can has a [`From`] implementation for a [`str`] reference.
+/// long as it has a [`From`] implementation for a [`str`] reference.
 #[derive(Debug, Default)]
 struct FromStrVisitor<T>
 where
@@ -253,7 +253,6 @@ where
     where
         E: serde::de::Error,
     {
-        // TODO: should probably prefer to implement TryFrom here and not panic
         Ok(v.into())
     }
 }
