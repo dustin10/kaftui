@@ -210,7 +210,7 @@ impl App {
 
         let consumer = Consumer::new(consumer_config, consumer_tx).context("create consumer")?;
 
-        let exporter = Exporter::new(config.export_directory.clone());
+        let exporter = Exporter::new(config.export_directory.clone(), config.format);
 
         let consumer_mode = Rc::new(Cell::new(ConsumerMode::Processing));
 

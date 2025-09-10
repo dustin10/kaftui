@@ -1,4 +1,4 @@
-use crate::kafka::Record;
+use crate::kafka::{Record, RecordFormat};
 
 use anyhow::Context;
 use chrono::{DateTime, Local};
@@ -30,19 +30,19 @@ struct ExportedRecord {
     timestamp: DateTime<Local>,
 }
 
-impl From<&Record> for ExportedRecord {
+impl ExportedRecord {
     /// Converts a reference to a [`Record`] to an [`ExportedRecord`].
-    fn from(record: &Record) -> Self {
-        let json_value = record
-            .value
-            .as_ref()
-            .and_then(|v| match serde_json::from_str(v) {
+    fn from_record(record: &Record, format: RecordFormat) -> Self {
+        let json_value = record.value.as_ref().and_then(|v| match format {
+            RecordFormat::None => Some(serde_json::Value::String(v.clone())),
+            RecordFormat::Json => match serde_json::from_str(v) {
                 Ok(json) => Some(json),
                 Err(e) => {
                     tracing::error!("failed to serialize record value to JSON: {}", e);
                     None
                 }
-            });
+            },
+        });
 
         Self {
             topic: record.topic.clone(),
@@ -63,16 +63,18 @@ impl From<&Record> for ExportedRecord {
 pub struct Exporter {
     /// Directory on the file system where exported files will be saved.
     base_dir: String,
+    /// Specifies the format of the records contained in the Kafka topic.
+    format: RecordFormat,
 }
 
 impl Exporter {
     /// Creates a new [`Exporter`] with the specified dependencies.
-    pub fn new(base_dir: String) -> Self {
-        Self { base_dir }
+    pub fn new(base_dir: String, format: RecordFormat) -> Self {
+        Self { base_dir, format }
     }
     /// Exports the given [`Record`] to the file system in JSON format.
     pub fn export_record(&self, record: &Record) -> anyhow::Result<String> {
-        let exported_record = ExportedRecord::from(record);
+        let exported_record = ExportedRecord::from_record(record, self.format);
 
         let json =
             serde_json::to_string_pretty(&exported_record).context("serialize exported record")?;
