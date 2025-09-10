@@ -33,13 +33,13 @@ struct ExportedRecord {
 impl ExportedRecord {
     /// Converts a reference to a [`Record`] to an [`ExportedRecord`].
     fn from_record(record: &Record, format: RecordFormat) -> Self {
-        let json_value = record.value.as_ref().and_then(|v| match format {
-            RecordFormat::None => Some(serde_json::Value::String(v.clone())),
+        let json_value = record.value.as_ref().map(|v| match format {
+            RecordFormat::None => serde_json::Value::String(v.clone()),
             RecordFormat::Json => match serde_json::from_str(v) {
-                Ok(json) => Some(json),
+                Ok(json) => json,
                 Err(e) => {
                     tracing::error!("failed to serialize record value to JSON: {}", e);
-                    None
+                    serde_json::Value::String(v.clone())
                 }
             },
         });
