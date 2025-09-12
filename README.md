@@ -183,9 +183,9 @@ The screenshow below is an example of a `kaftui` theme configuration that is ins
 
 ## Persisted Configuration
 
-To persist configuration across executions of the `kaftui` application, a JSON file can be created in the `$HOME`
-directory which contains the relevant configuration values. The JSON below contains is a full example of the set of
-values which can be used to configure the application using the `.kaftui.json` file.
+To persist configuration across executions of the `kaftui` application, a JSON configuration file can be saved at
+`$HOME/.kaftui.json` which contains the relevant configuration values. The JSON below contains is a full example of the
+set of values that are availableto to configure the application from this file.
 
 ```json
 {
