@@ -223,10 +223,10 @@ fn init_env() -> Option<Receiver<Log>> {
 
 /// Returns true if the user has enabled application logging, false otherwise.
 fn logs_enabled() -> bool {
-    util::read_env_transformed(
+    util::read_env_transformed_or(
         LOGS_ENABLED_ENV_VAR,
         |v| v.eq_ignore_ascii_case("true"),
-        bool::default,
+        false,
     )
 }
 
@@ -234,7 +234,7 @@ fn logs_enabled() -> bool {
 /// be written. If not configured explicitly by the user with the `KAFTUI_LOGS_DIR` environment
 /// variable, then the present working directory, i.e. `.`, will be used.
 fn logs_dir() -> String {
-    util::read_env(LOGS_DIR_ENV_VAR, || String::from("."))
+    util::read_env_or(LOGS_DIR_ENV_VAR, String::from("."))
 }
 
 /// Runs the application.

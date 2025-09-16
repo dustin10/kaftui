@@ -16,9 +16,18 @@ pub fn try_read_env(key: impl AsRef<str>) -> Option<String> {
 }
 
 /// Reads an environment variable with the given key returning the value as a [`String`]. If no
+/// value is present for the environment variable, then the default will be returned.
+pub fn read_env_or<K>(key: K, default: String) -> String
+where
+    K: AsRef<str>,
+{
+    read_env_or_else(key, || default)
+}
+
+/// Reads an environment variable with the given key returning the value as a [`String`]. If no
 /// value is present for the environment variable, then the [`FnOnce`] will be invoked to provide a
 /// default value.
-pub fn read_env<K, D>(key: K, default: D) -> String
+pub fn read_env_or_else<K, D>(key: K, default: D) -> String
 where
     K: AsRef<str>,
     D: FnOnce() -> String,
@@ -28,8 +37,19 @@ where
 
 /// Reads an environment variable with the given key and then invokes the given [`FnOnce`] to
 /// transform it to a different type. If no value is present for the environment variable, then
+/// the default value will be returned.
+pub fn read_env_transformed_or<K, T, V>(key: K, transform: T, default: V) -> V
+where
+    K: AsRef<str>,
+    T: FnOnce(String) -> V,
+{
+    read_env_transformed_or_else(key, transform, || default)
+}
+
+/// Reads an environment variable with the given key and then invokes the given [`FnOnce`] to
+/// transform it to a different type. If no value is present for the environment variable, then
 /// the default [`FnOnce`] parameter will be invoked to provide a default value.
-pub fn read_env_transformed<K, T, D, V>(key: K, transform: T, default: D) -> V
+pub fn read_env_transformed_or_else<K, T, D, V>(key: K, transform: T, default: D) -> V
 where
     K: AsRef<str>,
     D: FnOnce() -> V,
