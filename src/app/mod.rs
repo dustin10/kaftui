@@ -4,7 +4,7 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
-    kafka::{Consumer, ConsumerEvent, ConsumerMode, Record, RecordFormat, SeekTo},
+    kafka::{Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record},
     trace::Log,
     ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
 };
@@ -195,18 +195,38 @@ impl App {
 
         let (consumer_tx, consumer_rx) = tokio::sync::mpsc::channel(CONSUMER_EVENTS_CHANNEL_SIZE);
 
-        let mut consumer_config = HashMap::new();
+        let mut consumer_props = HashMap::new();
 
         if let Some(ref props) = config.consumer_properties {
-            consumer_config.extend(props.clone());
+            consumer_props.extend(props.clone());
         }
 
-        consumer_config.insert(
+        consumer_props.insert(
             String::from("bootstrap.servers"),
             config.bootstrap_servers.clone(),
         );
 
-        consumer_config.insert(String::from("group.id"), config.group_id.clone());
+        consumer_props.insert(String::from("group.id"), config.group_id.clone());
+
+        let partitions = config
+            .partitions
+            .as_ref()
+            .map(|csv| csv.split(","))
+            .map(|ps| {
+                ps.map(|p| p.parse::<i32>().expect("valid partition value"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let consumer_config = ConsumerConfig::builder()
+            .props(consumer_props)
+            .topic(config.topic.clone())
+            .partitions(partitions)
+            .format(config.format)
+            .seek_to(config.seek_to.clone())
+            .filter(config.filter.clone())
+            .build()
+            .expect("valid ConsumerConfig");
 
         let consumer = Consumer::new(consumer_config, consumer_tx).context("create consumer")?;
 
@@ -344,24 +364,8 @@ impl App {
     /// Starts the consumer asynchronously. The result of the consumer startup is sent back to the
     /// application through the [`EventBus`].
     fn start_poll_consumer_async(&self) {
-        let partitions = self
-            .config
-            .partitions
-            .as_ref()
-            .map(|csv| csv.split(","))
-            .map(|ps| {
-                ps.map(|p| p.parse::<i32>().expect("valid partition value"))
-                    .collect()
-            })
-            .unwrap_or_default();
-
         let start_consumer_task = StartConsumerTask {
             consumer: Arc::clone(&self.consumer),
-            topic: self.config.topic.clone(),
-            partitions,
-            format: self.config.format,
-            seek_to: self.config.seek_to.clone(),
-            filter: self.config.filter.clone(),
             event_bus: Arc::clone(&self.event_bus),
         };
 
@@ -532,17 +536,6 @@ impl App {
 struct StartConsumerTask {
     /// Kafka consumer to start.
     consumer: Arc<Consumer>,
-    /// Topic to consume records from.
-    topic: String,
-    /// [`Vec`] of partitions that should be assigned to the Kafka consumer.
-    partitions: Vec<i32>,
-    /// Specifies the format of the records contained in the Kafka topic.
-    format: RecordFormat,
-    /// Variant of the [`SeekTo`] enum that drives the partitions offsets the Kafka consumer seeks
-    /// to before starting to consume records. Defaults to [`SeekTo::None`].
-    seek_to: SeekTo,
-    /// JSONPath filter to apply to the consumed records.
-    filter: Option<String>,
     /// [`EventBus`] on which the results of the startup task will be published.
     event_bus: Arc<EventBus>,
 }
@@ -551,13 +544,7 @@ impl StartConsumerTask {
     /// Runs the task. Starts the consumer and send the appropriate [`Event`] based on the result
     /// of startup on the [`EventBus`].
     async fn run(self) {
-        match self.consumer.start(
-            self.topic,
-            self.partitions,
-            self.format,
-            self.seek_to,
-            self.filter,
-        ) {
+        match self.consumer.start() {
             Ok(_) => self.event_bus.send(Event::ConsumerStarted),
             Err(e) => self.event_bus.send(Event::ConsumerStartFailure(e)),
         };

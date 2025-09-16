@@ -1,5 +1,6 @@
 use anyhow::Context;
 use chrono::{DateTime, Local};
+use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
     config::RDKafkaLogLevel,
@@ -394,21 +395,55 @@ pub enum ConsumerEvent {
     Statistics(Box<Statistics>),
 }
 
+#[derive(Builder, Clone, Debug)]
+pub struct ConsumerConfig {
+    /// Configuration properties that will be set for the Kafka consumer.
+    props: HashMap<String, String>,
+    /// Name of the Kafka topic to consume messages from.
+    topic: String,
+    /// Partitions on the topic that the consumer should be assigned.
+    partitions: Vec<i32>,
+    /// Specifies the format of the records contained in the Kafka topic.
+    format: RecordFormat,
+    /// Drives the partitions offsets the Kafka consumer seeks to before starting to consume
+    /// records.
+    seek_to: SeekTo,
+    /// Any filter to apply to the record.
+    filter: Option<String>,
+}
+
+impl ConsumerConfig {
+    /// Creates a new default [`ConsumerConfigBuilder`] which is used to construct a
+    /// [`ConsumerConfig`].
+    pub fn builder() -> ConsumerConfigBuilder {
+        ConsumerConfigBuilder::default()
+    }
+}
+
 /// High-level Kafka consumer. Through this struct the application can easily start, pause and
 /// resume the underlying Kafka consumer.
 pub struct Consumer {
     /// Underlying Kafka consumer.
     consumer: Arc<StreamConsumer<ConsumerContext>>,
+    /// Name of the Kafka topic to consume messages from.
+    topic: String,
+    /// Partitions on the topic that the consumer should be assigned.
+    partitions: Vec<i32>,
+    /// Specifies the format of the records contained in the Kafka topic.
+    format: RecordFormat,
+    /// Drives the partitions offsets the Kafka consumer seeks to before starting to consume
+    /// records.
+    seek_to: SeekTo,
+    /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
+    /// from the Kafka topic that the end user may not be interested in.
+    filter: Option<String>,
     /// Sender for the Kafka consumer channel.
     consumer_tx: Sender<ConsumerEvent>,
 }
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
-    pub fn new(
-        config: HashMap<String, String>,
-        consumer_tx: Sender<ConsumerEvent>,
-    ) -> anyhow::Result<Self> {
+    pub fn new(config: ConsumerConfig, consumer_tx: Sender<ConsumerEvent>) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
 
         // apply default config
@@ -416,7 +451,7 @@ impl Consumer {
         client_config.set("statistics.interval.ms", "5000");
 
         // apply user config
-        client_config.extend(config);
+        client_config.extend(config.props);
 
         // apply enforced config
         client_config.set("enable.auto.commit", "false");
@@ -434,28 +469,11 @@ impl Consumer {
             .create_with_context(context)
             .context("create Kafka consumer")?;
 
-        Ok(Self {
-            consumer: Arc::new(consumer),
-            consumer_tx,
-        })
-    }
-    /// Starts the consumption of records from the specified Kafka topic.
-    pub fn start(
-        &self,
-        topic: impl AsRef<str>,
-        partitions: Vec<i32>,
-        format: RecordFormat,
-        seek_to: SeekTo,
-        filter: Option<String>,
-    ) -> anyhow::Result<()> {
-        let to_assign = if partitions.is_empty() {
-            let topic = topic.as_ref();
+        let partitions = if config.partitions.is_empty() {
+            tracing::debug!("fetching metadata for topic {} from broker", config.topic);
 
-            tracing::debug!("fetching metadata for topic {} from broker", topic);
-
-            let topic_metadata = self
-                .consumer
-                .fetch_metadata(Some(topic), Duration::from_secs(10))
+            let topic_metadata = consumer
+                .fetch_metadata(Some(&config.topic), Duration::from_secs(10))
                 .context("fetch topic metadata from broker")?;
 
             topic_metadata
@@ -468,20 +486,37 @@ impl Consumer {
                 .collect()
         } else {
             tracing::debug!("partition assignments specified by user");
-            partitions
+            config.partitions
         };
 
-        tracing::info!("assigning partitions to Kafka consumer: {:?}", to_assign);
+        Ok(Self {
+            consumer: Arc::new(consumer),
+            topic: config.topic,
+            partitions,
+            format: config.format,
+            seek_to: config.seek_to,
+            filter: config.filter,
+            consumer_tx,
+        })
+    }
+    /// Starts the consumption of records from the specified Kafka topic.
+    pub fn start(&self) -> anyhow::Result<()> {
+        let topic = self.topic.as_ref();
 
-        let mut assignments_list = TopicPartitionList::with_capacity(to_assign.len());
+        tracing::info!(
+            "assigning partitions to Kafka consumer: {:?}",
+            self.partitions
+        );
 
-        for partition in to_assign.iter() {
-            match seek_to {
+        let mut assignments_list = TopicPartitionList::with_capacity(self.partitions.len());
+
+        for partition in self.partitions.iter() {
+            match self.seek_to {
                 SeekTo::None => {
-                    let _ = assignments_list.add_partition(topic.as_ref(), *partition);
+                    let _ = assignments_list.add_partition(topic, *partition);
                 }
                 SeekTo::Reset => assignments_list
-                    .add_partition_offset(topic.as_ref(), *partition, Offset::Offset(0))
+                    .add_partition_offset(topic, *partition, Offset::Offset(0))
                     .context("add partition offset")?,
                 SeekTo::Custom(ref partition_offsets) => {
                     match partition_offsets
@@ -489,14 +524,10 @@ impl Consumer {
                         .find(|po| po.partition == *partition)
                     {
                         Some(po) => assignments_list
-                            .add_partition_offset(
-                                topic.as_ref(),
-                                *partition,
-                                Offset::Offset(po.offset),
-                            )
+                            .add_partition_offset(topic, *partition, Offset::Offset(po.offset))
                             .context("add partition offset")?,
                         None => {
-                            let _ = assignments_list.add_partition(topic.as_ref(), *partition);
+                            let _ = assignments_list.add_partition(topic, *partition);
                         }
                     }
                 }
@@ -507,7 +538,7 @@ impl Consumer {
             .assign(&assignments_list)
             .context("assign partitions to consumer")?;
 
-        for partition in to_assign.iter() {
+        for partition in self.partitions.iter() {
             let partition_queue = self
                 .consumer
                 .split_partition_queue(topic.as_ref(), *partition)
@@ -516,8 +547,8 @@ impl Consumer {
             let task = PartitionConsumerTask {
                 consumer: Arc::clone(&self.consumer),
                 partition_queue: Arc::new(partition_queue),
-                format,
-                filter: filter.clone(),
+                format: self.format,
+                filter: self.filter.clone(),
                 consumer_tx: self.consumer_tx.clone(),
             };
 
