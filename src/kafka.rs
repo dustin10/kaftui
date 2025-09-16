@@ -383,9 +383,6 @@ impl RDConsumerContext for ConsumerContext {
     }
 }
 
-// TODO: rdkafka::Statistics is boxed here because it has a large memory footprint and triggers a
-// clippy lint - maybe create a custom struct that is smaller containing only the necessary data?
-
 /// Enumeration of the states of a [`Record`] that was consumed from the Kafka topic.
 #[derive(Clone, Debug)]
 pub enum ConsumerEvent {

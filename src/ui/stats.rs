@@ -479,7 +479,6 @@ impl<'a> Stats<'a> {
             .map(ToRow::to_row)
             .collect();
 
-        // TODO: can this clone be avoided?
         let header = Row::new(self.partition_labels.clone());
 
         let partition_stats_table = Table::new(partition_stats_row, &self.partition_constraints)
