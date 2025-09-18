@@ -116,7 +116,7 @@ impl App {
                 .border_style(border_color),
         );
 
-        let no_record_text = Paragraph::new("Initializing...")
+        let initializing_text = Paragraph::new("Initializing...")
             .style(border_color)
             .block(
                 Block::default()
@@ -126,7 +126,7 @@ impl App {
             .centered();
 
         frame.render_widget(empty_text, empty_area);
-        frame.render_widget(no_record_text, initializing_text_area);
+        frame.render_widget(initializing_text, initializing_text_area);
     }
     /// Renders the header panel that contains the key bindings.
     fn render_header(&self, frame: &mut Frame, area: Rect) {
