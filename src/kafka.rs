@@ -249,7 +249,7 @@ where
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("a valid string representation")
     }
-    /// Attempts to convert the [`str`] reference to a valid `T` based on it's contents.
+    /// Attempts to convert the [`str`] reference to a valid `T` based on its contents.
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
@@ -274,7 +274,7 @@ pub struct Record {
     pub headers: HashMap<String, String>,
     /// Value of the Kafka record, if one exists.
     pub value: Option<String>,
-    /// Local timestamp represeting when the event was created.
+    /// Local timestamp representing when the event was created.
     pub timestamp: DateTime<Local>,
 }
 
@@ -387,9 +387,9 @@ impl RDConsumerContext for ConsumerContext {
 /// Enumeration of the states of a [`Record`] that was consumed from the Kafka topic.
 #[derive(Clone, Debug)]
 pub enum ConsumerEvent {
-    /// A [`Record`] was consumed and it should be displayed to the user.
+    /// A [`Record`] was consumed, and it should be displayed to the user.
     Received(Record),
-    /// A [`Record`] was consumed but it does not match the configured JSONPath filter.
+    /// A [`Record`] was consumed, but it does not match the configured JSONPath filter.
     Filtered(Record),
     /// Updated [`Statistics`] were emitted by the Kafka consumer.
     Statistics(Box<Statistics>),
@@ -678,7 +678,7 @@ where
     Con: RDConsumer<Ctx>,
     Ctx: RDConsumerContext,
 {
-    /// Runs the task by subscribing to the paritition queue and then consuming messages from it.
+    /// Runs the task by subscribing to the partition queue and then consuming messages from it.
     async fn run(&self) -> anyhow::Result<()> {
         let stream_procesor = self
             .partition_queue

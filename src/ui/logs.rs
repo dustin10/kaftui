@@ -174,40 +174,6 @@ impl Component for Logs {
     fn name(&self) -> &'static str {
         "Logs"
     }
-    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
-    /// for processing.
-    fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
-        match event.code {
-            KeyCode::Char(c) => match c {
-                'g' if buffered.filter(|kp| kp.is('g')).is_some() => Some(Event::ScrollLogsTop),
-                'j' => Some(Event::ScrollLogsDown),
-                'k' => Some(Event::ScrollLogsUp),
-                'G' => Some(Event::ScrollLogsBottom),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
-    /// application.
-    fn on_app_event(&mut self, event: &Event) {
-        match event {
-            Event::ScrollLogsTop => self.state.scroll_list_top(),
-            Event::ScrollLogsUp => self.state.scroll_list_up(),
-            Event::ScrollLogsDown => self.state.scroll_list_down(),
-            Event::ScrollLogsBottom => self.state.scroll_list_bottom(),
-            Event::LogEmitted(log) => self.state.on_log_emitted(log),
-            _ => {}
-        }
-    }
-    /// Allows the [`Component`] to render the key bindings text into the footer.
-    fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
-        let text = Paragraph::new(LOGS_KEY_BINDINGS.join(" | "))
-            .style(self.theme.key_bindings_text_color)
-            .right_aligned();
-
-        frame.render_widget(text, area);
-    }
     /// Renders the component-specific widgets to the terminal.
     fn render(&mut self, frame: &mut Frame, area: Rect) {
         let table_block = Block::bordered()
@@ -268,5 +234,39 @@ impl Component for Logs {
             }),
             &mut self.state.list_scroll_state,
         );
+    }
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
+    /// for processing.
+    fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
+        match event.code {
+            KeyCode::Char(c) => match c {
+                'g' if buffered.filter(|kp| kp.is('g')).is_some() => Some(Event::ScrollLogsTop),
+                'j' => Some(Event::ScrollLogsDown),
+                'k' => Some(Event::ScrollLogsUp),
+                'G' => Some(Event::ScrollLogsBottom),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
+    /// application.
+    fn on_app_event(&mut self, event: &Event) {
+        match event {
+            Event::ScrollLogsTop => self.state.scroll_list_top(),
+            Event::ScrollLogsUp => self.state.scroll_list_up(),
+            Event::ScrollLogsDown => self.state.scroll_list_down(),
+            Event::ScrollLogsBottom => self.state.scroll_list_bottom(),
+            Event::LogEmitted(log) => self.state.on_log_emitted(log),
+            _ => {}
+        }
+    }
+    /// Allows the [`Component`] to render the key bindings text into the footer.
+    fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
+        let text = Paragraph::new(LOGS_KEY_BINDINGS.join(" | "))
+            .style(self.theme.key_bindings_text_color)
+            .right_aligned();
+
+        frame.render_widget(text, area);
     }
 }

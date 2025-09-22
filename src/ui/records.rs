@@ -83,7 +83,7 @@ struct RecordsState {
     /// [`ScrollbarState`] for the table that the records consumed from the Kafka topic are
     /// rendered into.
     list_scroll_state: ScrollbarState,
-    /// Contains the current scolling state for the record value text.
+    /// Contains the current scrolling state for the record value text.
     value_scroll: (u16, u16),
     /// [`TableState`] for the table that record headers are rendered into.
     headers_state: TableState,
@@ -600,59 +600,20 @@ impl Component for Records {
     fn name(&self) -> &'static str {
         "Records"
     }
-    /// Allows the [`Component`] to render the status line text into the footer.
-    fn render_status_line(&self, frame: &mut Frame, area: Rect) {
-        let consumer_status_line = ConsumerStatusLine::builder()
-            .consumer_mode(self.state.consumer_mode.get())
-            .topic(self.topic.as_str())
-            .filter(self.filter.as_ref())
-            .processing_style(self.theme.processing_text_color)
-            .paused_style(self.theme.paused_text_color)
-            .build()
-            .expect("valid consumer status line widget");
+    /// Renders the component-specific widgets to the terminal.
+    fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let [records_table_panel, record_details_panel] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(area);
 
-        frame.render_widget(consumer_status_line, area);
-    }
-    /// Allows the [`Component`] to render the key bindings text into the footer.
-    fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
-        let consumer_mode_key_binding = match self.state.consumer_mode.get() {
-            ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
-            ConsumerMode::Paused => super::KEY_BINDING_RESUME,
-        };
-
-        let mut key_bindings = Vec::from(RECORDS_STANDARD_KEY_BINDINGS);
-
-        match self.state.active_widget {
-            RecordsWidget::List => {
-                key_bindings.push(super::KEY_BINDING_TOP);
-                key_bindings.push(super::KEY_BINDING_NEXT);
-                key_bindings.push(super::KEY_BINDING_PREV);
-                key_bindings.push(super::KEY_BINDING_BOTTOM);
-            }
-            RecordsWidget::Value => {
-                key_bindings.push(super::KEY_BINDING_TOP);
-                key_bindings.push(super::KEY_BINDING_SCROLL_DOWN);
-                key_bindings.push(super::KEY_BINDING_SCROLL_UP);
-            }
-            RecordsWidget::Headers => {
-                key_bindings.push(super::KEY_BINDING_TOP);
-                key_bindings.push(super::KEY_BINDING_NEXT);
-                key_bindings.push(super::KEY_BINDING_PREV);
-                key_bindings.push(super::KEY_BINDING_BOTTOM);
-            }
-        };
-
-        key_bindings.push(consumer_mode_key_binding);
+        self.render_record_list(frame, records_table_panel);
 
         if self.state.is_record_selected() {
-            key_bindings.push(KEY_BINDING_EXPORT);
+            self.render_record_details(frame, record_details_panel);
+        } else {
+            self.render_record_empty(frame, record_details_panel);
         }
-
-        let text = Paragraph::new(key_bindings.join(" | "))
-            .style(self.theme.key_bindings_text_color)
-            .right_aligned();
-
-        frame.render_widget(text, area);
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
@@ -718,19 +679,58 @@ impl Component for Records {
             _ => {}
         }
     }
-    /// Renders the component-specific widgets to the terminal.
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let [records_table_panel, record_details_panel] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .areas(area);
+    /// Allows the [`Component`] to render the status line text into the footer.
+    fn render_status_line(&self, frame: &mut Frame, area: Rect) {
+        let consumer_status_line = ConsumerStatusLine::builder()
+            .consumer_mode(self.state.consumer_mode.get())
+            .topic(self.topic.as_str())
+            .filter(self.filter.as_ref())
+            .processing_style(self.theme.processing_text_color)
+            .paused_style(self.theme.paused_text_color)
+            .build()
+            .expect("valid consumer status line widget");
 
-        self.render_record_list(frame, records_table_panel);
+        frame.render_widget(consumer_status_line, area);
+    }
+    /// Allows the [`Component`] to render the key bindings text into the footer.
+    fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
+        let consumer_mode_key_binding = match self.state.consumer_mode.get() {
+            ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
+            ConsumerMode::Paused => super::KEY_BINDING_RESUME,
+        };
+
+        let mut key_bindings = Vec::from(RECORDS_STANDARD_KEY_BINDINGS);
+
+        match self.state.active_widget {
+            RecordsWidget::List => {
+                key_bindings.push(super::KEY_BINDING_TOP);
+                key_bindings.push(super::KEY_BINDING_NEXT);
+                key_bindings.push(super::KEY_BINDING_PREV);
+                key_bindings.push(super::KEY_BINDING_BOTTOM);
+            }
+            RecordsWidget::Value => {
+                key_bindings.push(super::KEY_BINDING_TOP);
+                key_bindings.push(super::KEY_BINDING_SCROLL_DOWN);
+                key_bindings.push(super::KEY_BINDING_SCROLL_UP);
+            }
+            RecordsWidget::Headers => {
+                key_bindings.push(super::KEY_BINDING_TOP);
+                key_bindings.push(super::KEY_BINDING_NEXT);
+                key_bindings.push(super::KEY_BINDING_PREV);
+                key_bindings.push(super::KEY_BINDING_BOTTOM);
+            }
+        };
+
+        key_bindings.push(consumer_mode_key_binding);
 
         if self.state.is_record_selected() {
-            self.render_record_details(frame, record_details_panel);
-        } else {
-            self.render_record_empty(frame, record_details_panel);
+            key_bindings.push(KEY_BINDING_EXPORT);
         }
+
+        let text = Paragraph::new(key_bindings.join(" | "))
+            .style(self.theme.key_bindings_text_color)
+            .right_aligned();
+
+        frame.render_widget(text, area);
     }
 }

@@ -36,14 +36,14 @@ struct Cli {
     /// be assigned.
     #[arg(long)]
     partitions: Option<String>,
-    /// Specifies the format of the data contained in the Kafka topic. By default the data is
+    /// Specifies the format of the data contained in the Kafka topic. By default, the data is
     /// assumed to be in no special format and no special handling will be applied to it when
-    /// displayed. Valid values: json.
+    /// displayed. Valid values: JSON.
     #[arg(long)]
     format: Option<String>,
     /// Id of the consumer group that the application will use when consuming records from the Kafka
     /// topic. By default a group id will be generated from the hostname of the machine that is
-    /// execting the application.
+    /// executing the application.
     #[arg(short, long)]
     group_id: Option<String>,
     /// CSV of colon separated pairs of partitions and offsets that the Kafka consumer will seek to
@@ -52,7 +52,7 @@ struct Cli {
     seek_to: Option<String>,
     /// JSONPath filter that is applied to a records as they are received from the consumer. Can be
     /// used to filter out any records from the Kafka topic that the end user may not be interested
-    /// in. A record will only be presented to the user if it matches the filter. By default no
+    /// in. A record will only be presented to the user if it matches the filter. By default, no
     /// filter is applied.
     #[arg(short, long)]
     filter: Option<String>,
@@ -63,7 +63,7 @@ struct Cli {
     #[arg(short, long)]
     profile: Option<String>,
     /// Path to a properties file containing additional configuration for the Kafka consumer other
-    /// than the bootstrap servers and group id. Typically configuration for authentication, etc.
+    /// than the bootstrap servers and group id. Typically, configuration for authentication, etc.
     #[arg(long)]
     consumer_properties: Option<String>,
     /// Maximum number of records that should be held in memory and displayed in the record table

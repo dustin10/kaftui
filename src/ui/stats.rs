@@ -30,7 +30,7 @@ const BAR_GAP: u16 = 2;
 /// percentage of total records alongside the total count.
 const MIN_BAR_WIDTH_FOR_PERCENTAGE: u16 = 14;
 
-/// Maximum number of timestamps corresponding to recrods being consumed from the Kafka topic that
+/// Maximum number of timestamps corresponding to records being consumed from the Kafka topic that
 /// will be kept in memory at any given time to be evaluated for the throughput chart.
 const MAX_THROUGHPUT_CAPTURE: usize = 4096;
 
@@ -115,7 +115,7 @@ impl StatsState {
         }
     }
     /// Computes the total number of records consumed. The total is sum of the number of records
-    /// recieved and the number of records filtered.
+    /// received and the number of records filtered.
     fn total(&self) -> u64 {
         self.received + self.filtered
     }
@@ -249,7 +249,7 @@ pub struct Stats<'a> {
     topic: String,
     /// Any filter that was configured by the user.
     filter: Option<String>,
-    /// Current state of the component and it's underlying widgets.
+    /// Current state of the component, and it's underlying widgets.
     state: StatsState,
     /// Color scheme for the component.
     theme: StatsTheme,
@@ -674,6 +674,43 @@ impl<'a> Component for Stats<'a> {
     fn name(&self) -> &'static str {
         "Stats"
     }
+    /// Renders the component-specific widgets to the terminal.
+    fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let [triptych_panel, charts_panel] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Max(3), Constraint::Min(1)])
+            .areas(area);
+
+        self.render_triptych(frame, triptych_panel);
+
+        self.render_charts(frame, charts_panel);
+    }
+    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
+    /// for processing.
+    fn map_key_event(
+        &self,
+        event: KeyEvent,
+        _buffered: Option<&BufferedKeyPress>,
+    ) -> Option<Event> {
+        match event.code {
+            KeyCode::Char(c) => match c {
+                'p' => Some(Event::PauseProcessing),
+                'r' => Some(Event::ResumeProcessing),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
+    /// application.
+    fn on_app_event(&mut self, event: &Event) {
+        match event {
+            Event::RecordReceived(record) => self.state.on_record_received(record),
+            Event::RecordFiltered(record) => self.state.on_record_filtered(record),
+            Event::StatisticsReceived(stats) => self.state.on_statistics_received(stats),
+            _ => {}
+        }
+    }
     /// Allows the [`Component`] to render the status line text into the footer.
     fn render_status_line(&self, frame: &mut Frame, area: Rect) {
         let consumer_status_line = ConsumerStatusLine::builder()
@@ -702,42 +739,5 @@ impl<'a> Component for Stats<'a> {
             .right_aligned();
 
         frame.render_widget(text, area);
-    }
-    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
-    /// for processing.
-    fn map_key_event(
-        &self,
-        event: KeyEvent,
-        _buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
-        match event.code {
-            KeyCode::Char(c) => match c {
-                'p' => Some(Event::PauseProcessing),
-                'r' => Some(Event::ResumeProcessing),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
-    /// application.
-    fn on_app_event(&mut self, event: &Event) {
-        match event {
-            Event::RecordReceived(record) => self.state.on_record_received(record),
-            Event::RecordFiltered(record) => self.state.on_record_filtered(record),
-            Event::StatisticsReceived(stats) => self.state.on_statistics_received(stats),
-            _ => {}
-        }
-    }
-    /// Renders the component-specific widgets to the terminal.
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let [triptych_panel, charts_panel] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Max(3), Constraint::Min(1)])
-            .areas(area);
-
-        self.render_triptych(frame, triptych_panel);
-
-        self.render_charts(frame, charts_panel);
     }
 }

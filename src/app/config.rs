@@ -14,7 +14,7 @@ pub const DEFAULT_CONSUMER_GROUP_ID_PREFIX: &str = "kaftui-";
 /// time.
 pub const DEFAULT_MAX_RECORDS: usize = 256;
 
-/// Default value for the scoll factor of the record value text panel.
+/// Default value for the scroll factor of the record value text panel.
 const DEFAULT_SCROLL_FACTOR: u16 = 3;
 
 /// Default value for the file export directory.
@@ -48,7 +48,7 @@ pub struct Config {
     /// partitions which make up the topic will be assigned.
     pub partitions: Option<String>,
     /// Variant of the [`RecordFormat`] enum which specifies the format of the data in the Kafka
-    /// topic. Deafults to [`RecordFormat::None`].
+    /// topic. Defaults to [`RecordFormat::None`].
     pub format: RecordFormat,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
@@ -62,7 +62,7 @@ pub struct Config {
     /// from the Kafka topic that the end user may not be interested in. A message will only be
     /// presented to the user if it matches the filter.
     pub filter: Option<String>,
-    /// Maximum nunber of [`Records`] that should be held in memory at any given time after being
+    /// Maximum number of [`Records`] that should be held in memory at any given time after being
     /// consumed from the Kafka topic.
     pub max_records: usize,
     /// Controls how many lines each press of a key scrolls the record value text.
@@ -175,8 +175,8 @@ impl Source for Defaults {
     }
 }
 
-/// Generates a consumer group id for the Kafka consumer based on the hostname of the maachine
-/// running the application. If no hostname is able to be resolved then the current UTC epoch
+/// Generates a consumer group id for the Kafka consumer based on the hostname of the machine
+/// running the application. If no hostname can be resolved then the current UTC epoch
 /// timestamp milliseconds value will be used in it's place.
 fn generate_group_id() -> String {
     match gethostname::gethostname().into_string() {
@@ -201,7 +201,7 @@ fn generate_group_id() -> String {
 struct PersistedConfig {
     /// Contains any pre-configured [`Profile`]s that the user may have previously configured.
     profiles: Option<Vec<Profile>>,
-    /// Maximum nunber of [`Records`] that should be held in memory at any given time after being
+    /// Maximum number of [`Records`] that should be held in memory at any given time after being
     /// consumed from the Kafka topic.
     max_records: Option<usize>,
     /// Controls how many lines each press of a key scrolls the record value text.
@@ -322,7 +322,7 @@ impl Source for Profile {
 
 /// Contains the configuration values for the colors of the UI components that make up the
 /// application. Color values should be 32 bits and the integer value for the hexadecimal
-/// represenation for the RGB values as follows: 0x00RRGGBB.
+/// representation for the RGB values as follows: 0x00RRGGBB.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Theme {
@@ -358,7 +358,7 @@ pub struct Theme {
     pub notification_text_color_failure: String,
     /// Color used for the text in the stats UI. Defaults to white.
     pub stats_text_color: String,
-    /// Pimary color used for bars in a bar graph in the stats UI. Defaults to white.
+    /// Primary color used for bars in a bar graph in the stats UI. Defaults to white.
     pub stats_bar_color: String,
     /// Secondary color used for bars in a bar graph in the stats UI. Defaults to white.
     pub stats_bar_secondary_color: String,

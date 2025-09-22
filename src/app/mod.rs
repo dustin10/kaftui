@@ -25,13 +25,13 @@ use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver};
 /// Size of the buffer that polled application events are placed into.
 const APP_EVENTS_BUFFER_SIZE: usize = 16;
 
-/// Maximum bound on the nunber of messages that can be in the consumer channel.
+/// Maximum bound on the number of messages that can be in the consumer channel.
 const CONSUMER_EVENTS_CHANNEL_SIZE: usize = 1024;
 
 /// Size of the buffer that polled consumer events are placed into.
 const CONSUMER_EVENTS_BUFFER_SIZE: usize = 64;
 
-/// Maximum bound on the nunber of messages that can be in the terminal channel.
+/// Maximum bound on the number of messages that can be in the terminal channel.
 const TERMINAL_EVENT_CHANNEL_SIZE: usize = 64;
 
 /// Size of the buffer that polled log events are placed into.
@@ -140,7 +140,7 @@ pub struct State {
     /// Stores the current [`ConsumerMode`] of the application which controls whether or not
     /// records are currently being consumed from the topic.
     pub consumer_mode: Rc<Cell<ConsumerMode>>,
-    /// [`Component`] that the user is curently viewing and interacting with.
+    /// [`Component`] that the user is currently viewing and interacting with.
     pub active_component: Rc<RefCell<dyn Component>>,
     /// Contains any [`Notification`]s that should be displayed to the user.
     pub notification: Option<Notification>,
