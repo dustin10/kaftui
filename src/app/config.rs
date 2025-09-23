@@ -50,6 +50,9 @@ pub struct Config {
     /// Variant of the [`RecordFormat`] enum which specifies the format of the data in the Kafka
     /// topic. Defaults to [`RecordFormat::None`].
     pub format: RecordFormat,
+    /// Specifies the URL of the Schema Registry that should be used to validate data when
+    /// deserializing records from the Kafka topic.
+    pub schema_registry_url: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     pub group_id: String,
@@ -262,6 +265,9 @@ struct Profile {
     partitions: Option<String>,
     /// Specifies the format of the data in the Kafka topic, for example `json`.
     format: Option<String>,
+    /// Specifies the URL of the Schema Registry that should be used to validate data when
+    /// deserializing records from the Kafka topic.
+    schema_registry_url: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     group_id: Option<String>,
@@ -299,6 +305,13 @@ impl Source for Profile {
         if let Some(format) = self.format.as_ref() {
             let record_format: RecordFormat = format.into();
             cfg.insert(String::from("format"), Value::from(record_format));
+        }
+
+        if let Some(schema_registry_url) = self.schema_registry_url.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_url"),
+                Value::from(schema_registry_url.clone()),
+            );
         }
 
         if let Some(group_id) = self.group_id.as_ref() {

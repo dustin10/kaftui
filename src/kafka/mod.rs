@@ -1,3 +1,7 @@
+pub mod de;
+
+use crate::kafka::de::ValueDeserializer;
+
 use anyhow::Context;
 use chrono::{DateTime, Local};
 use derive_builder::Builder;
@@ -403,8 +407,6 @@ pub struct ConsumerConfig {
     topic: String,
     /// Partitions on the topic that the consumer should be assigned.
     partitions: Vec<i32>,
-    /// Specifies the format of the records contained in the Kafka topic.
-    format: RecordFormat,
     /// Drives the partitions offsets the Kafka consumer seeks to before starting to consume
     /// records.
     seek_to: SeekTo,
@@ -429,8 +431,7 @@ pub struct Consumer {
     topic: String,
     /// Partitions on the topic that the consumer should be assigned.
     partitions: Vec<i32>,
-    /// Specifies the format of the records contained in the Kafka topic.
-    format: RecordFormat,
+    value_deserializer: Arc<dyn ValueDeserializer>,
     /// Drives the partitions offsets the Kafka consumer seeks to before starting to consume
     /// records.
     seek_to: SeekTo,
@@ -443,7 +444,11 @@ pub struct Consumer {
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
-    pub fn new(config: ConsumerConfig, consumer_tx: Sender<ConsumerEvent>) -> anyhow::Result<Self> {
+    pub fn new(
+        config: ConsumerConfig,
+        value_deserializer: Arc<dyn ValueDeserializer>,
+        consumer_tx: Sender<ConsumerEvent>,
+    ) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
 
         // apply default config
@@ -493,7 +498,7 @@ impl Consumer {
             consumer: Arc::new(consumer),
             topic: config.topic,
             partitions,
-            format: config.format,
+            value_deserializer,
             seek_to: config.seek_to,
             filter: config.filter,
             consumer_tx,
@@ -547,7 +552,7 @@ impl Consumer {
             let task = PartitionConsumerTask {
                 consumer: Arc::clone(&self.consumer),
                 partition_queue: Arc::new(partition_queue),
-                format: self.format,
+                value_deserializer: Arc::clone(&self.value_deserializer),
                 filter: self.filter.clone(),
                 consumer_tx: self.consumer_tx.clone(),
             };
@@ -665,8 +670,9 @@ where
     consumer: Arc<Con>,
     /// The partition queue that the task is handling Kafka records for.
     partition_queue: Arc<StreamPartitionQueue<Ctx>>,
-    /// Specifies the format of the records contained in the Kafka topic.
-    format: RecordFormat,
+    /// Specifies the [`ValueDeserializer`] that should be used to deserialize the value of the
+    /// Kafka record.
+    value_deserializer: Arc<dyn ValueDeserializer>,
     /// Any filter to apply to the record.
     filter: Option<String>,
     /// Sender for the Kafka consumer channel.
@@ -731,27 +737,16 @@ where
             None => HashMap::new(),
         };
 
-        let mut value = match msg.payload_view::<str>() {
-            Some(Ok(data)) => Some(String::from(data)),
-            Some(Err(e)) => {
-                tracing::error!("non-UTF8 string value in message: {}", e);
-                None
-            }
+        let value = match msg.payload() {
             None => None,
-        };
-
-        if let Some(ref v) = value
-            && self.format == RecordFormat::Json
-        {
-            match serde_json::from_str(v)
-                .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
-            {
-                Ok(json) => {
-                    let _ = value.replace(json);
+            Some(data) => match self.value_deserializer.deserialize(data) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::error!("error deserializing message value: {}", e);
+                    None
                 }
-                Err(e) => tracing::error!("invalid JSON value: {}", e),
-            }
-        }
+            },
+        };
 
         let timestamp_millis = msg
             .timestamp()

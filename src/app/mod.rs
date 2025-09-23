@@ -4,7 +4,11 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
-    kafka::{Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record},
+    kafka::{
+        de::{JsonValueDeserializer, StringValueDeserializer, ValueDeserializer},
+        Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode , Record,
+        RecordFormat,
+    },
     trace::Log,
     ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
 };
@@ -13,7 +17,7 @@ use anyhow::Context;
 use chrono::{DateTime, Duration, Local};
 use crossterm::event::{KeyCode, KeyEvent};
 use futures::{FutureExt, StreamExt};
-use ratatui::{crossterm::event::Event as TerminalEvent, DefaultTerminal};
+use ratatui::{DefaultTerminal, crossterm::event::Event as TerminalEvent};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -222,13 +226,18 @@ impl App {
             .props(consumer_props)
             .topic(config.topic.clone())
             .partitions(partitions)
-            .format(config.format)
             .seek_to(config.seek_to.clone())
             .filter(config.filter.clone())
             .build()
             .expect("valid ConsumerConfig");
 
-        let consumer = Consumer::new(consumer_config, consumer_tx).context("create consumer")?;
+        let value_deserializer: Arc<dyn ValueDeserializer> = match config.format {
+            RecordFormat::None => Arc::new(StringValueDeserializer),
+            RecordFormat::Json => Arc::new(JsonValueDeserializer),
+        };
+
+        let consumer = Consumer::new(consumer_config, value_deserializer, consumer_tx)
+            .context("create consumer")?;
 
         let exporter = Exporter::new(config.export_directory.clone(), config.format);
 

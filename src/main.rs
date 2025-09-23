@@ -38,7 +38,7 @@ struct Cli {
     partitions: Option<String>,
     /// Specifies the format of the data contained in the Kafka topic. By default, the data is
     /// assumed to be in no special format and no special handling will be applied to it when
-    /// displayed. Valid values: JSON.
+    /// displayed. Valid values: `json`.
     #[arg(long)]
     format: Option<String>,
     /// Id of the consumer group that the application will use when consuming records from the Kafka
