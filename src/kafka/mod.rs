@@ -431,6 +431,8 @@ pub struct Consumer {
     topic: String,
     /// Partitions on the topic that the consumer should be assigned.
     partitions: Vec<i32>,
+    /// Specifies the [`ValueDeserializer`] that should be used to deserialize the value of the
+    /// Kafka record.
     value_deserializer: Arc<dyn ValueDeserializer>,
     /// Drives the partitions offsets the Kafka consumer seeks to before starting to consume
     /// records.
