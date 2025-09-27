@@ -5,9 +5,10 @@ use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
     kafka::{
-        de::{JsonValueDeserializer, StringValueDeserializer, ValueDeserializer},
-        Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode , Record,
-        RecordFormat,
+        Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
+        de::{
+            ValueDeserializer,
+        },
     },
     trace::Log,
     ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
@@ -192,7 +193,7 @@ pub struct App {
 
 impl App {
     /// Creates a new [`App`] with the specified dependencies.
-    pub fn new(config: Config) -> anyhow::Result<Self> {
+    pub fn new(config: Config, value_deserializer: Arc<dyn ValueDeserializer>) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let event_bus = Arc::new(EventBus::new(event_tx));
@@ -229,12 +230,7 @@ impl App {
             .seek_to(config.seek_to.clone())
             .filter(config.filter.clone())
             .build()
-            .expect("valid ConsumerConfig");
-
-        let value_deserializer: Arc<dyn ValueDeserializer> = match config.format {
-            RecordFormat::None => Arc::new(StringValueDeserializer),
-            RecordFormat::Json => Arc::new(JsonValueDeserializer),
-        };
+            .expect("valid ConsumerConfig"); 
 
         let consumer = Consumer::new(consumer_config, value_deserializer, consumer_tx)
             .context("create consumer")?;

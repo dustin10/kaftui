@@ -7,7 +7,13 @@ mod util;
 
 use crate::{
     app::{config::Config, App},
-    kafka::{RecordFormat, SeekTo},
+    kafka::{
+        de::{
+            AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer,
+            StringDeserializer, ValueDeserializer,
+        },
+        RecordFormat, SeekTo,
+    },
     trace::{CaptureLayer, Log},
 };
 
@@ -15,7 +21,11 @@ use anyhow::Context;
 use chrono::Local;
 use clap::Parser;
 use config::{ConfigError, Map, Source, Value};
-use std::{fs::File, io::BufReader};
+use schema_registry_client::rest::{
+    client_config::ClientConfig,
+    schema_registry_client::{Client, SchemaRegistryClient},
+};
+use std::{fs::File, io::BufReader, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{prelude::*, EnvFilter, Registry};
@@ -36,11 +46,19 @@ struct Cli {
     /// be assigned.
     #[arg(long)]
     partitions: Option<String>,
+    /// Path to a properties file containing additional configuration for the Kafka consumer other
+    /// than the bootstrap servers and group id. Typically, configuration for authentication, etc.
+    #[arg(long)]
+    consumer_properties: Option<String>,
     /// Specifies the format of the data contained in the Kafka topic. By default, the data is
     /// assumed to be in no special format and no special handling will be applied to it when
-    /// displayed. Valid values: `json`.
+    /// displayed. Valid values: `json`, `avro`.
     #[arg(long)]
     format: Option<String>,
+    /// Specifies the URL of the Schema Registry that should be used to validate data when
+    /// deserializing records from the Kafka topic.
+    #[arg(long)]
+    schema_registry_url: Option<String>, // TODO: allow auth to be configured
     /// Id of the consumer group that the application will use when consuming records from the Kafka
     /// topic. By default a group id will be generated from the hostname of the machine that is
     /// executing the application.
@@ -62,10 +80,6 @@ struct Cli {
     /// loaded from the profile.
     #[arg(short, long)]
     profile: Option<String>,
-    /// Path to a properties file containing additional configuration for the Kafka consumer other
-    /// than the bootstrap servers and group id. Typically, configuration for authentication, etc.
-    #[arg(long)]
-    consumer_properties: Option<String>,
     /// Maximum number of records that should be held in memory and displayed in the record table
     /// at any given time after being consumed from the Kafka topic. Once the number is exceeded
     /// then older records will be removed as newer ones are inserted. Defaults to 256.
@@ -101,6 +115,13 @@ impl Source for Cli {
             cfg.insert(
                 String::from("format"),
                 Value::from(RecordFormat::from(format)),
+            );
+        }
+
+        if let Some(schema_registry_url) = self.schema_registry_url.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_url"),
+                Value::from(schema_registry_url.clone()),
             );
         }
 
@@ -239,13 +260,54 @@ fn logs_dir() -> String {
 
 /// Runs the application.
 async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Result<()> {
+    // TODO: this was a simple way to get a reference to a SchemaRegistryClient with a static
+    // lifetime. need to re-evaluate this approach later. might have to restructure some things.
+    let schema_registry_client = config.schema_registry_url.as_ref().map(|url| {
+        let client_config = ClientConfig::new(vec![url.clone()]);
+        let client = Box::new(SchemaRegistryClient::new(client_config));
+
+        Box::leak(client)
+    });
+
+    let value_deserializer: Arc<dyn ValueDeserializer> = match config.format {
+        RecordFormat::None => Arc::new(StringDeserializer),
+        RecordFormat::Json => match schema_registry_client {
+            Some(client) => {
+                tracing::info!("using JSON deserializer with schema registry");
+
+                // TODO: cleanup error handling
+                let json_schema_deserializer =
+                    JsonSchemaDeserializer::new(client).expect("create JSON schema deserializer");
+
+                Arc::new(json_schema_deserializer)
+            }
+            None => {
+                tracing::info!("using JSON deserializer without schema registry");
+
+                Arc::new(JsonValueDeserializer)
+            }
+        },
+        RecordFormat::Avro => match schema_registry_client {
+            Some(client) => {
+                tracing::info!("using Avro schema deserializer with schema registry");
+
+                // TODO: cleanup error handling
+                let avro_schema_deserializer =
+                    AvroSchemaDeserializer::new(client).expect("create Avro schema deserializer");
+
+                Arc::new(avro_schema_deserializer)
+            }
+            None => anyhow::bail!("schema registry url must be specified when format is avro"),
+        },
+    };
+
+    let app = App::new(config, value_deserializer).context("initialize application")?;
+
     let terminal = ratatui::init();
 
-    let result = App::new(config)
-        .context("initialize application")?
-        .run(terminal, logs_rx)
-        .await;
+    let result = app.run(terminal, logs_rx).await;
 
+    // make sure to always restore terminal before returning
     ratatui::restore();
 
     result

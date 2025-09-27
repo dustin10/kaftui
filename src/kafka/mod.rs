@@ -1,6 +1,6 @@
 pub mod de;
 
-use crate::kafka::de::ValueDeserializer;
+use crate::kafka::de::{KeyDeserializer, StringDeserializer, ValueDeserializer};
 
 use anyhow::Context;
 use chrono::{DateTime, Local};
@@ -36,6 +36,10 @@ const RECORD_FORMAT_NONE: &str = "none";
 /// deserialization operations.
 const RECORD_FORMAT_JSON: &str = "json";
 
+/// String representation of the [`RecordFormat::Avro`] enum variant. Used in serialization and
+/// deserialization operations.
+const RECORD_FORMAT_AVRO: &str = "avro";
+
 /// Enumerates the different states that the Kafka consumer can be in.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ConsumerMode {
@@ -52,6 +56,8 @@ pub enum RecordFormat {
     None,
     /// Records in the topic are produced in JSON format.
     Json,
+    /// Records in the topic are produced in Avro format.
+    Avro,
 }
 
 impl Default for RecordFormat {
@@ -68,6 +74,7 @@ impl Display for RecordFormat {
         let s = match self {
             Self::None => RECORD_FORMAT_NONE,
             Self::Json => RECORD_FORMAT_JSON,
+            Self::Avro => RECORD_FORMAT_AVRO,
         };
 
         f.write_str(s)
@@ -82,6 +89,7 @@ where
     fn from(value: T) -> Self {
         match value.as_ref() {
             RECORD_FORMAT_JSON => Self::Json,
+            RECORD_FORMAT_AVRO => Self::Avro,
             _ => Self::None,
         }
     }
@@ -431,6 +439,9 @@ pub struct Consumer {
     topic: String,
     /// Partitions on the topic that the consumer should be assigned.
     partitions: Vec<i32>,
+    /// Specifies the [`KeyDeserializer`] that should be used to deserialize the key of the Kafka
+    /// record.
+    key_deserializer: Arc<dyn KeyDeserializer>,
     /// Specifies the [`ValueDeserializer`] that should be used to deserialize the value of the
     /// Kafka record.
     value_deserializer: Arc<dyn ValueDeserializer>,
@@ -496,10 +507,14 @@ impl Consumer {
             config.partitions
         };
 
+        // TODO: make this configurable as it could be tied to a schema in the registry
+        let key_deserializer = Arc::new(StringDeserializer);
+
         Ok(Self {
             consumer: Arc::new(consumer),
             topic: config.topic,
             partitions,
+            key_deserializer,
             value_deserializer,
             seek_to: config.seek_to,
             filter: config.filter,
@@ -554,6 +569,7 @@ impl Consumer {
             let task = PartitionConsumerTask {
                 consumer: Arc::clone(&self.consumer),
                 partition_queue: Arc::new(partition_queue),
+                key_deserializer: Arc::clone(&self.key_deserializer),
                 value_deserializer: Arc::clone(&self.value_deserializer),
                 filter: self.filter.clone(),
                 consumer_tx: self.consumer_tx.clone(),
@@ -672,6 +688,9 @@ where
     consumer: Arc<Con>,
     /// The partition queue that the task is handling Kafka records for.
     partition_queue: Arc<StreamPartitionQueue<Ctx>>,
+    /// Specifies the [`KeyDeserializer`] that should be used to deserialize the key of the Kafka
+    /// record.
+    key_deserializer: Arc<dyn KeyDeserializer>,
     /// Specifies the [`ValueDeserializer`] that should be used to deserialize the value of the
     /// Kafka record.
     value_deserializer: Arc<dyn ValueDeserializer>,
@@ -692,7 +711,7 @@ where
             .partition_queue
             .stream()
             .try_for_each(|msg| async move {
-                let record = self.create_record(&msg);
+                let record = self.create_record(&msg).await;
 
                 let consumer_event = match &self.filter {
                     Some(filter) if !record.matches(filter) => ConsumerEvent::Filtered(record),
@@ -713,11 +732,17 @@ where
         stream_procesor.await.context("process Kafka record stream")
     }
     /// Creates a new [`Record`] from the [`BorrowedMessage`] read from the Kafka topic.
-    fn create_record(&self, msg: &BorrowedMessage) -> Record {
-        let key = msg
-            .key()
-            .and_then(|k| std::str::from_utf8(k).ok())
-            .map(ToString::to_string);
+    async fn create_record(&self, msg: &BorrowedMessage<'_>) -> Record {
+        let key = match msg.key() {
+            None => None,
+            Some(data) => match self.key_deserializer.deserialize_key(data).await {
+                Ok(key) => Some(key),
+                Err(e) => {
+                    tracing::error!("error deserializing message key: {}", e);
+                    None
+                }
+            },
+        };
 
         let headers: HashMap<String, String> = match msg.headers() {
             Some(hs) => {
@@ -741,7 +766,11 @@ where
 
         let value = match msg.payload() {
             None => None,
-            Some(data) => match self.value_deserializer.deserialize(data) {
+            Some(data) => match self
+                .value_deserializer
+                .deserialize_value(msg.topic(), msg.headers(), data)
+                .await
+            {
                 Ok(v) => Some(v),
                 Err(e) => {
                     tracing::error!("error deserializing message value: {}", e);
