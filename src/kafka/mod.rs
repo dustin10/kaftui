@@ -7,14 +7,14 @@ use chrono::{DateTime, Local};
 use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
+    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
     config::RDKafkaLogLevel,
     consumer::{
-        stream_consumer::StreamPartitionQueue, BaseConsumer, CommitMode, Consumer as RDConsumer,
-        ConsumerContext as RDConsumerContext, Rebalance, StreamConsumer,
+        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
+        Rebalance, StreamConsumer, stream_consumer::StreamPartitionQueue,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
-    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};

@@ -4,14 +4,12 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
-    kafka::{
-        Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
-        de::{
-            ValueDeserializer,
-        },
-    },
+    kafka::{Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record, de::ValueDeserializer},
     trace::Log,
-    ui::{Component, Logs, LogsConfig, Records, RecordsConfig, Stats, StatsConfig},
+    ui::{
+        Component, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig, Stats,
+        StatsConfig,
+    },
 };
 
 use anyhow::Context;
@@ -165,6 +163,11 @@ impl State {
             notification: None,
         }
     }
+    /// Sets the active [`Component`] that the user is viewing and interacting with.
+    fn activate_component(&mut self, component: Rc<RefCell<dyn Component>>) {
+        self.active_component = component;
+        self.active_component.borrow_mut().on_activate();
+    }
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
@@ -193,7 +196,10 @@ pub struct App {
 
 impl App {
     /// Creates a new [`App`] with the specified dependencies.
-    pub fn new(config: Config, value_deserializer: Arc<dyn ValueDeserializer>) -> anyhow::Result<Self> {
+    pub fn new(
+        config: Config,
+        value_deserializer: Arc<dyn ValueDeserializer>,
+    ) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let event_bus = Arc::new(EventBus::new(event_tx));
@@ -230,7 +236,7 @@ impl App {
             .seek_to(config.seek_to.clone())
             .filter(config.filter.clone())
             .build()
-            .expect("valid ConsumerConfig"); 
+            .expect("valid ConsumerConfig");
 
         let consumer = Consumer::new(consumer_config, value_deserializer, consumer_tx)
             .context("create consumer")?;
@@ -263,6 +269,22 @@ impl App {
 
         let mut components: Vec<Rc<RefCell<dyn Component>>> =
             vec![records_component.clone(), stats_component];
+
+        if let Some(schema_registry_url) = config.schema_registry_url.as_ref() {
+            let schemas_component = Rc::new(RefCell::new(Schemas::new(
+                SchemasConfig::builder()
+                    .schema_registry_url(schema_registry_url.clone())
+                    .schema_registry_bearer_token(config.schema_registry_bearer_token.clone())
+                    .schema_registry_user(config.schema_registry_user.clone())
+                    .schema_registry_pass(config.schema_registry_pass.clone())
+                    .scroll_factor(config.scroll_factor)
+                    .theme(&config.theme)
+                    .build()
+                    .expect("valid Schemas config"),
+            )));
+
+            components.push(schemas_component);
+        }
 
         if config.logs_enabled {
             let logs_component = Rc::new(RefCell::new(Logs::new(
@@ -444,6 +466,7 @@ impl App {
             Event::PauseProcessing => self.on_pause_processing(),
             Event::ResumeProcessing => self.on_resume_processing(),
             Event::DisplayNotification(notification) => self.on_display_notification(notification),
+            Event::SelectNextWidget => self.state.active_component.borrow_mut().on_app_event(&event),
             _ => {
                 self.components
                     .iter()
@@ -532,7 +555,7 @@ impl App {
 
         if let Some(component) = self.components.get(idx) {
             tracing::debug!("activating {} component", component.borrow().name());
-            self.state.active_component = Rc::clone(component);
+            self.state.activate_component(Rc::clone(component));
         }
     }
 }

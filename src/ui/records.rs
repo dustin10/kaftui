@@ -1,14 +1,15 @@
 use crate::{
-    app::{config::Theme, BufferedKeyPress},
+    app::{BufferedKeyPress, config::Theme},
     event::Event,
     kafka::{ConsumerMode, Record},
-    ui::{widget::ConsumerStatusLine, Component},
+    ui::{Component, widget::ConsumerStatusLine},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::ToSpan,
@@ -16,7 +17,6 @@ use ratatui::{
         Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation,
         ScrollbarState, Table, TableState, Wrap,
     },
-    Frame,
 };
 use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 
@@ -27,9 +27,6 @@ const EMPTY_PARTITION_KEY: &str = "<empty>";
 /// the application is when viewing the records UI.
 const RECORDS_STANDARD_KEY_BINDINGS: [&str; 2] =
     [super::KEY_BINDING_QUIT, super::KEY_BINDING_CHANGE_FOCUS];
-
-/// Text displayed to the user in the footer for the export key binding.
-const KEY_BINDING_EXPORT: &str = "(e) export";
 
 /// Enumeration of the widgets in the [`Records`] component that can have focus.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -724,7 +721,7 @@ impl Component for Records {
         key_bindings.push(consumer_mode_key_binding);
 
         if self.state.is_record_selected() {
-            key_bindings.push(KEY_BINDING_EXPORT);
+            key_bindings.push(super::KEY_BINDING_EXPORT);
         }
 
         let text = Paragraph::new(key_bindings.join(" | "))

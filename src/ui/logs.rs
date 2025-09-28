@@ -1,5 +1,5 @@
 use crate::{
-    app::{config::Theme, BufferedKeyPress},
+    app::{BufferedKeyPress, config::Theme},
     event::Event,
     trace::Log,
     ui::Component,
@@ -9,12 +9,12 @@ use bounded_vec_deque::BoundedVecDeque;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
+    Frame,
     layout::{Constraint, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     widgets::{
         Block, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState,
     },
-    Frame,
 };
 use std::str::FromStr;
 
@@ -27,6 +27,7 @@ const LOGS_KEY_BINDINGS: [&str; 5] = [
     super::KEY_BINDING_BOTTOM,
 ];
 
+/// Manages state related to application logs and the UI that renders them to the user.
 #[derive(Debug)]
 struct LogsState {
     /// Bounded collection of log messages emitted by the application.

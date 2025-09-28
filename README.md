@@ -2,14 +2,14 @@
 
 A TUI application which can be used to view records published to a [Kafka](https://kafka.apache.org/) topic.
 
-![kaftui application records UI running with the default theme](assets/kaftui-default-records.png)
+![kaftui application records ui running with the default theme](assets/kaftui-default-records.png)
 
 The `kaftui` application provides the following features to users.
 
 * View records from a topic including headers and payload value in an easy to read format.
 coming soon.
-* Schema Registry integration for deserializing and validating records in JSON and Avro format. Protobuf support is in
-active development.
+* Schema Registry integration for deserializing and validating records in JSONSchema and Avro format. Protobuf support
+is under active development.
 * Pause and resume the Kafka consumer.
 * Assign all or specific partitions of the topic to the Kafka consumer.
 * Seek to a specific offset on a single or multiple partitions of the topic.
@@ -20,7 +20,7 @@ active development.
 
 The application also keeps track of basic statistics during execution and presents them in a dedicated UI for the user.
 
-![kaftui application stats UI running with the default theme](assets/kaftui-default-stats.png)
+![kaftui application stats ui running with the default theme](assets/kaftui-default-stats.png)
 
 The following statistics are currently tracked.
 * Number of Kafka records received
@@ -29,6 +29,11 @@ The following statistics are currently tracked.
 * Throughput in records per second.
 * Number of Kafka records consumed per partition.
 * Detailed per-partition information.
+
+When using the schema registry, a subject browser will be available to the user as well where the subjects, their
+schemas and the various versions of the schemas can be viewed and compared.
+
+![kaftui application schema registry ui running with the default theme](assets/kaftui-default-schema-registry.png)
 
 ## Quick Start
 
@@ -106,7 +111,10 @@ active widget.The following key bindings apply no matter which widget is current
 * `tab` - Changes focus from the current widget to the next available one.
 * `1` - View the `Records` screen.
 * `2` - View the `Stats` screen.
-* `3` - View the `Logs` screen. This screen is only available when application logs have been enabled.
+* `3` - View the `Schema Registry` screen. This screen is only available when the schema registry has been configured.
+
+> If application logs have been enabled using the proceure outlined above, then an additional `Logs` screen will be
+available for selection in the menu.
 
 The active key bindings will be displayed in the UI on the right side of the footer and will vary depending on the 
 screen that is currently being viewed within the application.
@@ -190,15 +198,17 @@ section for an example of a theme.
 
 The screenshot below is an example of a `kaftui` theme configuration that is inspired by the Dracula theme.
 
-![kaftui application running with a dracula theme](assets/kaftui-dracula-records.png)
+![kaftui application records ui running with a dracula theme](assets/kaftui-dracula-records.png)
 
-![kaftui application running with a dracula theme](assets/kaftui-dracula-stats.png)
+![kaftui application stats ui running with a dracula theme](assets/kaftui-dracula-stats.png)
+
+![kaftui application schema registry ui running with a dracula theme](assets/kaftui-dracula-schema-registry.png)
 
 ## Persisted Configuration
 
 To persist configuration across executions of the `kaftui` application, a JSON configuration file can be saved at
 `$HOME/.kaftui.json` which contains the relevant configuration values. The JSON below contains is a full example of the
-set of values that are availableto to configure the application from this file.
+set of values that are available to configure the application from this file.
 
 ```json
 {

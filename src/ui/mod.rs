@@ -1,17 +1,18 @@
 mod logs;
 mod records;
+mod schemas;
 mod stats;
 mod widget;
 
-pub use crate::ui::{
-    logs::{Logs, LogsConfig},
-    records::{Records, RecordsConfig},
-    stats::{Stats, StatsConfig},
-};
-
-use crate::{
+pub use crate::{
     app::{App, BufferedKeyPress, NotificationStatus},
     event::Event,
+    ui::{
+        logs::{Logs, LogsConfig},
+        records::{Records, RecordsConfig},
+        schemas::{Schemas, SchemasConfig},
+        stats::{Stats, StatsConfig},
+    },
 };
 
 use crossterm::event::KeyEvent;
@@ -53,6 +54,9 @@ const KEY_BINDING_PREV: &str = "(k) prev";
 /// Text displayed to the user in the footer for the move to bottom key binding.
 const KEY_BINDING_BOTTOM: &str = "(G) bottom";
 
+/// Text displayed to the user in the footer for the export key binding.
+const KEY_BINDING_EXPORT: &str = "(e) export";
+
 /// A [`Component`] represents a top-level screen in the application that the user can view and
 /// interact with. Each [`Component`] that is created and added to the [`App`] can be selected by
 /// the user using the menu items.
@@ -77,6 +81,8 @@ pub trait Component {
     fn render_status_line(&self, _frame: &mut Frame, _area: Rect) {}
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, _frame: &mut Frame, _area: Rect) {}
+    /// Hook for the [`Component`] to run any logic required when it becomes active.
+    fn on_activate(&mut self) {}
 }
 
 impl App {

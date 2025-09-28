@@ -3,6 +3,14 @@ use crate::{app::Notification, kafka::Record, trace::Log};
 use rdkafka::Statistics;
 use tokio::sync::mpsc::UnboundedSender;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScrollPosition {
+    Top,
+    Down,
+    Up,
+    Bottom,
+}
+
 /// Enumeration of events which can be produced by the application.
 #[derive(Debug)]
 pub enum Event {
@@ -63,6 +71,14 @@ pub enum Event {
     ScrollLogsBottom,
     /// Fires when a [`Log`] is emitted by the application.
     LogEmitted(Log),
+    /// Fires when the user wants to scroll the subjects widget.
+    ScrollSubjects(ScrollPosition),
+    /// Fires when the user wants to scroll the subject schema versions widget.
+    ScrollSchemaVersions(ScrollPosition),
+    /// Fires when the user wants to scroll the schema definition widget.
+    ScrollSchemaDefinition(ScrollPosition),
+    /// Fires when the user wants to scroll the schema references widget.
+    ScrollSchemaReferences(ScrollPosition),
 }
 
 /// The bus over which [`Event`]s are published.
