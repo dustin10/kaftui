@@ -7,6 +7,8 @@ A TUI application which can be used to view records published to a [Kafka](https
 The `kaftui` application provides the following features to users.
 
 * View records from a topic including headers and payload value in an easy to read format.
+coming soon.
+* Schema Registry integration for deserializing and validating records in JSON and Avro format. Protobuf support is
 * Pause and resume the Kafka consumer.
 * Assign all or specific partitions of the topic to the Kafka consumer.
 * Seek to a specific offset on a single or multiple partitions of the topic.
@@ -58,8 +60,11 @@ To use a custom group id for the consumer simply specify it using the `--group-i
 * `--partitions` - CSV of the partition numbers that the consumer should be assigned. This argument is used to restrict
 the set of partitions that will be consumed. If not specified, all partitions will be assigned. For example, `0,2`
 would cause only partitions `0` and `2` to be assigned to the Kafka consumer.
+* `--schema-registry-url` - URL of the Schema Registry that should be used to deserialzie and validate records from the
+Kafka topic.
 * `--format` - Specifies the format of the data contained in the Kafka topic. By default the data is assumed to be in no
-special format and no special handling will be applied to it when displayed. Valid values: `json`.
+special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro`. If `avro` is
+specified, then the `--schema-registry-url` argument is required.
 * `--seek-to` - CSV of colon separated pairs of partition and offset values that the Kafka consumer will seek to before
 starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition `0`
 and offset `10` on partition `1`. A value of `reset` can also be specified for this argument which will cause the
@@ -137,7 +142,8 @@ The following properties are supported in profiles.
 * `bootstrapServers` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
 * `topic` - Name of the Kafka topic to consume records from.
 * `partitions` - CSV of partition numbers of the topic that should be assigned to the Kafka consumer.
-* `filter` - Format of the data contained in the Kafka topic.
+* `schemaRegistryUrl` - URL of the Schema Registry that should be used to deserialzie and validate records.
+* `format` - Format of the data contained in the Kafka topic.
 * `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
 * `filter` - JSONPath filter that is applied to a record.
 * `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and
@@ -175,7 +181,7 @@ properties are available to be configured using a theme.
 > Colors must be specified in RGB format **with** the leading `#`. See the [Persisted Configuration](#Persisted-Configuration)
 section for an example of a theme.
 
-The screenshow below is an example of a `kaftui` theme configuration that is inspired by the Dracula theme.
+The screenshot below is an example of a `kaftui` theme configuration that is inspired by the Dracula theme.
 
 ![kaftui application running with a dracula theme](assets/kaftui-dracula-records.png)
 
@@ -209,6 +215,18 @@ set of values that are availableto to configure the application from this file.
       "sasl.password": "<password>"
     },
     "format": "json"
+  }, {
+    "name": "cloud-user",
+    "bootstrapServers": "kafka-brokers.acme.com:9092",
+    "topic": "user",
+    "format": "avro",
+    "schemaRegistryUrl": "https://schema-registry.acme.com:8081",
+    "consumerProperties": {
+      "security.protocol": "SASL_SSL",
+      "sasl.mechanisms": "PLAIN",
+      "sasl.username": "<username>",
+      "sasl.password": "<password>"
+    },
   }],
   "theme": {
     "panelBorderColor": "#6272A4",
