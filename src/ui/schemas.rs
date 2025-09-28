@@ -1,7 +1,7 @@
 use crate::{app::config::Theme, event::Event, ui::Component};
 
 use derive_builder::Builder;
-use ratatui::{Frame, layout::Rect, style::Color};
+use ratatui::{layout::Rect, style::Color, Frame};
 use std::str::FromStr;
 
 /// Contains the [`Color`]s from the application [`Theme`] required to render the [`Schemas`]
@@ -36,7 +36,7 @@ impl From<&Theme> for SchemasTheme {
 }
 
 /// Configuration used to create a new [`Schemas`] component.
-#[derive(Builder, Debug)]
+#[derive(Builder)]
 pub struct SchemasConfig<'a> {
     /// Reference to the application [`Theme`].
     theme: &'a Theme,
@@ -50,7 +50,13 @@ impl<'a> SchemasConfig<'a> {
     }
 }
 
-#[derive(Debug)]
+impl From<SchemasConfig<'_>> for Schemas {
+    /// Converts from an owned [`SchemasConfig`] to an owned [`Schemas`].
+    fn from(value: SchemasConfig<'_>) -> Self {
+        Self::new(value)
+    }
+}
+
 pub struct Schemas {
     theme: SchemasTheme,
 }
