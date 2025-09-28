@@ -1,6 +1,6 @@
 use chrono::{
-    format::{DelayedFormat, StrftimeItems},
     DateTime, Local,
+    format::{DelayedFormat, StrftimeItems},
 };
 use std::{
     collections::HashMap,
@@ -8,10 +8,10 @@ use std::{
 };
 use tokio::sync::mpsc::Sender;
 use tracing::{
-    field::{Field, Visit},
     Event, Subscriber,
+    field::{Field, Visit},
 };
-use tracing_subscriber::{layer::Context, Layer};
+use tracing_subscriber::{Layer, layer::Context};
 
 /// Key for the field containing the message in a tracing event.
 const MESSAGE_KEY: &str = "message";

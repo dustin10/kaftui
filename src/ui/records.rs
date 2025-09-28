@@ -1,14 +1,15 @@
 use crate::{
-    app::{config::Theme, BufferedKeyPress},
+    app::{BufferedKeyPress, config::Theme},
     event::Event,
     kafka::{ConsumerMode, Record},
-    ui::{widget::ConsumerStatusLine, Component},
+    ui::{Component, widget::ConsumerStatusLine},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::ToSpan,
@@ -16,7 +17,6 @@ use ratatui::{
         Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation,
         ScrollbarState, Table, TableState, Wrap,
     },
-    Frame,
 };
 use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 

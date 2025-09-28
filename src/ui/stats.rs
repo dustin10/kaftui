@@ -1,8 +1,8 @@
 use crate::{
-    app::{config::Theme, BufferedKeyPress},
+    app::{BufferedKeyPress, config::Theme},
     event::Event,
     kafka::{ConsumerMode, Record},
-    ui::{widget::ConsumerStatusLine, Component},
+    ui::{Component, widget::ConsumerStatusLine},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
@@ -10,6 +10,7 @@ use chrono::{Duration, Local};
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     symbols::Marker,
@@ -18,9 +19,8 @@ use ratatui::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Chart, Dataset, GraphType, Padding,
         Paragraph, Row, Table,
     },
-    Frame,
 };
-use rdkafka::{statistics::Partition, Statistics};
+use rdkafka::{Statistics, statistics::Partition};
 use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 
 /// Number of columns to render between bars in a bar chart.

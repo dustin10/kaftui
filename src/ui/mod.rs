@@ -1,11 +1,13 @@
 mod logs;
 mod records;
+mod schemas;
 mod stats;
 mod widget;
 
 pub use crate::ui::{
     logs::{Logs, LogsConfig},
     records::{Records, RecordsConfig},
+    schemas::{Schemas, SchemasConfig},
     stats::{Stats, StatsConfig},
 };
 
@@ -16,10 +18,10 @@ use crate::{
 
 use crossterm::event::KeyEvent;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     widgets::{Block, Borders, Padding, Paragraph, Tabs},
-    Frame,
 };
 use std::str::FromStr;
 
