@@ -8,7 +8,8 @@ The `kaftui` application provides the following features to users.
 
 * View records from a topic including headers and payload value in an easy to read format.
 coming soon.
-* Schema Registry integration for deserializing and validating records in JSON and Avro format. Protobuf support is
+* Schema Registry integration for deserializing and validating records in JSON and Avro format. Protobuf support is in
+active development.
 * Pause and resume the Kafka consumer.
 * Assign all or specific partitions of the topic to the Kafka consumer.
 * Seek to a specific offset on a single or multiple partitions of the topic.
@@ -62,6 +63,9 @@ the set of partitions that will be consumed. If not specified, all partitions wi
 would cause only partitions `0` and `2` to be assigned to the Kafka consumer.
 * `--schema-registry-url` - URL of the Schema Registry that should be used to deserialzie and validate records from the
 Kafka topic.
+* `--schema-registry-bearer-token` - Bearer authentication token used to connect to the the Schema Registry.
+* `--schema-registry-user` - Basic authentication user used to connect to the the Schema Registry.
+* `--schema-registry-pass` - Basic authentication password used to connect to the the Schema Registry.
 * `--format` - Specifies the format of the data contained in the Kafka topic. By default the data is assumed to be in no
 special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro`. If `avro` is
 specified, then the `--schema-registry-url` argument is required.
@@ -143,6 +147,9 @@ The following properties are supported in profiles.
 * `topic` - Name of the Kafka topic to consume records from.
 * `partitions` - CSV of partition numbers of the topic that should be assigned to the Kafka consumer.
 * `schemaRegistryUrl` - URL of the Schema Registry that should be used to deserialzie and validate records.
+* `schemaRegistryBearerToken` - Bearer authentication token used to connect to the the Schema Registry.
+* `schemaRegistryUser` - Basic authentication user used to connect to the the Schema Registry.
+* `schemaRegistryPass` - Basic authentication password used to connect to the the Schema Registry.
 * `format` - Format of the data contained in the Kafka topic.
 * `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
 * `filter` - JSONPath filter that is applied to a record.
@@ -221,6 +228,8 @@ set of values that are availableto to configure the application from this file.
     "topic": "user",
     "format": "avro",
     "schemaRegistryUrl": "https://schema-registry.acme.com:8081",
+    "schemaRegistryUser": "<basic-auth-user>",
+    "schemaRegistryPass": "<basic-auth-pass>",
     "consumerProperties": {
       "security.protocol": "SASL_SSL",
       "sasl.mechanisms": "PLAIN",

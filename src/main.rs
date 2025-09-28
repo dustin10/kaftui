@@ -58,7 +58,16 @@ struct Cli {
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
     #[arg(long)]
-    schema_registry_url: Option<String>, // TODO: allow auth to be configured
+    schema_registry_url: Option<String>,
+    /// Specifies the bearer authentication token used to connect to the the Schema Registry.
+    #[arg(long)]
+    schema_registry_bearer_token: Option<String>,
+    /// Specifies the basic auth user used to connect to the the Schema Registry.
+    #[arg(long)]
+    schema_registry_user: Option<String>,
+    /// Specifies the basic auth password used to connect to the the Schema Registry.
+    #[arg(long)]
+    schema_registry_pass: Option<String>,
     /// Id of the consumer group that the application will use when consuming records from the Kafka
     /// topic. By default a group id will be generated from the hostname of the machine that is
     /// executing the application.
@@ -122,6 +131,26 @@ impl Source for Cli {
             cfg.insert(
                 String::from("schema_registry_url"),
                 Value::from(schema_registry_url.clone()),
+            );
+        }
+
+        if let Some(schema_registry_bearer_token) = self.schema_registry_bearer_token.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_bearer_token"),
+                Value::from(schema_registry_bearer_token.clone()),
+            );
+        }
+        if let Some(schema_registry_user) = self.schema_registry_user.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_user"),
+                Value::from(schema_registry_user.clone()),
+            );
+        }
+
+        if let Some(schema_registry_pass) = self.schema_registry_pass.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_pass"),
+                Value::from(schema_registry_pass.clone()),
             );
         }
 
@@ -263,7 +292,17 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
     // TODO: this was a simple way to get a reference to a SchemaRegistryClient with a static
     // lifetime. need to re-evaluate this approach later. might have to restructure some things.
     let schema_registry_client = config.schema_registry_url.as_ref().map(|url| {
-        let client_config = ClientConfig::new(vec![url.clone()]);
+        let mut client_config = ClientConfig::new(vec![url.clone()]);
+        if let Some(bearer) = config.schema_registry_bearer_token.as_ref() {
+            tracing::info!("configuring bearer token auth for schema registry client");
+            client_config.bearer_access_token = Some(bearer.clone());
+        }
+
+        if let Some(user) = config.schema_registry_user.as_ref() {
+            tracing::info!("configuring basic auth for schema registry client");
+            client_config.basic_auth = Some((user.clone(), config.schema_registry_pass.clone()));
+        }
+
         let client = Box::new(SchemaRegistryClient::new(client_config));
 
         Box::leak(client)

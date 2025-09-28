@@ -53,6 +53,12 @@ pub struct Config {
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
     pub schema_registry_url: Option<String>,
+    /// Specifies bearer authentication token used to connect to the the Schema Registry.
+    pub schema_registry_bearer_token: Option<String>,
+    /// Specifies the basic auth user used to connect to the the Schema Registry.
+    pub schema_registry_user: Option<String>,
+    /// Specifies the basic auth password used to connect to the the Schema Registry.
+    pub schema_registry_pass: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     pub group_id: String,
@@ -268,6 +274,12 @@ struct Profile {
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
     schema_registry_url: Option<String>,
+    /// Specifies the bearer auth token used to connect to the the Schema Registry.
+    schema_registry_bearer_token: Option<String>,
+    /// Specifies the basic auth user used to connect to the the Schema Registry.
+    schema_registry_user: Option<String>,
+    /// Specifies the basic auth password used to connect to the the Schema Registry.
+    schema_registry_pass: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     group_id: Option<String>,
@@ -311,6 +323,27 @@ impl Source for Profile {
             cfg.insert(
                 String::from("schema_registry_url"),
                 Value::from(schema_registry_url.clone()),
+            );
+        }
+
+        if let Some(schema_registry_bearer_token) = self.schema_registry_bearer_token.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_bearer_token"),
+                Value::from(schema_registry_bearer_token.clone()),
+            );
+        }
+
+        if let Some(schema_registry_user) = self.schema_registry_user.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_user"),
+                Value::from(schema_registry_user.clone()),
+            );
+        }
+
+        if let Some(schema_registry_pass) = self.schema_registry_pass.as_ref() {
+            cfg.insert(
+                String::from("schema_registry_pass"),
+                Value::from(schema_registry_pass.clone()),
             );
         }
 
