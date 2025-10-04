@@ -27,6 +27,7 @@ const LOGS_KEY_BINDINGS: [&str; 5] = [
     super::KEY_BINDING_BOTTOM,
 ];
 
+/// Manages state related to application logs and the UI that renders them to the user.
 #[derive(Debug)]
 struct LogsState {
     /// Bounded collection of log messages emitted by the application.

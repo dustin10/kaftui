@@ -28,9 +28,6 @@ const EMPTY_PARTITION_KEY: &str = "<empty>";
 const RECORDS_STANDARD_KEY_BINDINGS: [&str; 2] =
     [super::KEY_BINDING_QUIT, super::KEY_BINDING_CHANGE_FOCUS];
 
-/// Text displayed to the user in the footer for the export key binding.
-const KEY_BINDING_EXPORT: &str = "(e) export";
-
 /// Enumeration of the widgets in the [`Records`] component that can have focus.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum RecordsWidget {
@@ -724,7 +721,7 @@ impl Component for Records {
         key_bindings.push(consumer_mode_key_binding);
 
         if self.state.is_record_selected() {
-            key_bindings.push(KEY_BINDING_EXPORT);
+            key_bindings.push(super::KEY_BINDING_EXPORT);
         }
 
         let text = Paragraph::new(key_bindings.join(" | "))

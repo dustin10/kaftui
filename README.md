@@ -30,6 +30,9 @@ The following statistics are currently tracked.
 * Number of Kafka records consumed per partition.
 * Detailed per-partition information.
 
+When using the schema registry, a schema browser will be available to the user as well where the subjects, their
+schemas and the various versions of the schemas be viewed.
+
 ## Quick Start
 
 First, install the `kafktui` application using `cargo`. The minimum required version of Rust is `1.89.0`.

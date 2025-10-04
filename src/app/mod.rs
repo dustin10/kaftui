@@ -163,6 +163,11 @@ impl State {
             notification: None,
         }
     }
+    /// Sets the active [`Component`] that the user is viewing and interacting with.
+    fn activate_component(&mut self, component: Rc<RefCell<dyn Component>>) {
+        self.active_component = component;
+        self.active_component.borrow_mut().on_activate();
+    }
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
@@ -265,9 +270,13 @@ impl App {
         let mut components: Vec<Rc<RefCell<dyn Component>>> =
             vec![records_component.clone(), stats_component];
 
-        if let Some(_schema_registry_url) = config.schema_registry_url.as_ref() {
+        if let Some(schema_registry_url) = config.schema_registry_url.as_ref() {
             let schemas_component = Rc::new(RefCell::new(Schemas::new(
                 SchemasConfig::builder()
+                    .schema_registry_url(schema_registry_url.clone())
+                    .schema_registry_bearer_token(config.schema_registry_bearer_token.clone())
+                    .schema_registry_user(config.schema_registry_user.clone())
+                    .schema_registry_pass(config.schema_registry_pass.clone())
                     .theme(&config.theme)
                     .build()
                     .expect("valid Schemas config"),
@@ -456,6 +465,7 @@ impl App {
             Event::PauseProcessing => self.on_pause_processing(),
             Event::ResumeProcessing => self.on_resume_processing(),
             Event::DisplayNotification(notification) => self.on_display_notification(notification),
+            Event::SelectNextWidget => self.state.active_component.borrow_mut().on_app_event(&event),
             _ => {
                 self.components
                     .iter()
@@ -544,7 +554,7 @@ impl App {
 
         if let Some(component) = self.components.get(idx) {
             tracing::debug!("activating {} component", component.borrow().name());
-            self.state.active_component = Rc::clone(component);
+            self.state.activate_component(Rc::clone(component));
         }
     }
 }
