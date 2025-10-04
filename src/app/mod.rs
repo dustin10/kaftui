@@ -277,6 +277,7 @@ impl App {
                     .schema_registry_bearer_token(config.schema_registry_bearer_token.clone())
                     .schema_registry_user(config.schema_registry_user.clone())
                     .schema_registry_pass(config.schema_registry_pass.clone())
+                    .scroll_factor(config.scroll_factor)
                     .theme(&config.theme)
                     .build()
                     .expect("valid Schemas config"),

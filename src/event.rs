@@ -75,6 +75,8 @@ pub enum Event {
     ScrollSubjects(ScrollPosition),
     /// Fires when the user wants to scroll the subject schema versions widget.
     ScrollSchemaVersions(ScrollPosition),
+    /// Fires when the user wants to scroll the schema definition widget.
+    ScrollSchemaDefinition(ScrollPosition),
 }
 
 /// The bus over which [`Event`]s are published.

@@ -65,7 +65,7 @@ impl From<SchemaReference> for SchemaRef {
 }
 
 /// A schema retrieved from the schema registry along with all available versions for the subject
-/// it is associated with. 
+/// it is associated with.
 #[derive(Debug)]
 struct Schema {
     /// Identifier of the schema.
@@ -139,6 +139,8 @@ struct SchemasState {
     versions_list_state: ListState,
     /// Manages state of the schema versions list scrollbar.
     versions_scroll_state: ScrollbarState,
+    /// Contains the current scrolling state for the schema definition text.
+    schema_definition_scroll: (u16, u16),
 }
 
 impl SchemasState {
@@ -148,15 +150,19 @@ impl SchemasState {
     }
     /// Cycles the focus to the next available widget based on the currently selected widget.
     fn select_next_widget(&mut self) {
-        if self.selected_subject.is_none() {
-            return;
-        }
-
-        self.active_widget = match self.active_widget {
-            SchemasWidget::Subjects => SchemasWidget::Schema,
-            SchemasWidget::Schema => SchemasWidget::Versions,
-            SchemasWidget::Versions => SchemasWidget::References,
-            SchemasWidget::References => SchemasWidget::Subjects,
+        if let Some(schema) = self.selected_schema.as_ref() {
+            self.active_widget = match self.active_widget {
+                SchemasWidget::Subjects => SchemasWidget::Schema,
+                SchemasWidget::Schema => SchemasWidget::Versions,
+                SchemasWidget::Versions => {
+                    if schema.references.is_some() {
+                        SchemasWidget::References
+                    } else {
+                        SchemasWidget::Subjects
+                    }
+                }
+                SchemasWidget::References => SchemasWidget::Subjects,
+            }
         }
     }
     /// Selects the first subject in the list.
@@ -326,6 +332,20 @@ impl SchemasState {
 
         Some(*version)
     }
+    /// Moves the schema definition scroll state to the top.
+    fn scroll_schema_definition_top(&mut self) {
+        self.schema_definition_scroll.0 = 0;
+    }
+    /// Moves the schema definitionscroll state down by `n` number of lines.
+    fn scroll_schema_definition_down(&mut self, n: u16) {
+        self.schema_definition_scroll.0 += n;
+    }
+    /// Moves the schema definition scroll state up by `n` number of lines.
+    fn scroll_schema_definition_up(&mut self, n: u16) {
+        if self.schema_definition_scroll.0 >= n {
+            self.schema_definition_scroll.0 -= n;
+        }
+    }
 }
 
 /// Contains the [`Color`]s from the application [`Theme`] required to render the [`Schemas`]
@@ -377,6 +397,8 @@ pub struct SchemasConfig<'a> {
     schema_registry_user: Option<String>,
     /// Specifies the basic auth password used to connect to the the Schema Registry.
     schema_registry_pass: Option<String>,
+    /// Controls how many lines each press of a key scrolls the schema definition text.
+    scroll_factor: u16,
     /// Reference to the application [`Theme`].
     theme: &'a Theme,
 }
@@ -403,6 +425,8 @@ pub struct Schemas {
     client: SchemaRegistryClient,
     /// Current state of the component and it's underlying widgets.
     state: SchemasState,
+    /// Controls how many lines each press of a key scrolls the schema definition text.
+    scroll_factor: u16,
     /// Color scheme for the component.
     theme: SchemasTheme,
 }
@@ -427,6 +451,7 @@ impl Schemas {
         Self {
             client,
             state: SchemasState::new(),
+            scroll_factor: config.scroll_factor,
             theme: config.theme.into(),
         }
     }
@@ -524,7 +549,8 @@ impl Schemas {
 
         let schema_paragraph = Paragraph::new(schema_pretty)
             .block(schema_block)
-            .wrap(Wrap { trim: false });
+            .wrap(Wrap { trim: false })
+            .scroll(self.state.schema_definition_scroll);
 
         frame.render_widget(schema_paragraph, area);
     }
@@ -874,11 +900,12 @@ impl Component for Schemas {
                         'G' => Some(Event::ScrollSubjects(ScrollPosition::Bottom)),
                         _ => None,
                     },
-                    // TODO: implement scrolling for schema JSON
                     SchemasWidget::Schema => match c {
-                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => None,
-                        'j' => None,
-                        'k' => None,
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                            Some(Event::ScrollSchemaDefinition(ScrollPosition::Top))
+                        }
+                        'j' => Some(Event::ScrollSchemaDefinition(ScrollPosition::Down)),
+                        'k' => Some(Event::ScrollSchemaDefinition(ScrollPosition::Up)),
                         _ => None,
                     },
                     SchemasWidget::Versions => match c {
@@ -912,6 +939,14 @@ impl Component for Schemas {
                 ScrollPosition::Down => self.select_next_subject(),
                 ScrollPosition::Up => self.select_prev_subject(),
                 ScrollPosition::Bottom => self.select_last_subject(),
+            },
+            Event::ScrollSchemaDefinition(scroll_position) => match scroll_position {
+                ScrollPosition::Top => self.state.scroll_schema_definition_top(),
+                ScrollPosition::Down => {
+                    self.state.scroll_schema_definition_down(self.scroll_factor)
+                }
+                ScrollPosition::Up => self.state.scroll_schema_definition_up(self.scroll_factor),
+                ScrollPosition::Bottom => {}
             },
             Event::ScrollSchemaVersions(scroll_position) => match scroll_position {
                 ScrollPosition::Top => self.select_first_schema_version(),
