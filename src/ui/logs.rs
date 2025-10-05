@@ -1,6 +1,6 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
-    event::Event,
+    event::{Event, Position},
     trace::Log,
     ui::Component,
 };
@@ -241,10 +241,12 @@ impl Component for Logs {
     fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
-                'g' if buffered.filter(|kp| kp.is('g')).is_some() => Some(Event::ScrollLogsTop),
-                'j' => Some(Event::ScrollLogsDown),
-                'k' => Some(Event::ScrollLogsUp),
-                'G' => Some(Event::ScrollLogsBottom),
+                'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                    Some(Event::ScrollLogs(Position::Top))
+                }
+                'j' => Some(Event::ScrollLogs(Position::Down)),
+                'k' => Some(Event::ScrollLogs(Position::Up)),
+                'G' => Some(Event::ScrollLogs(Position::Bottom)),
                 _ => None,
             },
             _ => None,
@@ -254,10 +256,12 @@ impl Component for Logs {
     /// application.
     fn on_app_event(&mut self, event: &Event) {
         match event {
-            Event::ScrollLogsTop => self.state.scroll_list_top(),
-            Event::ScrollLogsUp => self.state.scroll_list_up(),
-            Event::ScrollLogsDown => self.state.scroll_list_down(),
-            Event::ScrollLogsBottom => self.state.scroll_list_bottom(),
+            Event::ScrollLogs(position) => match position {
+                Position::Top => self.state.scroll_list_top(),
+                Position::Up => self.state.scroll_list_up(),
+                Position::Down => self.state.scroll_list_down(),
+                Position::Bottom => self.state.scroll_list_bottom(),
+            },
             Event::LogEmitted(log) => self.state.on_log_emitted(log),
             _ => {}
         }

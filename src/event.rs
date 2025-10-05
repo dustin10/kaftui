@@ -3,11 +3,17 @@ use crate::{app::Notification, kafka::Record, trace::Log};
 use rdkafka::Statistics;
 use tokio::sync::mpsc::UnboundedSender;
 
+/// Enumeration of the positions widgets can be scrolled to or the position of an item that should
+/// be selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScrollPosition {
+pub enum Position {
+    /// Scroll to the top or select the top item.
     Top,
+    /// Scroll down one or select the next item.
     Down,
+    /// Scroll up one or select the previous item.
     Up,
+    /// Scroll to the bottom or select the bottom item.
     Bottom,
 }
 
@@ -27,14 +33,8 @@ pub enum Event {
     RecordFiltered(Record),
     /// Fires when the Kafka consumer receives updated [`Statistics`] from the librdkafka library.
     StatisticsReceived(Box<Statistics>),
-    /// Fires when the user wants to select the first record in the list.
-    SelectFirstRecord,
-    /// Fires when the user wants to select the previous record in the list.
-    SelectPrevRecord,
-    /// Fires when the user wants to select the next record in the list.
-    SelectNextRecord,
-    /// Fires when the user wants to select the last record in the list.
-    SelectLastRecord,
+    /// Fires when the user wants to select a record in the list.
+    SelectRecord(Position),
     /// Fires when the user wants to export a [`Record`] to a file.
     ExportRecord(Record),
     /// Fires when the user wants to continue processing records.
@@ -43,42 +43,26 @@ pub enum Event {
     PauseProcessing,
     /// Fires when the user wants to select a different widget.
     SelectNextWidget,
-    /// Fires when the user wants to scroll the record value widget to the top.
-    ScrollRecordValueTop,
-    /// Fires when the user wants to scroll the record value widget down.
-    ScrollRecordValueDown,
-    /// Fires when the user wants to scroll the record value widget up.
-    ScrollRecordValueUp,
-    /// Fires when the user wants to scroll the record headers widget to the top.
-    ScrollRecordHeadersTop,
-    /// Fires when the user wants to scroll the record headers widget down.
-    ScrollRecordHeadersDown,
-    /// Fires when the user wants to scroll the record headers widget up.
-    ScrollRecordHeadersUp,
-    /// Fires when the user wants to scroll to the bottom of the record headers list.
-    ScrollRecordHeadersBottom,
+    /// Fires when the user wants to scroll the record value widget.
+    ScrollRecordValue(Position),
+    /// Fires when the user wants to scroll the record headers widget.
+    ScrollRecordHeaders(Position),
     /// Fires when the user selects a [`crate::ui::Component`] to view in the UI.
     SelectComponent(usize),
     /// Fires when a new [`Notification`] should be displayed to the user.
     DisplayNotification(Notification),
-    /// Fires when the user wants to scroll to the top of the logs list.
-    ScrollLogsTop,
-    /// Fires when the user wants to scroll the logs list up.
-    ScrollLogsUp,
-    /// Fires when the user wants to scroll the logs list down.
-    ScrollLogsDown,
-    /// Fires when the user wants to scroll to the bottom of the logs list.
-    ScrollLogsBottom,
+    /// Fires when the user wants to scroll logs list widget.
+    ScrollLogs(Position),
     /// Fires when a [`Log`] is emitted by the application.
     LogEmitted(Log),
-    /// Fires when the user wants to scroll the subjects widget.
-    ScrollSubjects(ScrollPosition),
-    /// Fires when the user wants to scroll the subject schema versions widget.
-    ScrollSchemaVersions(ScrollPosition),
+    /// Fires when the user wants to select a subjects from the list.
+    SelectSubject(Position),
+    /// Fires when the user wants to select a subject schema version from the list.
+    SelectSchemaVersion(Position),
     /// Fires when the user wants to scroll the schema definition widget.
-    ScrollSchemaDefinition(ScrollPosition),
+    ScrollSchemaDefinition(Position),
     /// Fires when the user wants to scroll the schema references widget.
-    ScrollSchemaReferences(ScrollPosition),
+    ScrollSchemaReferences(Position),
 }
 
 /// The bus over which [`Event`]s are published.

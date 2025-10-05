@@ -1,6 +1,6 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
-    event::{Event, ScrollPosition},
+    event::{Event, Position},
     ui::Component,
 };
 
@@ -1034,37 +1034,37 @@ impl Component for Schemas {
                 _ => match self.state.active_widget {
                     SchemasWidget::Subjects => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSubjects(ScrollPosition::Top))
+                            Some(Event::SelectSubject(Position::Top))
                         }
-                        'j' => Some(Event::ScrollSubjects(ScrollPosition::Down)),
-                        'k' => Some(Event::ScrollSubjects(ScrollPosition::Up)),
-                        'G' => Some(Event::ScrollSubjects(ScrollPosition::Bottom)),
+                        'j' => Some(Event::SelectSubject(Position::Down)),
+                        'k' => Some(Event::SelectSubject(Position::Up)),
+                        'G' => Some(Event::SelectSubject(Position::Bottom)),
                         _ => None,
                     },
                     SchemasWidget::Schema => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSchemaDefinition(ScrollPosition::Top))
+                            Some(Event::ScrollSchemaDefinition(Position::Top))
                         }
-                        'j' => Some(Event::ScrollSchemaDefinition(ScrollPosition::Down)),
-                        'k' => Some(Event::ScrollSchemaDefinition(ScrollPosition::Up)),
+                        'j' => Some(Event::ScrollSchemaDefinition(Position::Down)),
+                        'k' => Some(Event::ScrollSchemaDefinition(Position::Up)),
                         _ => None,
                     },
                     SchemasWidget::Versions => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSchemaVersions(ScrollPosition::Top))
+                            Some(Event::SelectSchemaVersion(Position::Top))
                         }
-                        'j' => Some(Event::ScrollSchemaVersions(ScrollPosition::Down)),
-                        'k' => Some(Event::ScrollSchemaVersions(ScrollPosition::Up)),
-                        'G' => Some(Event::ScrollSchemaVersions(ScrollPosition::Bottom)),
+                        'j' => Some(Event::SelectSchemaVersion(Position::Down)),
+                        'k' => Some(Event::SelectSchemaVersion(Position::Up)),
+                        'G' => Some(Event::SelectSchemaVersion(Position::Bottom)),
                         _ => None,
                     },
                     SchemasWidget::References => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSchemaReferences(ScrollPosition::Top))
+                            Some(Event::ScrollSchemaReferences(Position::Top))
                         }
-                        'j' => Some(Event::ScrollSchemaReferences(ScrollPosition::Down)),
-                        'k' => Some(Event::ScrollSchemaReferences(ScrollPosition::Up)),
-                        'G' => Some(Event::ScrollSchemaReferences(ScrollPosition::Bottom)),
+                        'j' => Some(Event::ScrollSchemaReferences(Position::Down)),
+                        'k' => Some(Event::ScrollSchemaReferences(Position::Up)),
+                        'G' => Some(Event::ScrollSchemaReferences(Position::Bottom)),
                         _ => None,
                     },
                 },
@@ -1077,31 +1077,31 @@ impl Component for Schemas {
     fn on_app_event(&mut self, event: &Event) {
         match event {
             Event::SelectNextWidget => self.state.select_next_widget(),
-            Event::ScrollSubjects(scroll_position) => match scroll_position {
-                ScrollPosition::Top => self.select_first_subject(),
-                ScrollPosition::Down => self.select_next_subject(),
-                ScrollPosition::Up => self.select_prev_subject(),
-                ScrollPosition::Bottom => self.select_last_subject(),
+            Event::SelectSubject(position) => match position {
+                Position::Top => self.select_first_subject(),
+                Position::Down => self.select_next_subject(),
+                Position::Up => self.select_prev_subject(),
+                Position::Bottom => self.select_last_subject(),
             },
-            Event::ScrollSchemaDefinition(scroll_position) => match scroll_position {
-                ScrollPosition::Top => self.state.scroll_schema_definition_top(),
-                ScrollPosition::Down => {
+            Event::ScrollSchemaDefinition(position) => match position {
+                Position::Top => self.state.scroll_schema_definition_top(),
+                Position::Down => {
                     self.state.scroll_schema_definition_down(self.scroll_factor)
                 }
-                ScrollPosition::Up => self.state.scroll_schema_definition_up(self.scroll_factor),
-                ScrollPosition::Bottom => {}
+                Position::Up => self.state.scroll_schema_definition_up(self.scroll_factor),
+                Position::Bottom => {}
             },
-            Event::ScrollSchemaVersions(scroll_position) => match scroll_position {
-                ScrollPosition::Top => self.select_first_schema_version(),
-                ScrollPosition::Down => self.select_next_schema_version(),
-                ScrollPosition::Up => self.select_prev_schema_version(),
-                ScrollPosition::Bottom => self.select_last_schema_version(),
+            Event::SelectSchemaVersion(position) => match position {
+                Position::Top => self.select_first_schema_version(),
+                Position::Down => self.select_next_schema_version(),
+                Position::Up => self.select_prev_schema_version(),
+                Position::Bottom => self.select_last_schema_version(),
             },
-            Event::ScrollSchemaReferences(scroll_position) => match scroll_position {
-                ScrollPosition::Top => self.state.scroll_references_top(),
-                ScrollPosition::Down => self.state.scroll_references_down(),
-                ScrollPosition::Up => self.state.scroll_references_up(),
-                ScrollPosition::Bottom => self.state.scroll_references_bottom(),
+            Event::ScrollSchemaReferences(position) => match position {
+                Position::Top => self.state.scroll_references_top(),
+                Position::Down => self.state.scroll_references_down(),
+                Position::Up => self.state.scroll_references_up(),
+                Position::Bottom => self.state.scroll_references_bottom(),
             },
             _ => {}
         }
