@@ -7,7 +7,7 @@ use crate::{
     kafka::{
         Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
         de::ValueDeserializer,
-        schema::{RestSchemaRegistry, Schema},
+        schema::{HttpSchemaClient, Schema},
     },
     trace::Log,
     ui::{
@@ -22,7 +22,8 @@ use crossterm::event::{KeyCode, KeyEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{DefaultTerminal, crossterm::event::Event as TerminalEvent};
 use schema_registry_client::rest::{
-    client_config::ClientConfig, schema_registry_client::{Client, SchemaRegistryClient},
+    client_config::ClientConfig,
+    schema_registry_client::{Client, SchemaRegistryClient},
 };
 use std::{
     cell::{Cell, RefCell},
@@ -278,7 +279,8 @@ impl App {
             vec![records_component.clone(), stats_component];
 
         if let Some(schema_registry_url) = config.schema_registry_url.as_ref() {
-            // TODO: share schema registry client with the deserializer
+            // TODO: share schema registry client with the deserializer instead of creating a new
+            // one here.
             let mut schema_registry_client_config =
                 ClientConfig::new(vec![schema_registry_url.clone()]);
 
@@ -294,7 +296,7 @@ impl App {
             }
 
             let schema_client =
-                RestSchemaRegistry::new(SchemaRegistryClient::new(schema_registry_client_config));
+                HttpSchemaClient::new(SchemaRegistryClient::new(schema_registry_client_config));
 
             let schemas_component = Rc::new(RefCell::new(Schemas::new(
                 SchemasConfig::builder()

@@ -2,7 +2,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use schema_registry_client::rest::{
     models::{RegisteredSchema, SchemaReference},
-    schema_registry_client::{Client, SchemaRegistryClient},
+    schema_registry_client::Client,
 };
 use serde::Serialize;
 use std::fmt::Display;
@@ -169,22 +169,31 @@ pub trait SchemaClient {
 
 /// An implementation of the [`SchemaClient`] trait which interacts with the schema registry over
 /// HTTP using a pre-configured [`SchemaRegistryClient`].
-#[derive(Clone)]
-pub struct RestSchemaRegistry {
-    /// The schema registry client used to interact with the schema registry.
-    client: SchemaRegistryClient,
+#[derive(Clone, Debug)]
+pub struct HttpSchemaClient<C>
+where
+    C: Client,
+{
+    /// The schema registry [`Client`] used to interact with the schema registry.
+    client: C,
 }
 
-impl RestSchemaRegistry {
+impl<C> HttpSchemaClient<C>
+where
+    C: Client,
+{
     /// Creates a new [`RestSchemaRegistry`] which uses the provided schema registry client to
     /// interact with the schema registry over HTTP.
-    pub fn new(client: SchemaRegistryClient) -> Self {
+    pub fn new(client: C) -> Self {
         Self { client }
     }
 }
 
 #[async_trait]
-impl SchemaClient for RestSchemaRegistry {
+impl<C> SchemaClient for HttpSchemaClient<C>
+where
+    C: Client + Send + Sync,
+{
     /// Loads all of the non-deleted subjects from the schema registry.
     async fn get_subjects(&self) -> anyhow::Result<Vec<Subject>> {
         self.client
