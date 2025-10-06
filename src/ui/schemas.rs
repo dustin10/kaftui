@@ -1,6 +1,7 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::{Event, Position},
+    kafka::schema::{RestSchemaRegistry, Schema, SchemaClient, Subject, Version},
     ui::Component,
 };
 
@@ -19,13 +20,9 @@ use ratatui::{
 };
 use schema_registry_client::rest::{
     client_config::ClientConfig,
-    models::{RegisteredSchema, SchemaReference},
     schema_registry_client::{Client, SchemaRegistryClient},
 };
 use std::str::FromStr;
-
-/// String presented to the user when a schema-releated value is missing or not known.
-const UNKNOWN: &str = "<unknown>";
 
 /// Key bindings that are always displayed to the user in the footer when viewing the schemas
 /// screen.
@@ -41,97 +38,19 @@ enum SchemasWidget {
     References,
 }
 
-/// Represents a reference to another schema contained in a schema retrieved from the schema
-/// registry.
-#[derive(Debug)]
-struct SchemaRef {
-    /// Name of the referenced schema.
-    name: String,
-    /// Subject the referenced schema belongs to.
-    subject: String,
-    /// Version of the referenced schema.
-    version: i32,
-}
-
-impl From<SchemaReference> for SchemaRef {
-    /// Converts from a [`SchemaReference`] fetched from the schema registry to a new
-    /// [`SchemaRef`].
-    fn from(value: SchemaReference) -> Self {
-        Self {
-            name: value.name.unwrap_or_else(|| UNKNOWN.to_string()),
-            subject: value.subject.unwrap_or_else(|| UNKNOWN.to_string()),
-            version: value.version.unwrap_or_default(),
-        }
-    }
-}
-
-/// A schema retrieved from the schema registry along with all available versions for the subject
-/// it is associated with.
-#[derive(Debug)]
-struct Schema {
-    /// Identifier of the schema.
-    id: i32,
-    /// Globally unique identifier of the schema.
-    guid: String,
-    /// Version of the schema.
-    version: i32,
-    /// The schema type, i.e. AVRO, JSON, PROTOBUF.
-    kind: String,
-    /// The schema definition.
-    schema: String,
-    /// References to other schemas contained in this schema.
-    references: Option<Vec<SchemaRef>>,
-    /// All available versions for the subject this schema belongs to.
-    available_versions: Vec<i32>,
-}
-
-impl Schema {
-    /// Creates a new [`Schema`] from the given [`RegisteredSchema`] fetched from the schema
-    /// registry and the list of all available schema versions for the subject.
-    fn new(registered_schema: RegisteredSchema, versions: Vec<i32>) -> Self {
-        let id = registered_schema.id.unwrap_or_default();
-
-        let guid = registered_schema
-            .guid
-            .unwrap_or_else(|| UNKNOWN.to_string());
-
-        let version = registered_schema.version.unwrap_or_default();
-
-        let kind = registered_schema
-            .schema_type
-            .unwrap_or_else(|| UNKNOWN.to_string());
-
-        let schema = registered_schema
-            .schema
-            .unwrap_or_else(|| UNKNOWN.to_string());
-
-        let references = registered_schema
-            .references
-            .map(|refs| refs.into_iter().map(|r| r.into()).collect());
-
-        Self {
-            id,
-            guid,
-            version,
-            kind,
-            schema,
-            references,
-            available_versions: versions,
-        }
-    }
-}
-
 /// Manages state related to schemas and the UI that renders them to the user.
 #[derive(Debug, Default)]
 struct SchemasState {
     /// Stores the widget that the currently has focus.
     active_widget: SchemasWidget,
     /// Current subjects retrieved from the schema registry.
-    subjects: Vec<String>,
+    subjects: Vec<Subject>,
     /// Currently selected subject.
-    selected_subject: Option<String>,
+    selected_subject: Option<Subject>,
     /// Currently selected schema details.
     selected_schema: Option<Schema>,
+    /// Available schema versions for the currently selected subject.
+    available_versions: Vec<Version>,
     /// Manages state of the subjects list widget.
     subjects_list_state: ListState,
     /// Manages state of the subjects list scrollbar.
@@ -229,6 +148,7 @@ impl SchemasState {
         self.subjects_scroll_state.last();
 
         self.versions_list_state.select(None);
+
         self.versions_scroll_state.first();
 
         self.references_list_state.select(None);
@@ -263,7 +183,7 @@ impl SchemasState {
         self.selected_subject = self.subjects.last().cloned();
     }
     /// Selects the first subject schema version in the list.
-    fn select_first_schema_version(&mut self) -> Option<i32> {
+    fn select_first_schema_version(&mut self) -> Option<Version> {
         let current_idx = self
             .versions_list_state
             .selected()
@@ -281,22 +201,18 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        let schema = self.selected_schema.as_ref().expect("schema selected");
-
-        let version = schema.available_versions.last().expect("version exists");
+        let version = self.available_versions.last().expect("version exists");
 
         Some(*version)
     }
     /// Selects the next subject schema version in the list.
-    fn select_next_schema_version(&mut self) -> Option<i32> {
-        let schema = self.selected_schema.as_ref().expect("schema selected");
-
+    fn select_next_schema_version(&mut self) -> Option<Version> {
         let idx = self
             .versions_list_state
             .selected()
             .expect("version selected");
 
-        if idx == schema.available_versions.len() - 1 {
+        if idx == self.available_versions.len() - 1 {
             return None;
         }
 
@@ -313,9 +229,9 @@ impl SchemasState {
             .selected()
             .expect("version selected");
 
-        let version_idx = schema.available_versions.len() - 1 - idx;
+        let version_idx = self.available_versions.len() - 1 - idx;
 
-        let version = schema
+        let version = self
             .available_versions
             .get(version_idx)
             .expect("version exists");
@@ -323,7 +239,7 @@ impl SchemasState {
         Some(*version)
     }
     /// Selects the previous subject schema version in the list.
-    fn select_prev_schema_version(&mut self) -> Option<i32> {
+    fn select_prev_schema_version(&mut self) -> Option<Version> {
         let idx = self
             .versions_list_state
             .selected()
@@ -341,16 +257,14 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        let schema = self.selected_schema.as_ref().expect("schema selected");
-
         let idx = self
             .versions_list_state
             .selected()
             .expect("version selected");
 
-        let version_idx = schema.available_versions.len() - 1 - idx;
+        let version_idx = self.available_versions.len() - 1 - idx;
 
-        let version = schema
+        let version = self
             .available_versions
             .get(version_idx)
             .expect("version exists");
@@ -358,15 +272,13 @@ impl SchemasState {
         Some(*version)
     }
     /// Selects the last subject schema version in the list.
-    fn select_last_schema_version(&mut self) -> Option<i32> {
-        let schema = self.selected_schema.as_ref().expect("schema selected");
-
+    fn select_last_schema_version(&mut self) -> Option<Version> {
         let current_idx = self
             .versions_list_state
             .selected()
             .expect("version always selected");
 
-        if current_idx == schema.available_versions.len() - 1 {
+        if current_idx == self.available_versions.len() - 1 {
             return None;
         }
 
@@ -378,7 +290,7 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        let version = schema.available_versions.first().expect("version exists");
+        let version = self.available_versions.first().expect("version exists");
 
         Some(*version)
     }
@@ -524,7 +436,7 @@ impl From<SchemasConfig<'_>> for Schemas {
 /// if one is configured.
 pub struct Schemas {
     /// Client used to query the schema registry.
-    client: SchemaRegistryClient,
+    registry: RestSchemaRegistry,
     /// Current state of the component and it's underlying widgets.
     state: SchemasState,
     /// Controls how many lines each press of a key scrolls the schema definition text.
@@ -533,14 +445,10 @@ pub struct Schemas {
     theme: SchemasTheme,
 }
 
-// TODO: extract schema registry interactions into a seperate module outside of the UI component?
-// If we did not want to use futures::executor::block_on() in the UI component, then the Component
-// trait would need to be an async trait. That is not a requirement today.
-
 impl Schemas {
     /// Creates a new [`Schemas`] component using the specified [`SchemasConfig`].
     pub fn new(config: SchemasConfig) -> Self {
-        // TODO: share client with deserializer
+        // TODO: pass client in and share it with the deserializer
         let mut client_config = ClientConfig::new(vec![config.schema_registry_url]);
         if let Some(bearer) = config.schema_registry_bearer_token.as_ref() {
             tracing::info!("configuring bearer token auth for schema registry client");
@@ -552,10 +460,10 @@ impl Schemas {
             client_config.basic_auth = Some((user.clone(), config.schema_registry_pass.clone()));
         }
 
-        let client = SchemaRegistryClient::new(client_config);
+        let registry = RestSchemaRegistry::new(SchemaRegistryClient::new(client_config));
 
         Self {
-            client,
+            registry,
             state: SchemasState::new(),
             scroll_factor: config.scroll_factor,
             theme: config.theme.into(),
@@ -563,8 +471,8 @@ impl Schemas {
     }
     /// Loads the non-deleted subjects from the schema registry.
     fn load_subjects(&mut self) {
-        let result =
-            futures::executor::block_on(async { self.client.get_all_subjects(false).await });
+        // TODO: re-evaluate block_on
+        let result = futures::executor::block_on(async { self.registry.get_subjects().await });
 
         match result {
             Ok(subjects) => {
@@ -597,7 +505,7 @@ impl Schemas {
             .state
             .subjects
             .iter()
-            .map(|s| ListItem::new(s.as_str()))
+            .map(|s| ListItem::new(s.as_ref()))
             .collect();
 
         let list = List::new(list_items)
@@ -673,8 +581,9 @@ impl Schemas {
                 .border_style(self.theme.selected_panel_border_color);
         }
 
-        if let Some(schema) = self.state.selected_schema.as_ref() {
-            let list_items: Vec<ListItem> = schema
+        if !self.state.available_versions.is_empty() {
+            let list_items: Vec<ListItem> = self
+                .state
                 .available_versions
                 .iter()
                 .rev()
@@ -689,28 +598,24 @@ impl Schemas {
 
             frame.render_stateful_widget(versions_list, area, &mut self.state.versions_list_state);
 
-            if let Some(schema) = self.state.selected_schema.as_ref()
-                && schema.available_versions.len() > 1
-            {
-                self.state.versions_scroll_state = self
-                    .state
-                    .versions_scroll_state
-                    .content_length(schema.available_versions.len());
+            self.state.versions_scroll_state = self
+                .state
+                .versions_scroll_state
+                .content_length(self.state.available_versions.len());
 
-                let scrollbar = Scrollbar::default()
-                    .orientation(ScrollbarOrientation::VerticalRight)
-                    .begin_symbol(None)
-                    .end_symbol(None);
+            let scrollbar = Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None);
 
-                frame.render_stateful_widget(
-                    scrollbar,
-                    area.inner(Margin {
-                        horizontal: 1,
-                        vertical: 1,
-                    }),
-                    &mut self.state.versions_scroll_state,
-                );
-            }
+            frame.render_stateful_widget(
+                scrollbar,
+                area.inner(Margin {
+                    horizontal: 1,
+                    vertical: 1,
+                }),
+                &mut self.state.versions_scroll_state,
+            );
         } else {
             frame.render_widget(versions_block, area);
         }
@@ -898,7 +803,7 @@ impl Schemas {
             tracing::info!("loading latest schema version for subject {}", selected);
 
             // TODO: error handling
-            let registered_schema = self
+            let schema = self
                 .load_subject_at_version(selected, None)
                 .expect("subject can be loaded");
 
@@ -906,7 +811,7 @@ impl Schemas {
                 .load_versions(selected)
                 .expect("versions can be loaded");
 
-            let schema = Schema::new(registered_schema, versions);
+            self.state.available_versions = versions;
 
             // TODO: cache schema version data with a TTL or keep reloading it every time?
 
@@ -915,7 +820,7 @@ impl Schemas {
         }
     }
     /// Loads the schema details for the specified version of the currently selected subject.
-    fn load_selected_subject_at_version(&mut self, version: i32) {
+    fn load_selected_subject_at_version(&mut self, version: Version) {
         if let Some(selected) = self.state.selected_subject.as_ref() {
             tracing::info!(
                 "loading schema version {} for subject {}",
@@ -924,18 +829,9 @@ impl Schemas {
             );
 
             // TODO: error handling
-            let registered_schema = self
+            let schema = self
                 .load_subject_at_version(selected, Some(version))
                 .expect("subject can be loaded");
-
-            let schema = Schema::new(
-                registered_schema,
-                self.state
-                    .selected_schema
-                    .take()
-                    .expect("schema selected")
-                    .available_versions,
-            );
 
             // TODO: cache schema version data with a TTL or keep reloading it every time?
 
@@ -943,10 +839,11 @@ impl Schemas {
         }
     }
     /// Loads all available versions for the specified subject from the schema registry.
-    fn load_versions(&self, subject: impl AsRef<str>) -> anyhow::Result<Vec<i32>> {
+    fn load_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
+        // TODO: re-evaluate block_on
         futures::executor::block_on(async {
-            self.client
-                .get_all_versions(subject.as_ref())
+            self.registry
+                .get_schema_versions(subject)
                 .await
                 .context(format!("load versions for subject {}", subject.as_ref()))
         })
@@ -955,30 +852,13 @@ impl Schemas {
     /// registry. If no version is specified, the latest version is fetched.
     fn load_subject_at_version(
         &self,
-        subject: impl AsRef<str>,
-        version: Option<i32>,
-    ) -> anyhow::Result<RegisteredSchema> {
-        match version {
-            Some(version) => futures::executor::block_on(async {
-                self.client
-                    .get_version(subject.as_ref(), version, false, None)
-                    .await
-                    .context(format!(
-                        "load schema version {} for subject {}",
-                        version,
-                        subject.as_ref()
-                    ))
-            }),
-            None => futures::executor::block_on(async {
-                self.client
-                    .get_latest_version(subject.as_ref(), None)
-                    .await
-                    .context(format!(
-                        "load latest schema version for subject {}",
-                        subject.as_ref()
-                    ))
-            }),
-        }
+        subject: &Subject,
+        version: Option<Version>,
+    ) -> anyhow::Result<Schema> {
+        // TODO: re-evaluate block_on
+        futures::executor::block_on(async {
+            self.registry.get_schema(subject, version).await
+        })
     }
 }
 
@@ -1085,9 +965,7 @@ impl Component for Schemas {
             },
             Event::ScrollSchemaDefinition(position) => match position {
                 Position::Top => self.state.scroll_schema_definition_top(),
-                Position::Down => {
-                    self.state.scroll_schema_definition_down(self.scroll_factor)
-                }
+                Position::Down => self.state.scroll_schema_definition_down(self.scroll_factor),
                 Position::Up => self.state.scroll_schema_definition_up(self.scroll_factor),
                 Position::Bottom => {}
             },
