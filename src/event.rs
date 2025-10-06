@@ -1,4 +1,8 @@
-use crate::{app::Notification, kafka::Record, trace::Log};
+use crate::{
+    app::Notification,
+    kafka::{schema::Schema, Record},
+    trace::Log,
+};
 
 use rdkafka::Statistics;
 use tokio::sync::mpsc::UnboundedSender;
@@ -63,6 +67,8 @@ pub enum Event {
     ScrollSchemaDefinition(Position),
     /// Fires when the user wants to scroll the schema references widget.
     ScrollSchemaReferences(Position),
+    /// Fires when the user wants to export a [`Schema`] to a file.
+    ExportSchema(Schema),
 }
 
 /// The bus over which [`Event`]s are published.

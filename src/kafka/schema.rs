@@ -12,7 +12,7 @@ const UNKNOWN: &str = "<unknown>";
 
 /// Represents a reference to another schema contained in a schema retrieved from the schema
 /// registry.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SchemaRef {
     /// Name of the referenced schema.
     pub name: String,
@@ -35,7 +35,7 @@ impl From<SchemaReference> for SchemaRef {
 }
 
 /// Represents a schema retrieved from the schema registry.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Schema {
     /// Identifier of the schema.
     pub id: i32,

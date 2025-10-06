@@ -1,4 +1,7 @@
-use crate::kafka::{Record, RecordFormat};
+use crate::kafka::{
+    schema::{Schema, SchemaRef, Version},
+    Record, RecordFormat,
+};
 
 use anyhow::Context;
 use chrono::{DateTime, Local};
@@ -32,7 +35,7 @@ struct ExportedRecord {
 
 impl ExportedRecord {
     /// Converts a reference to a [`Record`] to an [`ExportedRecord`].
-    fn from_record(record: &Record, format: RecordFormat) -> Self {
+    fn from_record(record: Record, format: RecordFormat) -> Self {
         let json_value = record.value.as_ref().map(|v| match format {
             RecordFormat::None => serde_json::Value::String(v.clone()),
             RecordFormat::Json | RecordFormat::Avro => match serde_json::from_str(v) {
@@ -45,20 +48,62 @@ impl ExportedRecord {
         });
 
         Self {
-            topic: record.topic.clone(),
+            topic: record.topic,
             partition: record.partition,
             offset: record.offset,
-            key: record.key.clone(),
-            headers: record.headers.clone(),
+            key: record.key,
+            headers: record.headers,
             value: json_value,
             timestamp: record.timestamp,
         }
     }
 }
 
-/// The [`Exporter`] is responsible for exporting a Kafka [`Record`] to the user's file system. It
-/// does this by first serializing the [`Record`] to JSON and then saving the file in the
-/// configured directory.
+/// View of a [`Schema`] that is saved to a file in JSON format when the user requests that the
+/// selected schema be exported. This allows for better handling of the schema definition field
+/// which would just be rendered as a JSON encoded string otherwise.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportedSchema {
+    /// Identifier of the schema.
+    id: i32,
+    /// Globally unique identifier of the schema.
+    guid: String,
+    /// Version of the schema.
+    version: Version,
+    /// The schema type, i.e. AVRO, JSON, PROTOBUF.
+    #[serde(rename = "type")]
+    kind: String,
+    /// The schema definition.
+    schema: serde_json::Value,
+    /// References to other schemas contained in this schema.
+    references: Option<Vec<SchemaRef>>,
+}
+
+impl From<Schema> for ExportedSchema {
+    /// Converts from a [`Schema`] to an [`ExportedSchema`]. If the schema defintion is not valid
+    /// JSON it will be stored as a plain string instead.
+    fn from(schema: Schema) -> Self {
+        Self {
+            id: schema.id,
+            guid: schema.guid,
+            version: schema.version,
+            kind: schema.kind,
+            schema: match serde_json::from_str(&schema.schema) {
+                Ok(json) => json,
+                Err(e) => {
+                    tracing::error!("failed to serialize schema to JSON: {}", e);
+                    serde_json::Value::String(schema.schema)
+                }
+            },
+            references: schema.references,
+        }
+    }
+}
+
+/// The [`Exporter`] is responsible for exporting a Kafka [`Record`]s and [`Schema`]s to the user's
+/// file system. It does this by first serializing the values to JSON and then saving them to a
+/// file in the configured directory.
 #[derive(Debug)]
 pub struct Exporter {
     /// Directory on the file system where exported files will be saved.
@@ -73,11 +118,11 @@ impl Exporter {
         Self { base_dir, format }
     }
     /// Exports the given [`Record`] to the file system in JSON format.
-    pub fn export_record(&self, record: &Record) -> anyhow::Result<String> {
+    pub fn export_record(&self, record: Record) -> anyhow::Result<String> {
         let exported_record = ExportedRecord::from_record(record, self.format);
 
-        let json =
-            serde_json::to_string_pretty(&exported_record).context("serialize exported record")?;
+        let json = serde_json::to_string_pretty(&exported_record)
+            .context("serialize exported record to JSON")?;
 
         let name = exported_record
             .key
@@ -94,6 +139,24 @@ impl Exporter {
         );
 
         let _ = std::fs::write(file_path.as_str(), json).context("write exported record to file");
+
+        Ok(file_path)
+    }
+    /// Exports the given [`Schema`] to the file system in JSON format.
+    pub fn export_schema(&self, schema: Schema) -> anyhow::Result<String> {
+        let exported_schema = ExportedSchema::from(schema);
+
+        let json = serde_json::to_string_pretty(&exported_schema)
+            .context("serialize exported schema to JSON")?;
+
+        let file_path = format!(
+            "{}{}schema-{}.json",
+            self.base_dir,
+            std::path::MAIN_SEPARATOR,
+            exported_schema.id,
+        );
+
+        let _ = std::fs::write(file_path.as_str(), json).context("write exported schema to file");
 
         Ok(file_path)
     }

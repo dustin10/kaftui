@@ -8,8 +8,6 @@ The `kaftui` application provides the following features to users.
 
 * View records from a topic including headers and payload value in an easy to read format.
 coming soon.
-* Schema Registry integration for deserializing and validating records in JSONSchema and Avro format. Protobuf support
-is under active development.
 * Pause and resume the Kafka consumer.
 * Assign all or specific partitions of the topic to the Kafka consumer.
 * Seek to a specific offset on a single or multiple partitions of the topic.
@@ -17,6 +15,9 @@ is under active development.
 * [Filter](#Filtering) out records the user may not be interested in using a JSONPath filter.
 * Configure [profiles](#Profiles) to easily connect to different Kafka clusters.
 * [Theme](#Theme) the application to match any existing terminal color scheme.
+* Schema Registry integration for deserializing and validating records in JSONSchema and Avro format. Protobuf support
+is under active development.
+* Export schemas to a file on disk.
 
 The application also keeps track of basic statistics during execution and presents them in a dedicated UI for the user.
 

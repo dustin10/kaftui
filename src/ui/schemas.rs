@@ -856,9 +856,7 @@ impl Schemas {
         version: Option<Version>,
     ) -> anyhow::Result<Schema> {
         // TODO: re-evaluate block_on
-        futures::executor::block_on(async {
-            self.registry.get_schema(subject, version).await
-        })
+        futures::executor::block_on(async { self.registry.get_schema(subject, version).await })
     }
 }
 
@@ -909,8 +907,11 @@ impl Component for Schemas {
     fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
-                // TODO: implement schema export
-                'e' => None,
+                'e' => self
+                    .state
+                    .selected_schema
+                    .as_ref()
+                    .map(|s| Event::ExportSchema(s.clone())),
                 _ => match self.state.active_widget {
                     SchemasWidget::Subjects => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {

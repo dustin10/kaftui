@@ -4,7 +4,7 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
-    kafka::{Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record, de::ValueDeserializer},
+    kafka::{de::ValueDeserializer, schema::Schema, Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record},
     trace::Log,
     ui::{
         Component, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig, Stats,
@@ -467,6 +467,7 @@ impl App {
             Event::ResumeProcessing => self.on_resume_processing(),
             Event::DisplayNotification(notification) => self.on_display_notification(notification),
             Event::SelectNextWidget => self.state.active_component.borrow_mut().on_app_event(&event),
+            Event::ExportSchema(schema) => self.on_export_schema(schema),
             _ => {
                 self.components
                     .iter()
@@ -488,7 +489,7 @@ impl App {
     fn on_export_record(&mut self, record: Record) {
         tracing::debug!("exporting selected record");
 
-        let notification = match self.exporter.export_record(&record) {
+        let notification = match self.exporter.export_record(record) {
             Ok(path) => {
                 tracing::info!("record exported to {}", path);
                 Notification::success("Record Exported Successfully")
@@ -496,6 +497,24 @@ impl App {
             Err(e) => {
                 tracing::error!("failed to export record: {}", e);
                 Notification::failure("Record Export Failed")
+            }
+        };
+
+        self.event_bus
+            .send(Event::DisplayNotification(notification));
+    }
+    /// Handles the [`Event::ExportSchema`] event emitted by the [`EventBus`].
+    fn on_export_schema(&mut self, schema: Schema) {
+        tracing::debug!("exporting selected schema");
+
+        let notification = match self.exporter.export_schema(schema) {
+            Ok(path) => {
+                tracing::info!("schema exported to {}", path);
+                Notification::success("Schema Exported Successfully")
+            }
+            Err(e) => {
+                tracing::error!("failed to export schema: {}", e);
+                Notification::failure("Schema Export Failed")
             }
         };
 
