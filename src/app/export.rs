@@ -1,6 +1,6 @@
 use crate::kafka::{
-    schema::{Schema, SchemaRef, Version},
     Record, RecordFormat,
+    schema::{Schema, SchemaRef, Version},
 };
 
 use anyhow::Context;

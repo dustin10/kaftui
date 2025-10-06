@@ -29,8 +29,9 @@ const RECORDS_STANDARD_KEY_BINDINGS: [&str; 2] =
     [super::KEY_BINDING_QUIT, super::KEY_BINDING_CHANGE_FOCUS];
 
 /// Enumeration of the widgets in the [`Records`] component that can have focus.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 enum RecordsWidget {
+    #[default]
     List,
     Value,
     Headers,

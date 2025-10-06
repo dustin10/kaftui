@@ -1,7 +1,7 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::{Event, Position},
-    kafka::schema::{RestSchemaRegistry, Schema, SchemaClient, Subject, Version},
+    kafka::schema::{Schema, SchemaClient, Subject, Version},
     ui::Component,
 };
 
@@ -17,10 +17,6 @@ use ratatui::{
         Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Padding,
         Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, Wrap,
     },
-};
-use schema_registry_client::rest::{
-    client_config::ClientConfig,
-    schema_registry_client::{Client, SchemaRegistryClient},
 };
 use std::str::FromStr;
 
@@ -401,42 +397,47 @@ impl From<&Theme> for SchemasTheme {
 
 /// Configuration used to create a new [`Schemas`] component.
 #[derive(Builder)]
-pub struct SchemasConfig<'a> {
-    /// Specifies the URL of the Schema Registry that should be used to validate data when
-    /// deserializing records from the Kafka topic.
-    schema_registry_url: String,
-    /// Specifies bearer authentication token used to connect to the the Schema Registry.
-    schema_registry_bearer_token: Option<String>,
-    /// Specifies the basic auth user used to connect to the the Schema Registry.
-    schema_registry_user: Option<String>,
-    /// Specifies the basic auth password used to connect to the the Schema Registry.
-    schema_registry_pass: Option<String>,
+pub struct SchemasConfig<'a, C>
+where
+    C: SchemaClient,
+{
+    /// Client used to query the schema registry.
+    schema_client: C,
     /// Controls how many lines each press of a key scrolls the schema definition text.
     scroll_factor: u16,
     /// Reference to the application [`Theme`].
     theme: &'a Theme,
 }
 
-impl<'a> SchemasConfig<'a> {
+impl<'a, C> SchemasConfig<'a, C>
+where
+    C: SchemaClient + Clone,
+{
     /// Creates a new default [`SchemasConfigBuilder`] which can be used to create a new
     /// [`Schemas`].
-    pub fn builder() -> SchemasConfigBuilder<'a> {
+    pub fn builder() -> SchemasConfigBuilder<'a, C> {
         SchemasConfigBuilder::default()
     }
 }
 
-impl From<SchemasConfig<'_>> for Schemas {
+impl<'a, C> From<SchemasConfig<'a, C>> for Schemas<C>
+where
+    C: SchemaClient,
+{
     /// Converts from an owned [`SchemasConfig`] to an owned [`Schemas`].
-    fn from(value: SchemasConfig<'_>) -> Self {
+    fn from(value: SchemasConfig<'a, C>) -> Self {
         Self::new(value)
     }
 }
 
 /// The application [`Component`] that is responsible for displaying data from the Schema Registry
 /// if one is configured.
-pub struct Schemas {
+pub struct Schemas<C>
+where
+    C: SchemaClient,
+{
     /// Client used to query the schema registry.
-    registry: RestSchemaRegistry,
+    schema_client: C,
     /// Current state of the component and it's underlying widgets.
     state: SchemasState,
     /// Controls how many lines each press of a key scrolls the schema definition text.
@@ -445,25 +446,14 @@ pub struct Schemas {
     theme: SchemasTheme,
 }
 
-impl Schemas {
+impl<C> Schemas<C>
+where
+    C: SchemaClient,
+{
     /// Creates a new [`Schemas`] component using the specified [`SchemasConfig`].
-    pub fn new(config: SchemasConfig) -> Self {
-        // TODO: pass client in and share it with the deserializer
-        let mut client_config = ClientConfig::new(vec![config.schema_registry_url]);
-        if let Some(bearer) = config.schema_registry_bearer_token.as_ref() {
-            tracing::info!("configuring bearer token auth for schema registry client");
-            client_config.bearer_access_token = Some(bearer.clone());
-        }
-
-        if let Some(user) = config.schema_registry_user.as_ref() {
-            tracing::info!("configuring basic auth for schema registry client");
-            client_config.basic_auth = Some((user.clone(), config.schema_registry_pass.clone()));
-        }
-
-        let registry = RestSchemaRegistry::new(SchemaRegistryClient::new(client_config));
-
+    pub fn new(config: SchemasConfig<'_, C>) -> Self {
         Self {
-            registry,
+            schema_client: config.schema_client,
             state: SchemasState::new(),
             scroll_factor: config.scroll_factor,
             theme: config.theme.into(),
@@ -472,7 +462,7 @@ impl Schemas {
     /// Loads the non-deleted subjects from the schema registry.
     fn load_subjects(&mut self) {
         // TODO: re-evaluate block_on
-        let result = futures::executor::block_on(async { self.registry.get_subjects().await });
+        let result = futures::executor::block_on(async { self.schema_client.get_subjects().await });
 
         match result {
             Ok(subjects) => {
@@ -842,7 +832,7 @@ impl Schemas {
     fn load_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
         // TODO: re-evaluate block_on
         futures::executor::block_on(async {
-            self.registry
+            self.schema_client
                 .get_schema_versions(subject)
                 .await
                 .context(format!("load versions for subject {}", subject.as_ref()))
@@ -856,11 +846,14 @@ impl Schemas {
         version: Option<Version>,
     ) -> anyhow::Result<Schema> {
         // TODO: re-evaluate block_on
-        futures::executor::block_on(async { self.registry.get_schema(subject, version).await })
+        futures::executor::block_on(async { self.schema_client.get_schema(subject, version).await })
     }
 }
 
-impl Component for Schemas {
+impl<C> Component for Schemas<C>
+where
+    C: SchemaClient,
+{
     // Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str {
         "Schemas"

@@ -4,7 +4,11 @@ pub mod export;
 use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
-    kafka::{de::ValueDeserializer, schema::Schema, Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record},
+    kafka::{
+        Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
+        de::ValueDeserializer,
+        schema::{RestSchemaRegistry, Schema},
+    },
     trace::Log,
     ui::{
         Component, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig, Stats,
@@ -17,6 +21,9 @@ use chrono::{DateTime, Duration, Local};
 use crossterm::event::{KeyCode, KeyEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{DefaultTerminal, crossterm::event::Event as TerminalEvent};
+use schema_registry_client::rest::{
+    client_config::ClientConfig, schema_registry_client::{Client, SchemaRegistryClient},
+};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -271,12 +278,27 @@ impl App {
             vec![records_component.clone(), stats_component];
 
         if let Some(schema_registry_url) = config.schema_registry_url.as_ref() {
+            // TODO: share schema registry client with the deserializer
+            let mut schema_registry_client_config =
+                ClientConfig::new(vec![schema_registry_url.clone()]);
+
+            if let Some(bearer) = config.schema_registry_bearer_token.as_ref() {
+                tracing::info!("configuring bearer token auth for schema registry client");
+                schema_registry_client_config.bearer_access_token = Some(bearer.clone());
+            }
+
+            if let Some(user) = config.schema_registry_user.as_ref() {
+                tracing::info!("configuring basic auth for schema registry client");
+                schema_registry_client_config.basic_auth =
+                    Some((user.clone(), config.schema_registry_pass.clone()));
+            }
+
+            let schema_client =
+                RestSchemaRegistry::new(SchemaRegistryClient::new(schema_registry_client_config));
+
             let schemas_component = Rc::new(RefCell::new(Schemas::new(
                 SchemasConfig::builder()
-                    .schema_registry_url(schema_registry_url.clone())
-                    .schema_registry_bearer_token(config.schema_registry_bearer_token.clone())
-                    .schema_registry_user(config.schema_registry_user.clone())
-                    .schema_registry_pass(config.schema_registry_pass.clone())
+                    .schema_client(schema_client)
                     .scroll_factor(config.scroll_factor)
                     .theme(&config.theme)
                     .build()
@@ -466,7 +488,11 @@ impl App {
             Event::PauseProcessing => self.on_pause_processing(),
             Event::ResumeProcessing => self.on_resume_processing(),
             Event::DisplayNotification(notification) => self.on_display_notification(notification),
-            Event::SelectNextWidget => self.state.active_component.borrow_mut().on_app_event(&event),
+            Event::SelectNextWidget => self
+                .state
+                .active_component
+                .borrow_mut()
+                .on_app_event(&event),
             Event::ExportSchema(schema) => self.on_export_schema(schema),
             _ => {
                 self.components
