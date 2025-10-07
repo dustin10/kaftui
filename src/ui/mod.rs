@@ -1,6 +1,7 @@
 mod logs;
 mod records;
 mod schemas;
+mod settings;
 mod stats;
 mod widget;
 
@@ -11,16 +12,17 @@ pub use crate::{
         logs::{Logs, LogsConfig},
         records::{Records, RecordsConfig},
         schemas::{Schemas, SchemasConfig},
+        settings::{Settings, SettingsConfig},
         stats::{Stats, StatsConfig},
     },
 };
 
 use crossterm::event::KeyEvent;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     widgets::{Block, Borders, Padding, Paragraph, Tabs},
+    Frame,
 };
 use std::str::FromStr;
 

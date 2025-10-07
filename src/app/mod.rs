@@ -11,8 +11,8 @@ use crate::{
     },
     trace::Log,
     ui::{
-        Component, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig, Stats,
-        StatsConfig,
+        Component, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig, Settings,
+        SettingsConfig, Stats, StatsConfig,
     },
 };
 
@@ -181,7 +181,7 @@ impl State {
 /// Drives the execution of the application and coordinates the various subsystems.
 pub struct App {
     /// Configuration for the application.
-    pub config: Config,
+    pub config: Rc<Config>,
     /// Contains the current state of the application.
     pub state: State,
     /// All [`Component`]s available to the user.
@@ -315,6 +315,16 @@ impl App {
 
             components.push(schemas_component);
         }
+
+        let config = Rc::new(config);
+
+        components.push(Rc::new(RefCell::new(Settings::new(
+            SettingsConfig::builder()
+                .config(Rc::clone(&config))
+                .theme(&config.theme)
+                .build()
+                .expect("valid Settings config"),
+        ))));
 
         if config.logs_enabled {
             let logs_component = Rc::new(RefCell::new(Logs::new(
