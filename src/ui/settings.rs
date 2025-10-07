@@ -5,10 +5,10 @@ use crate::{
 
 use derive_builder::Builder;
 use ratatui::{
+    Frame,
     layout::Rect,
     style::Color,
     widgets::{Block, Paragraph, Wrap},
-    Frame,
 };
 use std::rc::Rc;
 use std::{ops::Deref, str::FromStr};
