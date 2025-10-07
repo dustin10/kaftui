@@ -182,8 +182,8 @@ impl<C> HttpSchemaClient<C>
 where
     C: Client,
 {
-    /// Creates a new [`RestSchemaRegistry`] which uses the provided schema registry client to
-    /// interact with the schema registry over HTTP.
+    /// Creates a new [`HttpSchemaClient`] which uses the provided [`Client`] to interact with the
+    /// schema registry over HTTP.
     pub fn new(client: C) -> Self {
         Self { client }
     }
