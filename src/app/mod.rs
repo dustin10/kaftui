@@ -6,7 +6,7 @@ use crate::{
     event::{Event, EventBus},
     kafka::{
         Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
-        de::ValueDeserializer,
+        de::{KeyDeserializer, ValueDeserializer},
         schema::{HttpSchemaClient, Schema},
     },
     trace::Log,
@@ -206,6 +206,7 @@ impl App {
     /// Creates a new [`App`] with the specified dependencies.
     pub fn new(
         config: Config,
+        key_deserializer: Arc<dyn KeyDeserializer>,
         value_deserializer: Arc<dyn ValueDeserializer>,
     ) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -246,8 +247,13 @@ impl App {
             .build()
             .expect("valid ConsumerConfig");
 
-        let consumer = Consumer::new(consumer_config, value_deserializer, consumer_tx)
-            .context("create consumer")?;
+        let consumer = Consumer::new(
+            consumer_config,
+            key_deserializer,
+            value_deserializer,
+            consumer_tx,
+        )
+        .context("create consumer")?;
 
         let exporter = Exporter::new(config.export_directory.clone(), config.format);
 

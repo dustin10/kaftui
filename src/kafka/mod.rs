@@ -1,21 +1,21 @@
 pub mod de;
 pub mod schema;
 
-use crate::kafka::de::{KeyDeserializer, StringDeserializer, ValueDeserializer};
+use crate::kafka::de::{KeyDeserializer, ValueDeserializer};
 
 use anyhow::Context;
 use chrono::{DateTime, Local};
 use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
+    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
     config::RDKafkaLogLevel,
     consumer::{
-        stream_consumer::StreamPartitionQueue, BaseConsumer, CommitMode, Consumer as RDConsumer,
-        ConsumerContext as RDConsumerContext, Rebalance, StreamConsumer,
+        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
+        Rebalance, StreamConsumer, stream_consumer::StreamPartitionQueue,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
-    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};
@@ -462,6 +462,7 @@ impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
     pub fn new(
         config: ConsumerConfig,
+        key_deserializer: Arc<dyn KeyDeserializer>,
         value_deserializer: Arc<dyn ValueDeserializer>,
         consumer_tx: Sender<ConsumerEvent>,
     ) -> anyhow::Result<Self> {
@@ -509,9 +510,6 @@ impl Consumer {
             tracing::debug!("partition assignments specified by user");
             config.partitions
         };
-
-        // TODO: make this configurable as it could be tied to a schema in the registry
-        let key_deserializer = Arc::new(StringDeserializer);
 
         Ok(Self {
             consumer: Arc::new(consumer),

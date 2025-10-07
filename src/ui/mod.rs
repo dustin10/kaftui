@@ -17,10 +17,10 @@ pub use crate::{
 
 use crossterm::event::KeyEvent;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     widgets::{Block, Borders, Padding, Paragraph, Tabs},
-    Frame,
 };
 use std::str::FromStr;
 

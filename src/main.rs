@@ -6,13 +6,13 @@ mod ui;
 mod util;
 
 use crate::{
-    app::{config::Config, App},
+    app::{App, config::Config},
     kafka::{
+        RecordFormat, SeekTo,
         de::{
-            AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer,
+            AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer, KeyDeserializer,
             StringDeserializer, ValueDeserializer,
         },
-        RecordFormat, SeekTo,
     },
     trace::{CaptureLayer, Log},
 };
@@ -28,7 +28,7 @@ use schema_registry_client::rest::{
 use std::{fs::File, io::BufReader, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{prelude::*, EnvFilter, Registry};
+use tracing_subscriber::{EnvFilter, Registry, prelude::*};
 
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
@@ -308,6 +308,10 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
         Box::leak(client)
     });
 
+    // TODO: support different formats and make configurable by the user as it could be tied to a
+    // schema in the schema registry.
+    let key_deserializer: Arc<dyn KeyDeserializer> = Arc::new(StringDeserializer);
+
     let value_deserializer: Arc<dyn ValueDeserializer> = match config.format {
         RecordFormat::None => Arc::new(StringDeserializer),
         RecordFormat::Json => match schema_registry_client {
@@ -340,7 +344,8 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
         },
     };
 
-    let app = App::new(config, value_deserializer).context("initialize application")?;
+    let app =
+        App::new(config, key_deserializer, value_deserializer).context("initialize application")?;
 
     let terminal = ratatui::init();
 

@@ -666,7 +666,7 @@ impl Component for Records {
                 Position::Up => self.state.select_prev(),
                 Position::Down => self.state.select_next(),
                 Position::Bottom => self.state.select_last(),
-            }
+            },
             Event::SelectNextWidget => self.state.select_next_widget(),
             Event::ScrollRecordValue(position) => match position {
                 Position::Top => self.state.scroll_value_top(),

@@ -1,6 +1,6 @@
 use crate::{
     app::Notification,
-    kafka::{schema::Schema, Record},
+    kafka::{Record, schema::Schema},
     trace::Log,
 };
 
