@@ -1,6 +1,6 @@
 use crate::{
     app::Notification,
-    kafka::{Record, schema::Schema},
+    kafka::{schema::Schema, Record},
     trace::Log,
 };
 
@@ -69,6 +69,8 @@ pub enum Event {
     ScrollSchemaReferences(Position),
     /// Fires when the user wants to export a [`Schema`] to a file.
     ExportSchema(Schema),
+    /// Fires when the user wants to select a menu item in the settings component.
+    SelectSettingsMenuItem(Position),
 }
 
 /// The bus over which [`Event`]s are published.

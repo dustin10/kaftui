@@ -110,12 +110,17 @@ active widget.The following key bindings apply no matter which widget is current
 
 * `esc` - Exits the `kaftui` application.
 * `tab` - Changes focus from the current widget to the next available one.
-* `1` - View the `Records` screen.
-* `2` - View the `Stats` screen.
-* `3` - View the `Schema Registry` screen. This screen is only available when the schema registry has been configured.
 
-> If application logs have been enabled using the proceure outlined above, then an additional `Logs` screen will be
-available for selection in the menu.
+The number keys can be used to switch between the various screens available in the `kaftui` application. The following
+screens are available to the user depending on the configuration of the application.
+
+* `Records` - Displays the records consumed from the Kafka topic.
+* `Stats` - Displays basic statistics for the Kafka consumer.
+* `Schema Registry` - Browse schemas in the registry. Only available when the schema registry has been configured.
+* `Settings` - Displays the active configuration values being used by the application.
+
+> If logs have been enabled using the procedure outlined above, then an additional `Logs` screen will be available for
+selection in the menu which allows the user to view them within the application.
 
 The active key bindings will be displayed in the UI on the right side of the footer and will vary depending on the 
 screen that is currently being viewed within the application.
