@@ -8,14 +8,14 @@ use chrono::{DateTime, Local};
 use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
-    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
     config::RDKafkaLogLevel,
     consumer::{
-        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
-        Rebalance, StreamConsumer, stream_consumer::StreamPartitionQueue,
+        stream_consumer::StreamPartitionQueue, BaseConsumer, CommitMode, Consumer as RDConsumer,
+        ConsumerContext as RDConsumerContext, Rebalance, StreamConsumer,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
+    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};
@@ -53,21 +53,15 @@ pub enum ConsumerMode {
 // TODO: add Protobuf support
 
 /// Enumerates the well-known formats for the data in a Kafka topic.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum RecordFormat {
     /// Records in the topic pare produced with no particular format.
+    #[default]
     None,
     /// Records in the topic are produced in JSON format.
     Json,
     /// Records in the topic are produced in Avro format.
     Avro,
-}
-
-impl Default for RecordFormat {
-    /// Returns the default value for a value of [`RecordFormat`].
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl Display for RecordFormat {
@@ -164,21 +158,15 @@ impl Display for PartitionOffset {
 
 /// Enumerates the available ways which the user can configure seeking the consumer to offsets on
 /// the partitions that make up the topic.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum SeekTo {
     /// Do no seek to an offset for any partition.
+    #[default]
     None,
     /// Reset offset to 0 on ALL partitions for the topic.
     Reset,
     /// Reset offsets to the values for partitions on the topic specified by the user.
     Custom(Vec<PartitionOffset>),
-}
-
-impl Default for SeekTo {
-    /// Returns the default value for a value of [`SeekTo`].
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl<T> From<T> for SeekTo
