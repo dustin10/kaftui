@@ -67,7 +67,7 @@ To use a custom group id for the consumer simply specify it using the `--group-i
 * `--partitions` - CSV of the partition numbers that the consumer should be assigned. This argument is used to restrict
 the set of partitions that will be consumed. If not specified, all partitions will be assigned. For example, `0,2`
 would cause only partitions `0` and `2` to be assigned to the Kafka consumer.
-* `--schema-registry-url` - URL of the Schema Registry that should be used to deserialzie and validate records from the
+* `--schema-registry-url` - URL of the Schema Registry that should be used to deserialize and validate records from the
 Kafka topic.
 * `--schema-registry-bearer-token` - Bearer authentication token used to connect to the the Schema Registry.
 * `--schema-registry-user` - Basic authentication user used to connect to the the Schema Registry.
@@ -75,12 +75,12 @@ Kafka topic.
 * `--format` - Specifies the format of the data contained in the Kafka topic. By default the data is assumed to be in no
 special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro`. If `avro` is
 specified, then the `--schema-registry-url` argument is required.
-* `--seek-to` - CSV of colon separated pairs of partition and offset values that the Kafka consumer will seek to before
-starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition `0`
-and offset `10` on partition `1`. A value of `reset` can also be specified for this argument which will cause the
-consumer to seek to offset 0 for all partitions on the topic.
-* `--group-id, -g` - Id of the group that the application will use when consuming messages from the Kafka topic. By
-default a group id will be generated from the hostname of the machine that is executing the application.
+* `--seek-to` - CSV of colon (`:`) separated pairs of partition and offset values that the Kafka consumer will seek to
+before starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition
+`0` and offset `10` on partition `1`. A value of `reset` can also be specified for this argument which will cause the
+consumer to seek to offset `0` for all partitions on the topic.
+* `--group-id, -g` - Id for the consumer group that the application will use when consuming messages from the Kafka topic.
+By default a group id will be generated from the hostname of the machine that is executing the application.
 * `--filter, -f` - JSONPath filter that is applied to a record. Can be used to filter out any records from the Kafka
 topic that the end user may not be interested in. A message will only be presented to the user if it matches the filter.
 By default no filter is applied. See the [Filtering](#Filtering) section below for further details.
@@ -105,22 +105,21 @@ not set, the log files will be saved to the working directory.
 
 ## Key Bindings
 
-There are some key bindings for the `kaftui` application which are global while others are dependent upon the currently
-active widget.The following key bindings apply no matter which widget is currently selected.
+There are some key bindings for the `kaftui` application which are global while others are dependent upon the screen
+the user is currently viewing and the active widget within that screen. The following key bindings apply globally.
 
 * `esc` - Exits the `kaftui` application.
 * `tab` - Changes focus from the current widget to the next available one.
 
 The number keys can be used to switch between the various screens available in the `kaftui` application. The following
-screens are available to the user depending on the configuration of the application.
+screens are available to the user depending on the configuration used when executing the application.
 
 * `Records` - Displays the records consumed from the Kafka topic.
 * `Stats` - Displays basic statistics for the Kafka consumer.
 * `Schema Registry` - Browse schemas in the registry. Only available when the schema registry has been configured.
 * `Settings` - Displays the active configuration values being used by the application.
-
-> If logs have been enabled using the procedure outlined above, then an additional `Logs` screen will be available for
-selection in the menu which allows the user to view them within the application.
+* `Logs` - Displays the logs produced by the application. Only available when logs have been enabled. These logs can
+be useful when trying to debug issues with the application.
 
 The active key bindings will be displayed in the UI on the right side of the footer and will vary depending on the 
 screen that is currently being viewed within the application.
