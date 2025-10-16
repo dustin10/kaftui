@@ -237,7 +237,7 @@ impl Settings {
 
         let seek_to = match &config.seek_to {
             SeekTo::None => String::from("<none>"),
-            SeekTo::Reset => String::from("reset"),
+            SeekTo::Reset => String::from("RESET"),
             SeekTo::Custom(pos) => pos
                 .iter()
                 .map(ToString::to_string)
@@ -285,7 +285,7 @@ impl Settings {
             ListItem::new(""),
             ListItem::new(Text::from_iter([
                 Line::from(Span::styled("Seek To", self.theme.label_color)),
-                Line::from(seek_to.to_uppercase()),
+                Line::from(seek_to),
             ])),
         ];
 
