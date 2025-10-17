@@ -7,13 +7,13 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{
         Block, Borders, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph, Row, Table,
     },
+    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};
@@ -75,14 +75,44 @@ impl<'a> SettingsConfig<'a> {
 /// [`Settings`] component.
 #[derive(Debug)]
 struct SettingsTheme {
-    /// Color used for the borders of the main info panels.
+    /// Color used for the borders of the main info panels. Defaults to white.
     panel_border_color: Color,
-    /// Color used for the borders of the selected info panel.
+    /// Color used for the borders of the selected info panel. Defaults to cyan.
     selected_panel_border_color: Color,
-    /// Color used for the label text in tables, etc.
-    label_color: Color,
+    /// Color used for the status text while the Kafka consumer is active. Defaults to green.
+    status_text_color_processing: Color,
+    /// Color used for the status text while the Kafka consumer is paused. Defaults to red.
+    status_text_color_paused: Color,
     /// Color used for the key bindings text. Defaults to white.
     key_bindings_text_color: Color,
+    /// Color used for the label text in tables, etc. Defaults to white.
+    label_color: Color,
+    /// Color used for the text in the record list. Defaults to white.
+    record_list_text_color: Color,
+    /// Color used for the text in the record info. Defaults to white.
+    record_info_text_color: Color,
+    /// Color used for the text in the record value. Defaults to white.
+    record_value_text_color: Color,
+    /// Color used for the text in the record headers. Defaults to white.
+    record_headers_text_color: Color,
+    /// Color used for the text in the menu items. Defaults to white.
+    menu_item_text_color: Color,
+    /// Color used for the text in the currently selected menu item. Defaults to yellow.
+    selected_menu_item_text_color: Color,
+    /// Color used for the text in a successful notification message. Defaults to green.
+    notification_text_color_success: Color,
+    /// Color used for the text in a warning notification message. Defaults to yellow.
+    notification_text_color_warn: Color,
+    /// Color used for the text in an unsuccessful notification message. Defaults to red.
+    notification_text_color_failure: Color,
+    /// Color used for the text in the stats UI. Defaults to white.
+    stats_text_color: Color,
+    /// Primary color used for bars in a bar graph in the stats UI. Defaults to white.
+    stats_bar_color: Color,
+    /// Secondary color used for bars in a bar graph in the stats UI. Defaults to white.
+    stats_bar_secondary_color: Color,
+    /// Color used for the throughput chart in the stats UI. Defaults to white.
+    stats_throughput_color: Color,
 }
 
 impl From<&Theme> for SettingsTheme {
@@ -94,16 +124,76 @@ impl From<&Theme> for SettingsTheme {
         let selected_panel_border_color =
             Color::from_str(value.selected_panel_border_color.as_str()).expect("valid RGB hex");
 
-        let label_color = Color::from_str(value.label_color.as_str()).expect("valid RGB hex");
+        let status_text_color_processing =
+            Color::from_str(value.status_text_color_processing.as_str()).expect("valid RGB hex");
+
+        let status_text_color_paused =
+            Color::from_str(value.status_text_color_paused.as_str()).expect("valid RGB hex");
 
         let key_bindings_text_color =
             Color::from_str(value.key_bindings_text_color.as_str()).expect("valid RGB hex");
 
+        let label_color = Color::from_str(value.label_color.as_str()).expect("valid RGB hex");
+
+        let record_list_text_color =
+            Color::from_str(value.record_list_text_color.as_str()).expect("valid RGB hex");
+
+        let record_info_text_color =
+            Color::from_str(value.record_info_text_color.as_str()).expect("valid RGB hex");
+
+        let record_value_text_color =
+            Color::from_str(value.record_value_text_color.as_str()).expect("valid RGB hex");
+
+        let record_headers_text_color =
+            Color::from_str(value.record_headers_text_color.as_str()).expect("valid RGB hex");
+
+        let menu_item_text_color =
+            Color::from_str(value.menu_item_text_color.as_str()).expect("valid RGB hex");
+
+        let selected_menu_item_text_color =
+            Color::from_str(value.selected_menu_item_text_color.as_str()).expect("valid RGB hex");
+
+        let notification_text_color_success =
+            Color::from_str(value.notification_text_color_success.as_str()).expect("valid RGB hex");
+
+        let notification_text_color_warn =
+            Color::from_str(value.notification_text_color_warn.as_str()).expect("valid RGB hex");
+
+        let notification_text_color_failure =
+            Color::from_str(value.notification_text_color_failure.as_str()).expect("valid RGB hex");
+
+        let stats_text_color =
+            Color::from_str(value.stats_text_color.as_str()).expect("valid RGB hex");
+
+        let stats_bar_color =
+            Color::from_str(value.stats_bar_color.as_str()).expect("valid RGB hex");
+
+        let stats_bar_secondary_color =
+            Color::from_str(value.stats_bar_secondary_color.as_str()).expect("valid RGB hex");
+
+        let stats_throughput_color =
+            Color::from_str(value.stats_throughput_color.as_str()).expect("valid RGB hex");
+
         Self {
             panel_border_color,
             selected_panel_border_color,
-            label_color,
+            status_text_color_processing,
+            status_text_color_paused,
             key_bindings_text_color,
+            label_color,
+            record_list_text_color,
+            record_info_text_color,
+            record_value_text_color,
+            record_headers_text_color,
+            menu_item_text_color,
+            selected_menu_item_text_color,
+            notification_text_color_success,
+            notification_text_color_warn,
+            notification_text_color_failure,
+            stats_text_color,
+            stats_bar_color,
+            stats_bar_secondary_color,
+            stats_throughput_color,
         }
     }
 }
@@ -459,97 +549,84 @@ impl Settings {
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
-        let theme = &self.config.theme;
-
-        // TODO: only parse Color's once
-
         let list_items = vec![
             ListItem::new(Text::from(Span::styled(
                 "Panel Border",
-                Color::from_str(theme.panel_border_color.as_str()).expect("valid RGB color"),
+                self.theme.panel_border_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Selected Panel Border",
-                Color::from_str(theme.selected_panel_border_color.as_str())
-                    .expect("valid RGB color"),
+                self.theme.selected_panel_border_color,
             ))),
-            ListItem::new(Text::from(Span::styled(
-                "Label",
-                Color::from_str(theme.label_color.as_str()).expect("valid RGB color"),
-            ))),
+            ListItem::new(Text::from(Span::styled("Label", self.theme.label_color))),
             ListItem::new(Text::from(Span::styled(
                 "Key Bindings",
-                Color::from_str(theme.key_bindings_text_color.as_str()).expect("valid RGB color"),
+                self.theme.key_bindings_text_color,
             ))),
             ListItem::new(""),
             ListItem::new(Text::from(Span::styled(
                 "Consumer Status Processing",
-                Color::from_str(theme.status_text_color_processing.as_str())
-                    .expect("valid RGB color"),
+                self.theme.status_text_color_processing,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Consumer Status Paused",
-                Color::from_str(theme.status_text_color_paused.as_str()).expect("valid RGB color"),
+                self.theme.status_text_color_paused,
             ))),
             ListItem::new(""),
             ListItem::new(Text::from(Span::styled(
                 "Menu Item",
-                Color::from_str(theme.menu_item_text_color.as_str()).expect("valid RGB color"),
+                self.theme.menu_item_text_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Selected Menu Item",
-                Color::from_str(theme.selected_menu_item_text_color.as_str())
-                    .expect("valid RGB color"),
+                self.theme.selected_menu_item_text_color,
             ))),
             ListItem::new(""),
             ListItem::new(Text::from(Span::styled(
                 "Records List",
-                Color::from_str(theme.record_list_text_color.as_str()).expect("valid RGB color"),
+                self.theme.record_list_text_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Record Info",
-                Color::from_str(theme.record_info_text_color.as_str()).expect("valid RGB color"),
+                self.theme.record_info_text_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Record Headers",
-                Color::from_str(theme.record_headers_text_color.as_str()).expect("valid RGB color"),
+                self.theme.record_headers_text_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Record Value",
-                Color::from_str(theme.record_value_text_color.as_str()).expect("valid RGB color"),
+                self.theme.record_value_text_color,
             ))),
             ListItem::new(""),
             ListItem::new(Text::from(Span::styled(
                 "Notification Success",
-                Color::from_str(theme.notification_text_color_success.as_str())
-                    .expect("valid RGB color"),
+                self.theme.notification_text_color_success,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Notification Warn",
-                Color::from_str(theme.notification_text_color_warn.as_str())
-                    .expect("valid RGB color"),
+                self.theme.notification_text_color_warn,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Notification Failure",
-                Color::from_str(theme.notification_text_color_failure.as_str())
-                    .expect("valid RGB color"),
+                self.theme.notification_text_color_failure,
             ))),
             ListItem::new(""),
             ListItem::new(Text::from(Span::styled(
                 "Stats",
-                Color::from_str(theme.stats_text_color.as_str()).expect("valid RGB color"),
+                self.theme.stats_text_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Stats Bar Primary",
-                Color::from_str(theme.stats_bar_color.as_str()).expect("valid RGB color"),
+                self.theme.stats_bar_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Stats Bar Secondary",
-                Color::from_str(theme.stats_bar_secondary_color.as_str()).expect("valid RGB color"),
+                self.theme.stats_bar_secondary_color,
             ))),
             ListItem::new(Text::from(Span::styled(
                 "Stats Throughput",
-                Color::from_str(theme.stats_throughput_color.as_str()).expect("valid RGB color"),
+                self.theme.stats_throughput_color,
             ))),
         ];
 

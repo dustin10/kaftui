@@ -1,8 +1,8 @@
 use crate::{
     app::Notification,
     kafka::{
-        schema::{Schema, Subject, Version},
         Record,
+        schema::{Schema, Subject, Version},
     },
     trace::Log,
 };
