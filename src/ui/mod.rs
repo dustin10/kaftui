@@ -70,7 +70,7 @@ pub trait Component {
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
     fn map_key_event(
-        &self,
+        &mut self,
         _event: KeyEvent,
         _buffered: Option<&BufferedKeyPress>,
     ) -> Option<Event> {
@@ -83,8 +83,11 @@ pub trait Component {
     fn render_status_line(&self, _frame: &mut Frame, _area: Rect) {}
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, _frame: &mut Frame, _area: Rect) {}
-    /// Hook for the [`Component`] to run any logic required when it becomes active.
-    fn on_activate(&mut self) {}
+    /// Hook for the [`Component`] to run any logic required when it becomes active. The
+    /// [`Component`] can also return an optional [`Event`] that will be dispatched.
+    fn on_activate(&mut self) -> Option<Event> {
+        None
+    }
 }
 
 impl App {

@@ -1,6 +1,9 @@
 use crate::{
     app::Notification,
-    kafka::{schema::Schema, Record},
+    kafka::{
+        schema::{Schema, Subject, Version},
+        Record,
+    },
     trace::Log,
 };
 
@@ -59,14 +62,18 @@ pub enum Event {
     ScrollLogs(Position),
     /// Fires when a [`Log`] is emitted by the application.
     LogEmitted(Log),
-    /// Fires when the user wants to select a subjects from the list.
-    SelectSubject(Position),
-    /// Fires when the user wants to select a subject schema version from the list.
-    SelectSchemaVersion(Position),
-    /// Fires when the user wants to scroll the schema definition widget.
-    ScrollSchemaDefinition(Position),
-    /// Fires when the user wants to scroll the schema references widget.
-    ScrollSchemaReferences(Position),
+    /// Fires when the list of subjects need to be loaded from the schema registry.
+    LoadSubjects,
+    /// Fires when the list of subjects has been loaded from the schema registry.
+    SubjectsLoaded(Vec<Subject>),
+    /// Fires when the latest version of a schema needs to be loaded from the schema registry.
+    LoadLatestSchema(Subject),
+    /// Fires when the latest version of a schema has been loaded from the schema registry.
+    LatestSchemaLoaded(Option<Schema>, Vec<Version>),
+    /// Fires when a specific version of a schema needs to be loaded from the schema registry.
+    LoadSchemaVersion(Subject, Version),
+    /// Fires when a specific version of a schema has been loaded from the schema registry.
+    SchemaVersionLoaded(Option<Schema>),
     /// Fires when the user wants to export a [`Schema`] to a file.
     ExportSchema(Schema),
     /// Fires when the user wants to select a menu item in the settings component.

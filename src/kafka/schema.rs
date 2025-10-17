@@ -1,5 +1,4 @@
 use anyhow::Context;
-use async_trait::async_trait;
 use schema_registry_client::rest::{
     models::{RegisteredSchema, SchemaReference},
     schema_registry_client::Client,
@@ -150,27 +149,11 @@ impl Display for Version {
     }
 }
 
-/// The [`SchemaClient`] trait defines the behavior required to interact with a schema registry
-/// to retrieve subjects and schemas.
-#[async_trait]
-pub trait SchemaClient {
-    /// Loads all of the non-deleted subjects from the schema registry.
-    async fn get_subjects(&self) -> anyhow::Result<Vec<Subject>>;
-    /// Loads the schema for the specified version of the given subject from the schema registry.
-    /// If no version is specified, then the latest version is retrieved.
-    async fn get_schema(
-        &self,
-        subject: &Subject,
-        version: Option<Version>,
-    ) -> anyhow::Result<Schema>;
-    /// Loads all available versions for the specified subject from the schema registry.
-    async fn get_schema_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>>;
-}
+// TODO: add a cache layer with TTL?
 
-/// An implementation of the [`SchemaClient`] trait which interacts with the schema registry over
-/// HTTP using a pre-configured [`SchemaRegistryClient`].
+/// Interacts with the schema registry over HTTP using a pre-configured [`SchemaRegistryClient`].
 #[derive(Clone, Debug)]
-pub struct HttpSchemaClient<C>
+pub struct SchemaClient<C>
 where
     C: Client,
 {
@@ -178,24 +161,17 @@ where
     client: C,
 }
 
-impl<C> HttpSchemaClient<C>
+impl<C> SchemaClient<C>
 where
-    C: Client,
+    C: Client + Send + Sync,
 {
     /// Creates a new [`HttpSchemaClient`] which uses the provided [`Client`] to interact with the
     /// schema registry over HTTP.
     pub fn new(client: C) -> Self {
         Self { client }
     }
-}
-
-#[async_trait]
-impl<C> SchemaClient for HttpSchemaClient<C>
-where
-    C: Client + Send + Sync,
-{
     /// Loads all of the non-deleted subjects from the schema registry.
-    async fn get_subjects(&self) -> anyhow::Result<Vec<Subject>> {
+    pub async fn get_subjects(&self) -> anyhow::Result<Vec<Subject>> {
         self.client
             .get_all_subjects(false)
             .await
@@ -204,7 +180,7 @@ where
     }
     /// Loads the schema for the specified version of the given subject from the schema registry.
     /// If no version is specified, then the latest version is retrieved.
-    async fn get_schema(
+    pub async fn get_schema(
         &self,
         subject: &Subject,
         version: Option<Version>,
@@ -232,7 +208,7 @@ where
         }
     }
     /// Loads all available versions for the specified subject from the schema registry.
-    async fn get_schema_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
+    pub async fn get_schema_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
         self.client
             .get_all_versions(subject.as_ref())
             .await

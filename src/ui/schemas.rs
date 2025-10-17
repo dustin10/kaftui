@@ -1,11 +1,10 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
-    event::{Event, Position},
-    kafka::schema::{Schema, SchemaClient, Subject, Version},
+    event::Event,
+    kafka::schema::{Schema, Subject, Version},
     ui::Component,
 };
 
-use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
@@ -86,9 +85,9 @@ impl SchemasState {
         }
     }
     /// Selects the first subject in the list.
-    fn select_first_subject(&mut self) {
+    fn select_first_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_first();
@@ -103,17 +102,19 @@ impl SchemasState {
         self.schema_definition_scroll = (0, 0);
 
         self.selected_subject = self.subjects.first().cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the next subject in the list.
-    fn select_next_subject(&mut self) {
+    fn select_next_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         if let Some(curr_idx) = self.subjects_list_state.selected()
             && curr_idx == self.subjects.len() - 1
         {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_next();
@@ -133,11 +134,13 @@ impl SchemasState {
             .expect("subject selected");
 
         self.selected_subject = self.subjects.get(idx).cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the previous subject in the list.
-    fn select_prev_subject(&mut self) {
+    fn select_prev_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_previous();
@@ -158,11 +161,13 @@ impl SchemasState {
             .expect("subject selected");
 
         self.selected_subject = self.subjects.get(idx).cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the last subject in the list.
-    fn select_last_subject(&mut self) {
+    fn select_last_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_last();
@@ -177,9 +182,11 @@ impl SchemasState {
         self.schema_definition_scroll = (0, 0);
 
         self.selected_subject = self.subjects.last().cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the first subject schema version in the list.
-    fn select_first_schema_version(&mut self) -> Option<Version> {
+    fn select_first_schema_version(&mut self) -> Option<(&Subject, Version)> {
         let current_idx = self
             .versions_list_state
             .selected()
@@ -197,12 +204,13 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
+        let subject = self.selected_subject.as_ref().expect("subject selected");
         let version = self.available_versions.last().expect("version exists");
 
-        Some(*version)
+        Some((subject, *version))
     }
     /// Selects the next subject schema version in the list.
-    fn select_next_schema_version(&mut self) -> Option<Version> {
+    fn select_next_schema_version(&mut self) -> Option<(&Subject, Version)> {
         let idx = self
             .versions_list_state
             .selected()
@@ -220,6 +228,8 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
+        let subject = self.selected_subject.as_ref().expect("subject selected");
+
         let idx = self
             .versions_list_state
             .selected()
@@ -232,10 +242,10 @@ impl SchemasState {
             .get(version_idx)
             .expect("version exists");
 
-        Some(*version)
+        Some((subject, *version))
     }
     /// Selects the previous subject schema version in the list.
-    fn select_prev_schema_version(&mut self) -> Option<Version> {
+    fn select_prev_schema_version(&mut self) -> Option<(&Subject, Version)> {
         let idx = self
             .versions_list_state
             .selected()
@@ -253,6 +263,8 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
+        let subject = self.selected_subject.as_ref().expect("subject selected");
+
         let idx = self
             .versions_list_state
             .selected()
@@ -265,10 +277,10 @@ impl SchemasState {
             .get(version_idx)
             .expect("version exists");
 
-        Some(*version)
+        Some((subject, *version))
     }
     /// Selects the last subject schema version in the list.
-    fn select_last_schema_version(&mut self) -> Option<Version> {
+    fn select_last_schema_version(&mut self) -> Option<(&Subject, Version)> {
         let current_idx = self
             .versions_list_state
             .selected()
@@ -286,9 +298,10 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
+        let subject = self.selected_subject.as_ref().expect("subject selected");
         let version = self.available_versions.first().expect("version exists");
 
-        Some(*version)
+        Some((subject, *version))
     }
     /// Moves the schema definition scroll state to the top.
     fn scroll_schema_definition_top(&mut self) {
@@ -397,47 +410,31 @@ impl From<&Theme> for SchemasTheme {
 
 /// Configuration used to create a new [`Schemas`] component.
 #[derive(Builder)]
-pub struct SchemasConfig<'a, C>
-where
-    C: SchemaClient,
-{
-    /// Client used to query the schema registry.
-    schema_client: C,
+pub struct SchemasConfig<'a> {
     /// Controls how many lines each press of a key scrolls the schema definition text.
     scroll_factor: u16,
     /// Reference to the application [`Theme`].
     theme: &'a Theme,
 }
 
-impl<'a, C> SchemasConfig<'a, C>
-where
-    C: SchemaClient + Clone,
-{
+impl<'a> SchemasConfig<'a> {
     /// Creates a new default [`SchemasConfigBuilder`] which can be used to create a new
     /// [`Schemas`].
-    pub fn builder() -> SchemasConfigBuilder<'a, C> {
+    pub fn builder() -> SchemasConfigBuilder<'a> {
         SchemasConfigBuilder::default()
     }
 }
 
-impl<'a, C> From<SchemasConfig<'a, C>> for Schemas<C>
-where
-    C: SchemaClient,
-{
+impl<'a> From<SchemasConfig<'a>> for Schemas {
     /// Converts from an owned [`SchemasConfig`] to an owned [`Schemas`].
-    fn from(value: SchemasConfig<'a, C>) -> Self {
+    fn from(value: SchemasConfig<'a>) -> Self {
         Self::new(value)
     }
 }
 
 /// The application [`Component`] that is responsible for displaying data from the Schema Registry
 /// if one is configured.
-pub struct Schemas<C>
-where
-    C: SchemaClient,
-{
-    /// Client used to query the schema registry.
-    schema_client: C,
+pub struct Schemas {
     /// Current state of the component and it's underlying widgets.
     state: SchemasState,
     /// Controls how many lines each press of a key scrolls the schema definition text.
@@ -446,37 +443,18 @@ where
     theme: SchemasTheme,
 }
 
-impl<C> Schemas<C>
-where
-    C: SchemaClient,
-{
+impl Schemas {
     /// Creates a new [`Schemas`] component using the specified [`SchemasConfig`].
-    pub fn new(config: SchemasConfig<'_, C>) -> Self {
+    pub fn new(config: SchemasConfig<'_>) -> Self {
         Self {
-            schema_client: config.schema_client,
             state: SchemasState::new(),
             scroll_factor: config.scroll_factor,
             theme: config.theme.into(),
         }
     }
-    /// Loads the non-deleted subjects from the schema registry.
-    fn load_subjects(&mut self) {
-        // TODO: re-evaluate block_on
-        let result = futures::executor::block_on(async { self.schema_client.get_subjects().await });
-
-        match result {
-            Ok(subjects) => {
-                tracing::debug!(
-                    "loaded {} subjects from the schema registry",
-                    subjects.len()
-                );
-                self.state.subjects = subjects;
-            }
-            Err(e) => {
-                tracing::error!("error loading subjects from schema registry: {}", e);
-                self.state.subjects = Vec::default();
-            }
-        }
+    /// Invoked when the list of subjects has been loaded from the schema registry.
+    fn on_subjects_loaded(&mut self, subjects: Vec<Subject>) {
+        self.state.subjects = subjects;
     }
     /// Renders the list of subjects.
     fn render_subjects(&mut self, frame: &mut Frame, area: Rect) {
@@ -743,117 +721,22 @@ where
         frame.render_widget(empty_text, empty_area);
         frame.render_widget(message_text, text_area);
     }
-    /// Selects the first subject in the list and loads it's latest schema details.
-    fn select_first_subject(&mut self) {
-        self.state.select_first_subject();
-        self.load_selected_subject_latest();
-    }
-    /// Selects the next subject in the list and loads it's latest schema details.
-    fn select_next_subject(&mut self) {
-        self.state.select_next_subject();
-        self.load_selected_subject_latest();
-    }
-    /// Selects the previous subject in the list and loads it's latest schema details.
-    fn select_prev_subject(&mut self) {
-        self.state.select_prev_subject();
-        self.load_selected_subject_latest();
-    }
-    /// Selects the last subject in the list and loads it's latest schema details.
-    fn select_last_subject(&mut self) {
-        self.state.select_last_subject();
-        self.load_selected_subject_latest();
-    }
-    /// Selects the first schema version in the list and loads the details.
-    fn select_first_schema_version(&mut self) {
-        if let Some(version) = self.state.select_first_schema_version() {
-            self.load_selected_subject_at_version(version);
-        }
-    }
-    /// Selects the next schema version in the list and loads the details.
-    fn select_next_schema_version(&mut self) {
-        if let Some(version) = self.state.select_next_schema_version() {
-            self.load_selected_subject_at_version(version);
-        }
-    }
-    /// Selects the prev schema version in the list and loads the details.
-    fn select_prev_schema_version(&mut self) {
-        if let Some(version) = self.state.select_prev_schema_version() {
-            self.load_selected_subject_at_version(version);
-        }
-    }
-    /// Selects the last schema version in the list and loads the details.
-    fn select_last_schema_version(&mut self) {
-        if let Some(version) = self.state.select_last_schema_version() {
-            self.load_selected_subject_at_version(version);
-        }
-    }
-    /// Loads the schema details for the latest version of the currently selected subject.
-    fn load_selected_subject_latest(&mut self) {
-        if let Some(selected) = self.state.selected_subject.as_ref() {
-            tracing::info!("loading latest schema version for subject {}", selected);
+    /// Invoked when the latest schema version and all available versions have been loaded from the
+    /// schema registry.
+    fn on_latest_schema_loaded(&mut self, schema: Option<Schema>, versions: Vec<Version>) {
+        self.state.selected_schema = schema;
 
-            // TODO: error handling
-            let schema = self
-                .load_subject_at_version(selected, None)
-                .expect("subject can be loaded");
+        self.state.available_versions = versions;
 
-            let versions = self
-                .load_versions(selected)
-                .expect("versions can be loaded");
-
-            self.state.available_versions = versions;
-
-            // TODO: cache schema version data with a TTL or keep reloading it every time?
-
-            self.state.selected_schema = Some(schema);
-            self.state.versions_list_state.select_first();
-        }
+        self.state.versions_list_state.select_first();
     }
-    /// Loads the schema details for the specified version of the currently selected subject.
-    fn load_selected_subject_at_version(&mut self, version: Version) {
-        if let Some(selected) = self.state.selected_subject.as_ref() {
-            tracing::info!(
-                "loading schema version {} for subject {}",
-                selected,
-                version
-            );
-
-            // TODO: error handling
-            let schema = self
-                .load_subject_at_version(selected, Some(version))
-                .expect("subject can be loaded");
-
-            // TODO: cache schema version data with a TTL or keep reloading it every time?
-
-            self.state.selected_schema = Some(schema);
-        }
-    }
-    /// Loads all available versions for the specified subject from the schema registry.
-    fn load_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
-        // TODO: re-evaluate block_on
-        futures::executor::block_on(async {
-            self.schema_client
-                .get_schema_versions(subject)
-                .await
-                .context(format!("load versions for subject {}", subject.as_ref()))
-        })
-    }
-    /// Loads the schema details for the specified version of the given subject from the schema
-    /// registry. If no version is specified, the latest version is fetched.
-    fn load_subject_at_version(
-        &self,
-        subject: &Subject,
-        version: Option<Version>,
-    ) -> anyhow::Result<Schema> {
-        // TODO: re-evaluate block_on
-        futures::executor::block_on(async { self.schema_client.get_schema(subject, version).await })
+    /// Invoked when a schema version has been loaded from the schema registry.
+    fn on_schema_version_loaded(&mut self, schema: Option<Schema>) {
+        self.state.selected_schema = schema;
     }
 }
 
-impl<C> Component for Schemas<C>
-where
-    C: SchemaClient,
-{
+impl Component for Schemas {
     // Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str {
         "Schemas"
@@ -897,7 +780,11 @@ where
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
-    fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
+    fn map_key_event(
+        &mut self,
+        event: KeyEvent,
+        buffered: Option<&BufferedKeyPress>,
+    ) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
                 'e' => self
@@ -907,38 +794,75 @@ where
                     .map(|s| Event::ExportSchema(s.clone())),
                 _ => match self.state.active_widget {
                     SchemasWidget::Subjects => match c {
-                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::SelectSubject(Position::Top))
-                        }
-                        'j' => Some(Event::SelectSubject(Position::Down)),
-                        'k' => Some(Event::SelectSubject(Position::Up)),
-                        'G' => Some(Event::SelectSubject(Position::Bottom)),
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
+                            .state
+                            .select_first_subject()
+                            .map(|s| Event::LoadLatestSchema(s.clone())),
+                        'j' => self
+                            .state
+                            .select_next_subject()
+                            .map(|s| Event::LoadLatestSchema(s.clone())),
+                        'k' => self
+                            .state
+                            .select_prev_subject()
+                            .map(|s| Event::LoadLatestSchema(s.clone())),
+                        'G' => self
+                            .state
+                            .select_last_subject()
+                            .map(|s| Event::LoadLatestSchema(s.clone())),
                         _ => None,
                     },
                     SchemasWidget::Schema => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSchemaDefinition(Position::Top))
+                            self.state.scroll_schema_definition_top();
+                            None
                         }
-                        'j' => Some(Event::ScrollSchemaDefinition(Position::Down)),
-                        'k' => Some(Event::ScrollSchemaDefinition(Position::Up)),
+                        'j' => {
+                            self.state.scroll_schema_definition_down(self.scroll_factor);
+                            None
+                        }
+                        'k' => {
+                            self.state.scroll_schema_definition_up(self.scroll_factor);
+                            None
+                        }
                         _ => None,
                     },
                     SchemasWidget::Versions => match c {
-                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::SelectSchemaVersion(Position::Top))
-                        }
-                        'j' => Some(Event::SelectSchemaVersion(Position::Down)),
-                        'k' => Some(Event::SelectSchemaVersion(Position::Up)),
-                        'G' => Some(Event::SelectSchemaVersion(Position::Bottom)),
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
+                            .state
+                            .select_first_schema_version()
+                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
+                        'j' => self
+                            .state
+                            .select_next_schema_version()
+                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
+                        'k' => self
+                            .state
+                            .select_prev_schema_version()
+                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
+                        'G' => self
+                            .state
+                            .select_last_schema_version()
+                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
                         _ => None,
                     },
                     SchemasWidget::References => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSchemaReferences(Position::Top))
+                            self.state.scroll_references_top();
+                            None
                         }
-                        'j' => Some(Event::ScrollSchemaReferences(Position::Down)),
-                        'k' => Some(Event::ScrollSchemaReferences(Position::Up)),
-                        'G' => Some(Event::ScrollSchemaReferences(Position::Bottom)),
+                        'j' => {
+                            self.state.scroll_references_down();
+                            None
+                        }
+                        'k' => {
+                            self.state.scroll_references_up();
+                            None
+                        }
+                        'G' => {
+                            self.state.scroll_references_bottom();
+                            None
+                        }
                         _ => None,
                     },
                 },
@@ -951,30 +875,11 @@ where
     fn on_app_event(&mut self, event: &Event) {
         match event {
             Event::SelectNextWidget => self.state.select_next_widget(),
-            Event::SelectSubject(position) => match position {
-                Position::Top => self.select_first_subject(),
-                Position::Down => self.select_next_subject(),
-                Position::Up => self.select_prev_subject(),
-                Position::Bottom => self.select_last_subject(),
-            },
-            Event::ScrollSchemaDefinition(position) => match position {
-                Position::Top => self.state.scroll_schema_definition_top(),
-                Position::Down => self.state.scroll_schema_definition_down(self.scroll_factor),
-                Position::Up => self.state.scroll_schema_definition_up(self.scroll_factor),
-                Position::Bottom => {}
-            },
-            Event::SelectSchemaVersion(position) => match position {
-                Position::Top => self.select_first_schema_version(),
-                Position::Down => self.select_next_schema_version(),
-                Position::Up => self.select_prev_schema_version(),
-                Position::Bottom => self.select_last_schema_version(),
-            },
-            Event::ScrollSchemaReferences(position) => match position {
-                Position::Top => self.state.scroll_references_top(),
-                Position::Down => self.state.scroll_references_down(),
-                Position::Up => self.state.scroll_references_up(),
-                Position::Bottom => self.state.scroll_references_bottom(),
-            },
+            Event::SubjectsLoaded(subjects) => self.on_subjects_loaded(subjects.to_vec()),
+            Event::LatestSchemaLoaded(schema, versions) => {
+                self.on_latest_schema_loaded(schema.clone(), versions.to_vec())
+            }
+            Event::SchemaVersionLoaded(schema) => self.on_schema_version_loaded(schema.clone()),
             _ => {}
         }
     }
@@ -1017,8 +922,13 @@ where
 
         frame.render_widget(text, area);
     }
-    /// Hook for the [`Component`] to run any logic required when it becomes active.
-    fn on_activate(&mut self) {
-        self.load_subjects();
+    /// Hook for the [`Component`] to run any logic required when it becomes active. The
+    /// [`Component`] can also return an optional [`Event`] that will be dispatched.
+    fn on_activate(&mut self) -> Option<Event> {
+        if self.state.subjects.is_empty() {
+            Some(Event::LoadSubjects)
+        } else {
+            None
+        }
     }
 }

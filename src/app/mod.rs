@@ -7,7 +7,7 @@ use crate::{
     kafka::{
         Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
         de::{KeyDeserializer, ValueDeserializer},
-        schema::{HttpSchemaClient, Schema},
+        schema::{Schema, SchemaClient, Subject, Version},
     },
     trace::Log,
     ui::{
@@ -172,9 +172,9 @@ impl State {
         }
     }
     /// Sets the active [`Component`] that the user is viewing and interacting with.
-    fn activate_component(&mut self, component: Rc<RefCell<dyn Component>>) {
+    fn activate_component(&mut self, component: Rc<RefCell<dyn Component>>) -> Option<Event> {
         self.active_component = component;
-        self.active_component.borrow_mut().on_activate();
+        self.active_component.borrow_mut().on_activate()
     }
 }
 
@@ -200,6 +200,8 @@ pub struct App {
     consumer: Arc<Consumer>,
     /// Responsible for exporting Kafka records to the file system.
     exporter: Exporter,
+    /// Client used to interact with the schema registry, if configured.
+    schema_client: Option<SchemaClient<SchemaRegistryClient>>,
 }
 
 impl App {
@@ -284,7 +286,17 @@ impl App {
         let mut components: Vec<Rc<RefCell<dyn Component>>> =
             vec![records_component.clone(), stats_component];
 
-        if let Some(schema_registry_url) = config.schema_registry_url.as_ref() {
+        let schema_client = if let Some(schema_registry_url) = config.schema_registry_url.as_ref() {
+            let schemas_component = Rc::new(RefCell::new(Schemas::new(
+                SchemasConfig::builder()
+                    .scroll_factor(config.scroll_factor)
+                    .theme(&config.theme)
+                    .build()
+                    .expect("valid Schemas config"),
+            )));
+
+            components.push(schemas_component);
+
             // TODO: share schema registry client with the deserializer instead of creating a new
             // one here.
             let mut schema_registry_client_config =
@@ -302,19 +314,12 @@ impl App {
             }
 
             let schema_client =
-                HttpSchemaClient::new(SchemaRegistryClient::new(schema_registry_client_config));
+                SchemaClient::new(SchemaRegistryClient::new(schema_registry_client_config));
 
-            let schemas_component = Rc::new(RefCell::new(Schemas::new(
-                SchemasConfig::builder()
-                    .schema_client(schema_client)
-                    .scroll_factor(config.scroll_factor)
-                    .theme(&config.theme)
-                    .build()
-                    .expect("valid Schemas config"),
-            )));
-
-            components.push(schemas_component);
-        }
+            Some(schema_client)
+        } else {
+            None
+        };
 
         let config = Rc::new(config);
 
@@ -359,6 +364,7 @@ impl App {
             components,
             menu_item_chars,
             buffered_key_press: None,
+            schema_client,
         })
     }
     /// Run the main loop of the application.
@@ -393,14 +399,14 @@ impl App {
                 biased;
                 Some(terminal_event) = terminal_rx.recv() => {
                     if let TerminalEvent::Key(key_event) = terminal_event {
-                        self.on_key_event(key_event);
+                        self.on_key_event(key_event).await;
                     }
                 }
                 app_events_count =
                     self.event_rx.recv_many(&mut app_events_buffer, APP_EVENTS_BUFFER_SIZE) => {
                     if app_events_count > 0 {
                         for app_event in app_events_buffer.into_iter() {
-                            self.on_app_event(app_event);
+                            self.on_app_event(app_event).await;
                         }
                     }
                 },
@@ -408,7 +414,7 @@ impl App {
                     self.consumer_rx.recv_many(&mut consumer_events_buffer, CONSUMER_EVENTS_BUFFER_SIZE) => {
                     if consumer_events_count > 0 {
                         for consumer_event in consumer_events_buffer.into_iter() {
-                            self.on_consumer_event(consumer_event);
+                            self.on_consumer_event(consumer_event).await;
                         }
                     }
                 }
@@ -468,7 +474,7 @@ impl App {
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
-    fn on_key_event(&mut self, key_event: KeyEvent) {
+    async fn on_key_event(&mut self, key_event: KeyEvent) {
         let app_event = match key_event.code {
             KeyCode::Esc => Some(Event::Quit),
             KeyCode::Tab => Some(Event::SelectNextWidget),
@@ -481,20 +487,20 @@ impl App {
             _ => self
                 .state
                 .active_component
-                .borrow()
+                .borrow_mut()
                 .map_key_event(key_event, self.buffered_key_press.as_ref()),
         };
 
         if let Some(e) = app_event {
             self.buffered_key_press = None;
-            self.on_app_event(e);
+            self.on_app_event(e).await;
         } else if let KeyCode::Char(c) = key_event.code {
             self.buffered_key_press = Some(BufferedKeyPress::new(c));
         }
     }
     /// Handles application [`Event`]s either received over the [`EventBus`] or mapped directly by
     /// the application when events are received on other channels.
-    fn on_app_event(&mut self, event: Event) {
+    async fn on_app_event(&mut self, event: Event) {
         match event {
             Event::Quit => self.on_quit(),
             Event::ConsumerStarted => self.on_consumer_started(),
@@ -511,6 +517,11 @@ impl App {
                 .active_component
                 .borrow_mut()
                 .on_app_event(&event),
+            Event::LoadSubjects => self.load_subjects().await,
+            Event::LoadLatestSchema(subject) => self.load_latest_schema(&subject).await,
+            Event::LoadSchemaVersion(subject, version) => {
+                self.load_schema_version(&subject, version).await
+            }
             Event::ExportSchema(schema) => self.on_export_schema(schema),
             _ => {
                 self.components
@@ -520,14 +531,14 @@ impl App {
         }
     }
     /// Handles [`ConsumerEvent`]s received on the Kafka consumer channel.
-    fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
+    async fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
         let app_event = match consumer_event {
             ConsumerEvent::Received(record) => Event::RecordReceived(record),
             ConsumerEvent::Filtered(record) => Event::RecordFiltered(record),
             ConsumerEvent::Statistics(stats) => Event::StatisticsReceived(stats),
         };
 
-        self.on_app_event(app_event);
+        self.on_app_event(app_event).await;
     }
     /// Handles the [`Event::ExportRecord`] event emitted by the [`EventBus`].
     fn on_export_record(&mut self, record: Record) {
@@ -546,6 +557,116 @@ impl App {
 
         self.event_bus
             .send(Event::DisplayNotification(notification));
+    }
+    /// Loads the non-deleted subjects from the schema registry.
+    async fn load_subjects(&self) {
+        let schema_client = self
+            .schema_client
+            .as_ref()
+            .expect("schema client configured");
+
+        let result = schema_client.get_subjects().await;
+
+        let subjects = match result {
+            Ok(subjects) => {
+                tracing::debug!(
+                    "loaded {} subjects from the schema registry",
+                    subjects.len()
+                );
+                subjects
+            }
+            Err(e) => {
+                tracing::error!("error loading subjects from schema registry: {}", e);
+                Vec::default()
+            }
+        };
+
+        self.event_bus.send(Event::SubjectsLoaded(subjects));
+    }
+    /// Loads the latest schema version for the subject as well as all available versions from the
+    /// schema registry.
+    async fn load_latest_schema(&self, subject: &Subject) {
+        let schema_client = self
+            .schema_client
+            .as_ref()
+            .expect("schema client configured");
+
+        let schema_fut = schema_client.get_schema(subject, None);
+        let versions_fut = schema_client.get_schema_versions(subject);
+
+        let (schema_res, versions_res) = futures::join!(schema_fut, versions_fut);
+
+        let schema = match schema_res {
+            Ok(schema) => {
+                tracing::debug!(
+                    "loaded latest schema for subject {} from the schema registry",
+                    subject.as_ref()
+                );
+                Some(schema)
+            }
+            Err(e) => {
+                tracing::error!(
+                    "error loading latest schema for subject {} from schema registry: {}",
+                    subject.as_ref(),
+                    e
+                );
+                None
+            }
+        };
+
+        let versions = match versions_res {
+            Ok(versions) => {
+                tracing::debug!(
+                    "loaded {} versions for subject {} from the schema registry",
+                    versions.len(),
+                    subject.as_ref()
+                );
+                versions
+            }
+            Err(e) => {
+                tracing::error!(
+                    "error loading versions for subject {} from schema registry: {}",
+                    subject.as_ref(),
+                    e
+                );
+                Vec::default()
+            }
+        };
+
+        self.event_bus
+            .send(Event::LatestSchemaLoaded(schema, versions));
+    }
+    /// Loads the schema details for the specified version of the given subject from the schema
+    /// registry. If no version is specified, the latest version is fetched.
+    async fn load_schema_version(&self, subject: &Subject, version: Version) {
+        let schema_client = self
+            .schema_client
+            .as_ref()
+            .expect("schema client configured");
+
+        let result = schema_client.get_schema(subject, Some(version)).await;
+
+        let schema = match result {
+            Ok(schema) => {
+                tracing::debug!(
+                    "loaded schema for subject {} version {} from the schema registry",
+                    subject.as_ref(),
+                    version
+                );
+                Some(schema)
+            }
+            Err(e) => {
+                tracing::error!(
+                    "error loading schema for subject {} version {} from schema registry: {}",
+                    subject.as_ref(),
+                    version,
+                    e
+                );
+                None
+            }
+        };
+
+        self.event_bus.send(Event::SchemaVersionLoaded(schema));
     }
     /// Handles the [`Event::ExportSchema`] event emitted by the [`EventBus`].
     fn on_export_schema(&mut self, schema: Schema) {
@@ -618,7 +739,9 @@ impl App {
 
         if let Some(component) = self.components.get(idx) {
             tracing::debug!("activating {} component", component.borrow().name());
-            self.state.activate_component(Rc::clone(component));
+            if let Some(event) = self.state.activate_component(Rc::clone(component)) {
+                self.event_bus.send(event);
+            }
         }
     }
 }

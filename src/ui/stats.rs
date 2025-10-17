@@ -688,7 +688,7 @@ impl<'a> Component for Stats<'a> {
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
     fn map_key_event(
-        &self,
+        &mut self,
         event: KeyEvent,
         _buffered: Option<&BufferedKeyPress>,
     ) -> Option<Event> {

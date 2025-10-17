@@ -615,7 +615,11 @@ impl Component for Records {
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
-    fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
+    fn map_key_event(
+        &mut self,
+        event: KeyEvent,
+        buffered: Option<&BufferedKeyPress>,
+    ) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
                 'e' => self
