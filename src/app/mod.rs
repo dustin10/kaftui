@@ -201,7 +201,7 @@ pub struct App {
     /// Responsible for exporting Kafka records to the file system.
     exporter: Exporter,
     /// Client used to interact with the schema registry, if configured.
-    schema_client: Option<SchemaClient<SchemaRegistryClient>>,
+    schema_client: Option<SchemaClient<SchemaRegistryClient>>, // TODO: clean this up
 }
 
 impl App {
