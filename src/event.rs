@@ -1,6 +1,9 @@
 use crate::{
     app::Notification,
-    kafka::{schema::Schema, Record},
+    kafka::{
+        schema::{Schema, Subject, Version},
+        Record,
+    },
     trace::Log,
 };
 
@@ -59,6 +62,12 @@ pub enum Event {
     ScrollLogs(Position),
     /// Fires when a [`Log`] is emitted by the application.
     LogEmitted(Log),
+    LoadSubjects,
+    SubjectsLoaded(Vec<Subject>),
+    LoadLatestSchema(Subject),
+    LatestSchemaLoaded(Option<Schema>, Vec<Version>),
+    LoadSchemaVersion(Subject, Version),
+    SchemaVersionLoaded(Option<Schema>),
     /// Fires when the user wants to select a subjects from the list.
     SelectSubject(Position),
     /// Fires when the user wants to select a subject schema version from the list.

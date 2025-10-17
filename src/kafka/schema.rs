@@ -189,6 +189,8 @@ where
     }
 }
 
+// TODO: add a cache layer with TTL?
+
 #[async_trait]
 impl<C> SchemaClient for HttpSchemaClient<C>
 where

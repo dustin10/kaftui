@@ -1,11 +1,10 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::{Event, Position},
-    kafka::schema::{Schema, SchemaClient, Subject, Version},
+    kafka::schema::{Schema, Subject, Version},
     ui::Component,
 };
 
-use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
@@ -397,47 +396,31 @@ impl From<&Theme> for SchemasTheme {
 
 /// Configuration used to create a new [`Schemas`] component.
 #[derive(Builder)]
-pub struct SchemasConfig<'a, C>
-where
-    C: SchemaClient,
-{
-    /// Client used to query the schema registry.
-    schema_client: C,
+pub struct SchemasConfig<'a> {
     /// Controls how many lines each press of a key scrolls the schema definition text.
     scroll_factor: u16,
     /// Reference to the application [`Theme`].
     theme: &'a Theme,
 }
 
-impl<'a, C> SchemasConfig<'a, C>
-where
-    C: SchemaClient + Clone,
-{
+impl<'a> SchemasConfig<'a> {
     /// Creates a new default [`SchemasConfigBuilder`] which can be used to create a new
     /// [`Schemas`].
-    pub fn builder() -> SchemasConfigBuilder<'a, C> {
+    pub fn builder() -> SchemasConfigBuilder<'a> {
         SchemasConfigBuilder::default()
     }
 }
 
-impl<'a, C> From<SchemasConfig<'a, C>> for Schemas<C>
-where
-    C: SchemaClient,
-{
+impl<'a> From<SchemasConfig<'a>> for Schemas {
     /// Converts from an owned [`SchemasConfig`] to an owned [`Schemas`].
-    fn from(value: SchemasConfig<'a, C>) -> Self {
+    fn from(value: SchemasConfig<'a>) -> Self {
         Self::new(value)
     }
 }
 
 /// The application [`Component`] that is responsible for displaying data from the Schema Registry
 /// if one is configured.
-pub struct Schemas<C>
-where
-    C: SchemaClient,
-{
-    /// Client used to query the schema registry.
-    schema_client: C,
+pub struct Schemas {
     /// Current state of the component and it's underlying widgets.
     state: SchemasState,
     /// Controls how many lines each press of a key scrolls the schema definition text.
@@ -446,37 +429,18 @@ where
     theme: SchemasTheme,
 }
 
-impl<C> Schemas<C>
-where
-    C: SchemaClient,
-{
+impl Schemas {
     /// Creates a new [`Schemas`] component using the specified [`SchemasConfig`].
-    pub fn new(config: SchemasConfig<'_, C>) -> Self {
+    pub fn new(config: SchemasConfig<'_>) -> Self {
         Self {
-            schema_client: config.schema_client,
             state: SchemasState::new(),
             scroll_factor: config.scroll_factor,
             theme: config.theme.into(),
         }
     }
-    /// Loads the non-deleted subjects from the schema registry.
-    fn load_subjects(&mut self) {
-        // TODO: re-evaluate block_on
-        let result = futures::executor::block_on(async { self.schema_client.get_subjects().await });
-
-        match result {
-            Ok(subjects) => {
-                tracing::debug!(
-                    "loaded {} subjects from the schema registry",
-                    subjects.len()
-                );
-                self.state.subjects = subjects;
-            }
-            Err(e) => {
-                tracing::error!("error loading subjects from schema registry: {}", e);
-                self.state.subjects = Vec::default();
-            }
-        }
+    /// Invoked when the list of subjects has been loaded from the schema registry.
+    fn on_subjects_loaded(&mut self, subjects: Vec<Subject>) {
+        self.state.subjects = subjects;
     }
     /// Renders the list of subjects.
     fn render_subjects(&mut self, frame: &mut Frame, area: Rect) {
@@ -793,67 +757,67 @@ where
             tracing::info!("loading latest schema version for subject {}", selected);
 
             // TODO: error handling
-            let schema = self
-                .load_subject_at_version(selected, None)
-                .expect("subject can be loaded");
-
-            let versions = self
-                .load_versions(selected)
-                .expect("versions can be loaded");
+            //let schema = self
+            //    .load_subject_at_version(selected, None)
+            //    .expect("subject can be loaded");
+            //
+            //let versions = self
+            //    .load_versions(selected)
+            //    .expect("versions can be loaded");
+            let schema = None;
+            let versions = Vec::default();
 
             self.state.available_versions = versions;
 
-            // TODO: cache schema version data with a TTL or keep reloading it every time?
-
-            self.state.selected_schema = Some(schema);
+            self.state.selected_schema = schema;
             self.state.versions_list_state.select_first();
         }
     }
     /// Loads the schema details for the specified version of the currently selected subject.
-    fn load_selected_subject_at_version(&mut self, version: Version) {
-        if let Some(selected) = self.state.selected_subject.as_ref() {
-            tracing::info!(
-                "loading schema version {} for subject {}",
-                selected,
-                version
-            );
-
-            // TODO: error handling
-            let schema = self
-                .load_subject_at_version(selected, Some(version))
-                .expect("subject can be loaded");
-
-            // TODO: cache schema version data with a TTL or keep reloading it every time?
-
-            self.state.selected_schema = Some(schema);
-        }
+    fn load_selected_subject_at_version(&self, _version: Version) {
+        //if let Some(selected) = self.state.selected_subject.as_ref() {
+        //    tracing::info!(
+        //        "loading schema version {} for subject {}",
+        //        selected,
+        //        version
+        //    );
+        //
+        //    // TODO: error handling
+        //    let schema = self
+        //        .load_subject_at_version(selected, Some(version))
+        //        .expect("subject can be loaded");
+        //
+        //    self.state.selected_schema = Some(schema);
+        //}
     }
     /// Loads all available versions for the specified subject from the schema registry.
-    fn load_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
-        // TODO: re-evaluate block_on
-        futures::executor::block_on(async {
-            self.schema_client
-                .get_schema_versions(subject)
-                .await
-                .context(format!("load versions for subject {}", subject.as_ref()))
-        })
+    fn load_versions(&self, _subject: &Subject) -> anyhow::Result<Vec<Version>> {
+        //// TODO: re-evaluate block_on
+        //futures::executor::block_on(async {
+        //    self.schema_client
+        //        .get_schema_versions(subject)
+        //        .await
+        //        .context(format!("load versions for subject {}", subject.as_ref()))
+        //})
+
+        Ok(Vec::default())
     }
-    /// Loads the schema details for the specified version of the given subject from the schema
-    /// registry. If no version is specified, the latest version is fetched.
-    fn load_subject_at_version(
-        &self,
-        subject: &Subject,
-        version: Option<Version>,
-    ) -> anyhow::Result<Schema> {
-        // TODO: re-evaluate block_on
-        futures::executor::block_on(async { self.schema_client.get_schema(subject, version).await })
+    /// Invoked when the latest schema version and all available versions have been loaded from the
+    /// schema registry.
+    fn on_latest_schema_loaded(&mut self, schema: Option<Schema>, versions: Vec<Version>) {
+        self.state.selected_schema = schema;
+
+        self.state.available_versions = versions;
+
+        self.state.versions_list_state.select_first();
+    }
+    /// Invoked when a schema version has been loaded from the schema registry.
+    fn on_schema_version_loaded(&mut self, schema: Option<Schema>) {
+        self.state.selected_schema = schema;
     }
 }
 
-impl<C> Component for Schemas<C>
-where
-    C: SchemaClient,
-{
+impl Component for Schemas {
     // Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str {
         "Schemas"
@@ -951,6 +915,11 @@ where
     fn on_app_event(&mut self, event: &Event) {
         match event {
             Event::SelectNextWidget => self.state.select_next_widget(),
+            Event::SubjectsLoaded(subjects) => self.on_subjects_loaded(subjects.to_vec()),
+            Event::LatestSchemaLoaded(schema, versions) => {
+                self.on_latest_schema_loaded(schema.clone(), versions.to_vec())
+            }
+            Event::SchemaVersionLoaded(schema) => self.on_schema_version_loaded(schema.clone()),
             Event::SelectSubject(position) => match position {
                 Position::Top => self.select_first_subject(),
                 Position::Down => self.select_next_subject(),
@@ -1017,8 +986,13 @@ where
 
         frame.render_widget(text, area);
     }
-    /// Hook for the [`Component`] to run any logic required when it becomes active.
-    fn on_activate(&mut self) {
-        self.load_subjects();
+    /// Hook for the [`Component`] to run any logic required when it becomes active. The
+    /// [`Component`] can also return an optional [`Event`] that will be dispatched.
+    fn on_activate(&mut self) -> Option<Event> {
+        if self.state.subjects.is_empty() {
+            Some(Event::LoadSubjects)
+        } else {
+            None
+        }
     }
 }
