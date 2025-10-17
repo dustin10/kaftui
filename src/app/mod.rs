@@ -7,7 +7,7 @@ use crate::{
     kafka::{
         Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
         de::{KeyDeserializer, ValueDeserializer},
-        schema::{HttpSchemaClient, Schema, SchemaClient, Subject, Version},
+        schema::{Schema, SchemaClient, Subject, Version},
     },
     trace::Log,
     ui::{
@@ -172,9 +172,9 @@ impl State {
         }
     }
     /// Sets the active [`Component`] that the user is viewing and interacting with.
-    fn activate_component(&mut self, component: Rc<RefCell<dyn Component>>) {
+    fn activate_component(&mut self, component: Rc<RefCell<dyn Component>>) -> Option<Event> {
         self.active_component = component;
-        self.active_component.borrow_mut().on_activate();
+        self.active_component.borrow_mut().on_activate()
     }
 }
 
@@ -200,7 +200,8 @@ pub struct App {
     consumer: Arc<Consumer>,
     /// Responsible for exporting Kafka records to the file system.
     exporter: Exporter,
-    schema_client: Option<HttpSchemaClient<SchemaRegistryClient>>,
+    /// Client used to interact with the schema registry, if configured.
+    schema_client: Option<SchemaClient<SchemaRegistryClient>>,
 }
 
 impl App {
@@ -313,7 +314,7 @@ impl App {
             }
 
             let schema_client =
-                HttpSchemaClient::new(SchemaRegistryClient::new(schema_registry_client_config));
+                SchemaClient::new(SchemaRegistryClient::new(schema_registry_client_config));
 
             Some(schema_client)
         } else {
@@ -738,7 +739,9 @@ impl App {
 
         if let Some(component) = self.components.get(idx) {
             tracing::debug!("activating {} component", component.borrow().name());
-            self.state.activate_component(Rc::clone(component));
+            if let Some(event) = self.state.activate_component(Rc::clone(component)) {
+                self.event_bus.send(event);
+            }
         }
     }
 }

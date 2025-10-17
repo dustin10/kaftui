@@ -1,8 +1,8 @@
 use crate::{
     app::Notification,
     kafka::{
-        schema::{Schema, Subject, Version},
         Record,
+        schema::{Schema, Subject, Version},
     },
     trace::Log,
 };
@@ -68,8 +68,6 @@ pub enum Event {
     LatestSchemaLoaded(Option<Schema>, Vec<Version>),
     LoadSchemaVersion(Subject, Version),
     SchemaVersionLoaded(Option<Schema>),
-    /// Fires when the user wants to select a subject schema version from the list.
-    SelectSchemaVersion(Position),
     /// Fires when the user wants to export a [`Schema`] to a file.
     ExportSchema(Schema),
     /// Fires when the user wants to select a menu item in the settings component.
