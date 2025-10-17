@@ -398,14 +398,14 @@ impl App {
                 biased;
                 Some(terminal_event) = terminal_rx.recv() => {
                     if let TerminalEvent::Key(key_event) = terminal_event {
-                        self.on_key_event(key_event);
+                        self.on_key_event(key_event).await;
                     }
                 }
                 app_events_count =
                     self.event_rx.recv_many(&mut app_events_buffer, APP_EVENTS_BUFFER_SIZE) => {
                     if app_events_count > 0 {
                         for app_event in app_events_buffer.into_iter() {
-                            self.on_app_event(app_event);
+                            self.on_app_event(app_event).await;
                         }
                     }
                 },
@@ -413,7 +413,7 @@ impl App {
                     self.consumer_rx.recv_many(&mut consumer_events_buffer, CONSUMER_EVENTS_BUFFER_SIZE) => {
                     if consumer_events_count > 0 {
                         for consumer_event in consumer_events_buffer.into_iter() {
-                            self.on_consumer_event(consumer_event);
+                            self.on_consumer_event(consumer_event).await;
                         }
                     }
                 }
@@ -473,7 +473,7 @@ impl App {
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
-    fn on_key_event(&mut self, key_event: KeyEvent) {
+    async fn on_key_event(&mut self, key_event: KeyEvent) {
         let app_event = match key_event.code {
             KeyCode::Esc => Some(Event::Quit),
             KeyCode::Tab => Some(Event::SelectNextWidget),
@@ -486,13 +486,13 @@ impl App {
             _ => self
                 .state
                 .active_component
-                .borrow()
+                .borrow_mut()
                 .map_key_event(key_event, self.buffered_key_press.as_ref()),
         };
 
         if let Some(e) = app_event {
             self.buffered_key_press = None;
-            self.on_app_event(e);
+            self.on_app_event(e).await;
         } else if let KeyCode::Char(c) = key_event.code {
             self.buffered_key_press = Some(BufferedKeyPress::new(c));
         }
@@ -517,6 +517,7 @@ impl App {
                 .borrow_mut()
                 .on_app_event(&event),
             Event::LoadSubjects => self.load_subjects().await,
+            Event::LoadLatestSchema(subject) => self.load_latest_schema(&subject).await,
             Event::LoadSchemaVersion(subject, version) => {
                 self.load_schema_version(&subject, version).await
             }
@@ -529,14 +530,14 @@ impl App {
         }
     }
     /// Handles [`ConsumerEvent`]s received on the Kafka consumer channel.
-    fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
+    async fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
         let app_event = match consumer_event {
             ConsumerEvent::Received(record) => Event::RecordReceived(record),
             ConsumerEvent::Filtered(record) => Event::RecordFiltered(record),
             ConsumerEvent::Statistics(stats) => Event::StatisticsReceived(stats),
         };
 
-        self.on_app_event(app_event);
+        self.on_app_event(app_event).await;
     }
     /// Handles the [`Event::ExportRecord`] event emitted by the [`EventBus`].
     fn on_export_record(&mut self, record: Record) {
@@ -581,35 +582,8 @@ impl App {
 
         self.event_bus.send(Event::SubjectsLoaded(subjects));
     }
-    /// Loads all available versions for the specified subject from the schema registry.
-    async fn load_versions(&self, subject: &Subject) -> Vec<Version> {
-        let schema_client = self
-            .schema_client
-            .as_ref()
-            .expect("schema client configured");
-
-        let result = schema_client.get_schema_versions(subject).await;
-
-        match result {
-            Ok(versions) => {
-                tracing::debug!(
-                    "loaded {} versions for subject {} from the schema registry",
-                    versions.len(),
-                    subject.as_ref()
-                );
-                versions
-            }
-            Err(e) => {
-                tracing::error!(
-                    "error loading versions for subject {} from schema registry: {}",
-                    subject.as_ref(),
-                    e
-                );
-                Vec::default()
-            }
-        }
-    }
-
+    /// Loads the latest schema version for the subject as well as all available versions from the
+    /// schema registry.
     async fn load_latest_schema(&self, subject: &Subject) {
         let schema_client = self
             .schema_client

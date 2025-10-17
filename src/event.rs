@@ -68,14 +68,8 @@ pub enum Event {
     LatestSchemaLoaded(Option<Schema>, Vec<Version>),
     LoadSchemaVersion(Subject, Version),
     SchemaVersionLoaded(Option<Schema>),
-    /// Fires when the user wants to select a subjects from the list.
-    SelectSubject(Position),
     /// Fires when the user wants to select a subject schema version from the list.
     SelectSchemaVersion(Position),
-    /// Fires when the user wants to scroll the schema definition widget.
-    ScrollSchemaDefinition(Position),
-    /// Fires when the user wants to scroll the schema references widget.
-    ScrollSchemaReferences(Position),
     /// Fires when the user wants to export a [`Schema`] to a file.
     ExportSchema(Schema),
     /// Fires when the user wants to select a menu item in the settings component.

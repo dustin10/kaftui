@@ -85,9 +85,9 @@ impl SchemasState {
         }
     }
     /// Selects the first subject in the list.
-    fn select_first_subject(&mut self) {
+    fn select_first_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_first();
@@ -102,17 +102,19 @@ impl SchemasState {
         self.schema_definition_scroll = (0, 0);
 
         self.selected_subject = self.subjects.first().cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the next subject in the list.
-    fn select_next_subject(&mut self) {
+    fn select_next_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         if let Some(curr_idx) = self.subjects_list_state.selected()
             && curr_idx == self.subjects.len() - 1
         {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_next();
@@ -132,11 +134,13 @@ impl SchemasState {
             .expect("subject selected");
 
         self.selected_subject = self.subjects.get(idx).cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the previous subject in the list.
-    fn select_prev_subject(&mut self) {
+    fn select_prev_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_previous();
@@ -157,11 +161,13 @@ impl SchemasState {
             .expect("subject selected");
 
         self.selected_subject = self.subjects.get(idx).cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the last subject in the list.
-    fn select_last_subject(&mut self) {
+    fn select_last_subject(&mut self) -> Option<&Subject> {
         if self.subjects.is_empty() {
-            return;
+            return None;
         }
 
         self.subjects_list_state.select_last();
@@ -176,6 +182,8 @@ impl SchemasState {
         self.schema_definition_scroll = (0, 0);
 
         self.selected_subject = self.subjects.last().cloned();
+
+        self.selected_subject.as_ref()
     }
     /// Selects the first subject schema version in the list.
     fn select_first_schema_version(&mut self) -> Option<Version> {
@@ -707,26 +715,6 @@ impl Schemas {
         frame.render_widget(empty_text, empty_area);
         frame.render_widget(message_text, text_area);
     }
-    /// Selects the first subject in the list and loads it's latest schema details.
-    fn select_first_subject(&mut self) {
-        self.state.select_first_subject();
-        self.load_selected_subject_latest();
-    }
-    /// Selects the next subject in the list and loads it's latest schema details.
-    fn select_next_subject(&mut self) {
-        self.state.select_next_subject();
-        self.load_selected_subject_latest();
-    }
-    /// Selects the previous subject in the list and loads it's latest schema details.
-    fn select_prev_subject(&mut self) {
-        self.state.select_prev_subject();
-        self.load_selected_subject_latest();
-    }
-    /// Selects the last subject in the list and loads it's latest schema details.
-    fn select_last_subject(&mut self) {
-        self.state.select_last_subject();
-        self.load_selected_subject_latest();
-    }
     /// Selects the first schema version in the list and loads the details.
     fn select_first_schema_version(&mut self) {
         if let Some(version) = self.state.select_first_schema_version() {
@@ -751,28 +739,6 @@ impl Schemas {
             self.load_selected_subject_at_version(version);
         }
     }
-    /// Loads the schema details for the latest version of the currently selected subject.
-    fn load_selected_subject_latest(&mut self) {
-        if let Some(selected) = self.state.selected_subject.as_ref() {
-            tracing::info!("loading latest schema version for subject {}", selected);
-
-            // TODO: error handling
-            //let schema = self
-            //    .load_subject_at_version(selected, None)
-            //    .expect("subject can be loaded");
-            //
-            //let versions = self
-            //    .load_versions(selected)
-            //    .expect("versions can be loaded");
-            let schema = None;
-            let versions = Vec::default();
-
-            self.state.available_versions = versions;
-
-            self.state.selected_schema = schema;
-            self.state.versions_list_state.select_first();
-        }
-    }
     /// Loads the schema details for the specified version of the currently selected subject.
     fn load_selected_subject_at_version(&self, _version: Version) {
         //if let Some(selected) = self.state.selected_subject.as_ref() {
@@ -789,18 +755,6 @@ impl Schemas {
         //
         //    self.state.selected_schema = Some(schema);
         //}
-    }
-    /// Loads all available versions for the specified subject from the schema registry.
-    fn load_versions(&self, _subject: &Subject) -> anyhow::Result<Vec<Version>> {
-        //// TODO: re-evaluate block_on
-        //futures::executor::block_on(async {
-        //    self.schema_client
-        //        .get_schema_versions(subject)
-        //        .await
-        //        .context(format!("load versions for subject {}", subject.as_ref()))
-        //})
-
-        Ok(Vec::default())
     }
     /// Invoked when the latest schema version and all available versions have been loaded from the
     /// schema registry.
@@ -861,7 +815,11 @@ impl Component for Schemas {
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
-    fn map_key_event(&self, event: KeyEvent, buffered: Option<&BufferedKeyPress>) -> Option<Event> {
+    fn map_key_event(
+        &mut self,
+        event: KeyEvent,
+        buffered: Option<&BufferedKeyPress>,
+    ) -> Option<Event> {
         match event.code {
             KeyCode::Char(c) => match c {
                 'e' => self
@@ -872,19 +830,48 @@ impl Component for Schemas {
                 _ => match self.state.active_widget {
                     SchemasWidget::Subjects => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::SelectSubject(Position::Top))
+                            if let Some(subject) = self.state.select_first_subject() {
+                                Some(Event::LoadLatestSchema(subject.clone()))
+                            } else {
+                                None
+                            }
                         }
-                        'j' => Some(Event::SelectSubject(Position::Down)),
-                        'k' => Some(Event::SelectSubject(Position::Up)),
-                        'G' => Some(Event::SelectSubject(Position::Bottom)),
+                        'j' => {
+                            if let Some(subject) = self.state.select_next_subject() {
+                                Some(Event::LoadLatestSchema(subject.clone()))
+                            } else {
+                                None
+                            }
+                        }
+                        'k' => {
+                            if let Some(subject) = self.state.select_prev_subject() {
+                                Some(Event::LoadLatestSchema(subject.clone()))
+                            } else {
+                                None
+                            }
+                        }
+                        'G' => {
+                            if let Some(subject) = self.state.select_last_subject() {
+                                Some(Event::LoadLatestSchema(subject.clone()))
+                            } else {
+                                None
+                            }
+                        }
                         _ => None,
                     },
                     SchemasWidget::Schema => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSchemaDefinition(Position::Top))
+                            self.state.scroll_schema_definition_top();
+                            None
                         }
-                        'j' => Some(Event::ScrollSchemaDefinition(Position::Down)),
-                        'k' => Some(Event::ScrollSchemaDefinition(Position::Up)),
+                        'j' => {
+                            self.state.scroll_schema_definition_down(self.scroll_factor);
+                            None
+                        }
+                        'k' => {
+                            self.state.scroll_schema_definition_up(self.scroll_factor);
+                            None
+                        }
                         _ => None,
                     },
                     SchemasWidget::Versions => match c {
@@ -898,11 +885,21 @@ impl Component for Schemas {
                     },
                     SchemasWidget::References => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollSchemaReferences(Position::Top))
+                            self.state.scroll_references_top();
+                            None
                         }
-                        'j' => Some(Event::ScrollSchemaReferences(Position::Down)),
-                        'k' => Some(Event::ScrollSchemaReferences(Position::Up)),
-                        'G' => Some(Event::ScrollSchemaReferences(Position::Bottom)),
+                        'j' => {
+                            self.state.scroll_references_down();
+                            None
+                        }
+                        'k' => {
+                            self.state.scroll_references_up();
+                            None
+                        } 
+                        'G' => {
+                            self.state.scroll_references_bottom();
+                            None
+                        } 
                         _ => None,
                     },
                 },
@@ -920,30 +917,30 @@ impl Component for Schemas {
                 self.on_latest_schema_loaded(schema.clone(), versions.to_vec())
             }
             Event::SchemaVersionLoaded(schema) => self.on_schema_version_loaded(schema.clone()),
-            Event::SelectSubject(position) => match position {
-                Position::Top => self.select_first_subject(),
-                Position::Down => self.select_next_subject(),
-                Position::Up => self.select_prev_subject(),
-                Position::Bottom => self.select_last_subject(),
-            },
-            Event::ScrollSchemaDefinition(position) => match position {
-                Position::Top => self.state.scroll_schema_definition_top(),
-                Position::Down => self.state.scroll_schema_definition_down(self.scroll_factor),
-                Position::Up => self.state.scroll_schema_definition_up(self.scroll_factor),
-                Position::Bottom => {}
-            },
+            //Event::SelectSubject(position) => match position {
+            //    Position::Top => self.select_first_subject(),
+            //    Position::Down => self.select_next_subject(),
+            //    Position::Up => self.select_prev_subject(),
+            //    Position::Bottom => self.select_last_subject(),
+            //},
+            //Event::ScrollSchemaDefinition(position) => match position {
+            //    Position::Top => self.state.scroll_schema_definition_top(),
+            //    Position::Down => self.state.scroll_schema_definition_down(self.scroll_factor),
+            //    Position::Up => self.state.scroll_schema_definition_up(self.scroll_factor),
+            //    Position::Bottom => {}
+            //},
             Event::SelectSchemaVersion(position) => match position {
                 Position::Top => self.select_first_schema_version(),
                 Position::Down => self.select_next_schema_version(),
                 Position::Up => self.select_prev_schema_version(),
                 Position::Bottom => self.select_last_schema_version(),
             },
-            Event::ScrollSchemaReferences(position) => match position {
-                Position::Top => self.state.scroll_references_top(),
-                Position::Down => self.state.scroll_references_down(),
-                Position::Up => self.state.scroll_references_up(),
-                Position::Bottom => self.state.scroll_references_bottom(),
-            },
+            //Event::ScrollSchemaReferences(position) => match position {
+            //    Position::Top => self.state.scroll_references_top(),
+            //    Position::Down => self.state.scroll_references_down(),
+            //    Position::Up => self.state.scroll_references_up(),
+            //    Position::Bottom => self.state.scroll_references_bottom(),
+            //},
             _ => {}
         }
     }
