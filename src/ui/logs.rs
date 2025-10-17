@@ -1,6 +1,6 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
-    event::{Event, Position},
+    event::Event,
     trace::Log,
     ui::Component,
 };
@@ -246,11 +246,21 @@ impl Component for Logs {
         match event.code {
             KeyCode::Char(c) => match c {
                 'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                    Some(Event::ScrollLogs(Position::Top))
+                    self.state.scroll_list_top();
+                    None
                 }
-                'j' => Some(Event::ScrollLogs(Position::Down)),
-                'k' => Some(Event::ScrollLogs(Position::Up)),
-                'G' => Some(Event::ScrollLogs(Position::Bottom)),
+                'j' => {
+                    self.state.scroll_list_down();
+                    None
+                }
+                'k' => {
+                    self.state.scroll_list_up();
+                    None
+                }
+                'G' => {
+                    self.state.scroll_list_bottom();
+                    None
+                }
                 _ => None,
             },
             _ => None,
@@ -259,15 +269,8 @@ impl Component for Logs {
     /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
     /// application.
     fn on_app_event(&mut self, event: &Event) {
-        match event {
-            Event::ScrollLogs(position) => match position {
-                Position::Top => self.state.scroll_list_top(),
-                Position::Up => self.state.scroll_list_up(),
-                Position::Down => self.state.scroll_list_down(),
-                Position::Bottom => self.state.scroll_list_bottom(),
-            },
-            Event::LogEmitted(log) => self.state.on_log_emitted(log),
-            _ => {}
+        if let Event::LogEmitted(log) = event {
+            self.state.on_log_emitted(log);
         }
     }
     /// Allows the [`Component`] to render the key bindings text into the footer.

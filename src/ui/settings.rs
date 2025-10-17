@@ -1,6 +1,5 @@
 use crate::{
     app::config::{Config, Theme},
-    event::Position,
     kafka::SeekTo,
     ui::{BufferedKeyPress, Component, Event},
 };
@@ -580,26 +579,25 @@ impl Component for Settings {
             KeyCode::Char(c) => match self.state.active_widget {
                 SettingsWidget::Menu => match c {
                     'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                        Some(Event::SelectSettingsMenuItem(Position::Top))
+                        self.state.select_menu_item_top();
+                        None
                     }
-                    'j' => Some(Event::SelectSettingsMenuItem(Position::Down)),
-                    'k' => Some(Event::SelectSettingsMenuItem(Position::Up)),
-                    'G' => Some(Event::SelectSettingsMenuItem(Position::Bottom)),
+                    'j' => {
+                        self.state.select_menu_item_next();
+                        None
+                    }
+                    'k' => {
+                        self.state.select_menu_item_prev();
+                        None
+                    }
+                    'G' => {
+                        self.state.select_menu_item_bottom();
+                        None
+                    }
                     _ => None,
                 },
             },
             _ => None,
-        }
-    }
-    /// Allows the component to handle any [`Event`] that was not handled by the main application.
-    fn on_app_event(&mut self, event: &Event) {
-        if let Event::SelectSettingsMenuItem(position) = event {
-            match position {
-                Position::Top => self.state.select_menu_item_top(),
-                Position::Down => self.state.select_menu_item_next(),
-                Position::Up => self.state.select_menu_item_prev(),
-                Position::Bottom => self.state.select_menu_item_bottom(),
-            }
         }
     }
     /// Renders the component-specific widgets to the terminal.

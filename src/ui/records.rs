@@ -1,6 +1,6 @@
 use crate::{
     app::{BufferedKeyPress, config::Theme},
-    event::{Event, Position},
+    event::Event,
     kafka::{ConsumerMode, Record},
     ui::{Component, widget::ConsumerStatusLine},
 };
@@ -632,28 +632,55 @@ impl Component for Records {
                 _ => match self.state.active_widget {
                     RecordsWidget::List => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::SelectRecord(Position::Top))
+                            self.state.select_first();
+                            None
                         }
-                        'j' => Some(Event::SelectRecord(Position::Down)),
-                        'k' => Some(Event::SelectRecord(Position::Up)),
-                        'G' => Some(Event::SelectRecord(Position::Bottom)),
+                        'j' => {
+                            self.state.select_next();
+                            None
+                        }
+                        'k' => {
+                            self.state.select_prev();
+                            None
+                        }
+                        'G' => {
+                            self.state.select_last();
+                            None
+                        }
                         _ => None,
                     },
                     RecordsWidget::Value => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollRecordValue(Position::Top))
+                            self.state.scroll_value_top();
+                            None
                         }
-                        'j' => Some(Event::ScrollRecordValue(Position::Down)),
-                        'k' => Some(Event::ScrollRecordValue(Position::Up)),
+                        'j' => {
+                            self.state.scroll_value_down(self.scroll_factor);
+                            None
+                        }
+                        'k' => {
+                            self.state.scroll_value_up(self.scroll_factor);
+                            None
+                        }
                         _ => None,
                     },
                     RecordsWidget::Headers => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            Some(Event::ScrollRecordHeaders(Position::Top))
+                            self.state.scroll_headers_top();
+                            None
                         }
-                        'j' => Some(Event::ScrollRecordHeaders(Position::Down)),
-                        'k' => Some(Event::ScrollRecordHeaders(Position::Up)),
-                        'G' => Some(Event::ScrollRecordHeaders(Position::Bottom)),
+                        'j' => {
+                            self.state.scroll_headers_down();
+                            None
+                        }
+                        'k' => {
+                            self.state.scroll_headers_up();
+                            None
+                        }
+                        'G' => {
+                            self.state.scroll_headers_bottom();
+                            None
+                        }
                         _ => None,
                     },
                 },
@@ -665,25 +692,7 @@ impl Component for Records {
     /// application.
     fn on_app_event(&mut self, event: &Event) {
         match event {
-            Event::SelectRecord(position) => match position {
-                Position::Top => self.state.select_first(),
-                Position::Up => self.state.select_prev(),
-                Position::Down => self.state.select_next(),
-                Position::Bottom => self.state.select_last(),
-            },
             Event::SelectNextWidget => self.state.select_next_widget(),
-            Event::ScrollRecordValue(position) => match position {
-                Position::Top => self.state.scroll_value_top(),
-                Position::Down => self.state.scroll_value_down(self.scroll_factor),
-                Position::Up => self.state.scroll_value_up(self.scroll_factor),
-                _ => {}
-            },
-            Event::ScrollRecordHeaders(position) => match position {
-                Position::Top => self.state.scroll_headers_top(),
-                Position::Down => self.state.scroll_headers_down(),
-                Position::Up => self.state.scroll_headers_up(),
-                Position::Bottom => self.state.scroll_headers_bottom(),
-            },
             Event::RecordReceived(record) => self.state.push_record(record.clone()),
             _ => {}
         }
