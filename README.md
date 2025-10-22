@@ -7,7 +7,6 @@ A TUI application which can be used to view records published to a [Kafka](https
 The `kaftui` application provides the following features to users.
 
 * View records from a topic including headers and payload value in an easy to read format.
-coming soon.
 * Pause and resume the Kafka consumer.
 * Assign all or specific partitions of the topic to the Kafka consumer.
 * Seek to a specific offset on a single or multiple partitions of the topic.
@@ -15,8 +14,7 @@ coming soon.
 * [Filter](#Filtering) out records the user may not be interested in using a JSONPath filter.
 * Configure [profiles](#Profiles) to easily connect to different Kafka clusters.
 * [Theme](#Theme) the application to match any existing terminal color scheme.
-* Schema Registry integration for deserializing and validating records in JSONSchema and Avro format. Protobuf support
-is under active development.
+* Schema Registry integration for deserializing records in `JSONSchema`, `Avro` and `Protobuf` format.
 * Export schemas to a file on disk.
 
 The application also keeps track of basic statistics during execution and presents them in a dedicated UI for the user.
@@ -73,8 +71,12 @@ Kafka topic.
 * `--schema-registry-user` - Basic authentication user used to connect to the the Schema Registry.
 * `--schema-registry-pass` - Basic authentication password used to connect to the the Schema Registry.
 * `--format` - Specifies the format of the data contained in the Kafka topic. By default the data is assumed to be in no
-special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro`. If `avro` is
-specified, then the `--schema-registry-url` argument is required.
+special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or `protobuf`.
+If `avro` or `protobuf` is specified, then the `--schema-registry-url` argument is currently required.
+* `--protobuf-dir` - Path to a directory that contains the `.proto` protobuf descriptor files that should be used to
+deserialize protobuf encoded Kafka records. This argument is required when the `--format` argument is set to `protobuf`.
+* `--protobuf-type` - Fully qualified Protobuf message type that corresponds to the records in the Kafka topic. This
+argument is required when the `--format` argument is set to `protobuf`.
 * `--seek-to` - CSV of colon (`:`) separated pairs of partition and offset values that the Kafka consumer will seek to
 before starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition
 `0` and offset `10` on partition `1`. A value of `reset` can also be specified for this argument which will cause the
@@ -164,6 +166,9 @@ The following properties are supported in profiles.
 * `schemaRegistryUser` - Basic authentication user used to connect to the the Schema Registry.
 * `schemaRegistryPass` - Basic authentication password used to connect to the the Schema Registry.
 * `format` - Format of the data contained in the Kafka topic.
+* `protobufDir` - Path to a directory that contains the `.proto` files that should be used to deserialize protobuf
+encoded Kafka records.
+* `protobufType` - Fully qualified Protobuf message type that corresponds to the records in the Kafka topic.
 * `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
 * `filter` - JSONPath filter that is applied to a record.
 * `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and
@@ -238,10 +243,26 @@ set of values that are available to configure the application from this file.
     },
     "format": "json"
   }, {
-    "name": "cloud-user",
+    "name": "cloud-user-avro",
     "bootstrapServers": "kafka-brokers.acme.com:9092",
     "topic": "user",
     "format": "avro",
+    "schemaRegistryUrl": "https://schema-registry.acme.com:8081",
+    "schemaRegistryUser": "<basic-auth-user>",
+    "schemaRegistryPass": "<basic-auth-pass>",
+    "consumerProperties": {
+      "security.protocol": "SASL_SSL",
+      "sasl.mechanisms": "PLAIN",
+      "sasl.username": "<username>",
+      "sasl.password": "<password>"
+    },
+  }, {
+    "name": "cloud-user-proto",
+    "bootstrapServers": "kafka-brokers.acme.com:9092",
+    "topic": "user",
+    "format": "protobuf",
+    "protobufDir": "./protos",
+    "protobufType": "com.example.User",
     "schemaRegistryUrl": "https://schema-registry.acme.com:8081",
     "schemaRegistryUser": "<basic-auth-user>",
     "schemaRegistryPass": "<basic-auth-pass>",

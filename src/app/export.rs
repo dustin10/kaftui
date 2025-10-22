@@ -38,13 +38,15 @@ impl ExportedRecord {
     fn from_record(record: Record, format: RecordFormat) -> Self {
         let json_value = record.value.as_ref().map(|v| match format {
             RecordFormat::None => serde_json::Value::String(v.clone()),
-            RecordFormat::Json | RecordFormat::Avro => match serde_json::from_str(v) {
-                Ok(json) => json,
-                Err(e) => {
-                    tracing::error!("failed to serialize record value to JSON: {}", e);
-                    serde_json::Value::String(v.clone())
+            RecordFormat::Json | RecordFormat::Avro | RecordFormat::Protobuf => {
+                match serde_json::from_str(v) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        tracing::error!("failed to serialize record value to JSON: {}", e);
+                        serde_json::Value::String(v.clone())
+                    }
                 }
-            },
+            }
         });
 
         Self {

@@ -59,6 +59,10 @@ pub struct Config {
     pub schema_registry_user: Option<String>,
     /// Specifies the basic auth password used to connect to the the Schema Registry.
     pub schema_registry_pass: Option<String>,
+    /// Specifies the directory where the `.proto` files are located.
+    pub protobuf_dir: Option<String>,
+    /// Specifies the Protobuf message type which maps to the records in the Kafka topic.
+    pub protobuf_type: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     pub group_id: String,
@@ -280,6 +284,10 @@ struct Profile {
     schema_registry_user: Option<String>,
     /// Specifies the basic auth password used to connect to the the Schema Registry.
     schema_registry_pass: Option<String>,
+    /// Specifies the directory where the `.proto` files are located.
+    protobuf_dir: Option<String>,
+    /// Specifies the Protobuf message type which maps to the records in the Kafka topic.
+    protobuf_type: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     group_id: Option<String>,
@@ -344,6 +352,20 @@ impl Source for Profile {
             cfg.insert(
                 String::from("schema_registry_pass"),
                 Value::from(schema_registry_pass.clone()),
+            );
+        }
+
+        if let Some(protobuf_dir) = self.protobuf_dir.as_ref() {
+            cfg.insert(
+                String::from("protobuf_dir"),
+                Value::from(protobuf_dir.clone()),
+            );
+        }
+
+        if let Some(protobuf_type) = self.protobuf_type.as_ref() {
+            cfg.insert(
+                String::from("protobuf_type"),
+                Value::from(protobuf_type.clone()),
             );
         }
 

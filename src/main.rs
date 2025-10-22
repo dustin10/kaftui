@@ -6,13 +6,13 @@ mod ui;
 mod util;
 
 use crate::{
-    app::{App, config::Config},
+    app::{config::Config, App},
     kafka::{
-        RecordFormat, SeekTo,
         de::{
             AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer, KeyDeserializer,
-            StringDeserializer, ValueDeserializer,
+            ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
         },
+        RecordFormat, SeekTo,
     },
     trace::{CaptureLayer, Log},
 };
@@ -28,7 +28,7 @@ use schema_registry_client::rest::{
 use std::{fs::File, io::BufReader, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{EnvFilter, Registry, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
@@ -52,7 +52,7 @@ struct Cli {
     consumer_properties: Option<String>,
     /// Specifies the format of the data contained in the Kafka topic. By default, the data is
     /// assumed to be in no special format and no special handling will be applied to it when
-    /// displayed. Valid values: `json`, `avro`.
+    /// displayed. Valid values: `json`, `avro`, or `protobuf`.
     #[arg(long)]
     format: Option<String>,
     /// Specifies the URL of the Schema Registry that should be used to validate data when
@@ -68,9 +68,17 @@ struct Cli {
     /// Specifies the basic auth password used to connect to the the Schema Registry.
     #[arg(long)]
     schema_registry_pass: Option<String>,
-    /// Id of the consumer group that the application will use when consuming records from the Kafka
-    /// topic. By default a group id will be generated from the hostname of the machine that is
-    /// executing the application.
+    /// Specifies the directory where the `.proto` files are located. This argument is required
+    /// when the format is set to `protobuf`.
+    #[arg(long)]
+    protobuf_dir: Option<String>,
+    /// Specifies the Protobuf message type which corresponds to the records in the Kafka topic.
+    /// This argument is required when the format is set to `protobuf`.
+    #[arg(long)]
+    protobuf_type: Option<String>,
+    /// Id of the consumer group that the application will use when consuming records from the
+    /// Kafka topic. By default a group id will be generated from the hostname of the machine that
+    /// is executing the application.
     #[arg(short, long)]
     group_id: Option<String>,
     /// CSV of colon separated pairs of partitions and offsets that the Kafka consumer will seek to
@@ -124,6 +132,20 @@ impl Source for Cli {
             cfg.insert(
                 String::from("format"),
                 Value::from(RecordFormat::from(format)),
+            );
+        }
+
+        if let Some(protobuf_dir) = self.protobuf_dir.as_ref() {
+            cfg.insert(
+                String::from("protobuf_dir"),
+                Value::from(protobuf_dir.clone()),
+            );
+        }
+
+        if let Some(protobuf_type) = self.protobuf_type.as_ref() {
+            cfg.insert(
+                String::from("protobuf_type"),
+                Value::from(protobuf_type.clone()),
             );
         }
 
@@ -320,7 +342,7 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
 
                 // TODO: cleanup error handling
                 let json_schema_deserializer =
-                    JsonSchemaDeserializer::new(client).expect("create JSON schema deserializer");
+                    JsonSchemaDeserializer::new(client).expect("JSONSchema deserializer created");
 
                 Arc::new(json_schema_deserializer)
             }
@@ -336,11 +358,33 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
 
                 // TODO: cleanup error handling
                 let avro_schema_deserializer =
-                    AvroSchemaDeserializer::new(client).expect("create Avro schema deserializer");
+                    AvroSchemaDeserializer::new(client).expect("Avro schema deserializer created");
 
                 Arc::new(avro_schema_deserializer)
             }
             None => anyhow::bail!("schema registry url must be specified when format is avro"),
+        },
+        RecordFormat::Protobuf => match schema_registry_client {
+            Some(_client) => {
+                tracing::info!("using Protobuf schema deserializer with schema registry");
+
+                let protobuf_dir = config
+                    .protobuf_dir
+                    .as_ref()
+                    .expect("protobuf dir is set when format is protobuf");
+
+                let message_type = config
+                    .protobuf_type
+                    .as_ref()
+                    .expect("protobuf type is set when format is protobuf");
+
+                let protobuf_schema_deserializer =
+                    ProtobufSchemaDeserializer::new(protobuf_dir, message_type)
+                        .context("create Protobuf schema deserializer")?;
+
+                Arc::new(protobuf_schema_deserializer)
+            }
+            None => anyhow::bail!("schema registry url must be specified when format is protobuf"),
         },
     };
 

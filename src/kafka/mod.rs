@@ -41,6 +41,10 @@ const RECORD_FORMAT_JSON: &str = "json";
 /// deserialization operations.
 const RECORD_FORMAT_AVRO: &str = "avro";
 
+/// String representation of the [`RecordFormat::Protobuf`] enum variant. Used in serialization and
+/// deserialization operations.
+const RECORD_FORMAT_PROTOBUF: &str = "protobuf";
+
 /// Enumerates the different states that the Kafka consumer can be in.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ConsumerMode {
@@ -62,6 +66,8 @@ pub enum RecordFormat {
     Json,
     /// Records in the topic are produced in Avro format.
     Avro,
+    /// Records in the topic are produced in Avro format.
+    Protobuf,
 }
 
 impl Display for RecordFormat {
@@ -72,6 +78,7 @@ impl Display for RecordFormat {
             Self::None => RECORD_FORMAT_NONE,
             Self::Json => RECORD_FORMAT_JSON,
             Self::Avro => RECORD_FORMAT_AVRO,
+            Self::Protobuf => RECORD_FORMAT_PROTOBUF,
         };
 
         f.write_str(s)
@@ -87,6 +94,7 @@ where
         match value.as_ref() {
             RECORD_FORMAT_JSON => Self::Json,
             RECORD_FORMAT_AVRO => Self::Avro,
+            RECORD_FORMAT_PROTOBUF => Self::Protobuf,
             _ => Self::None,
         }
     }
