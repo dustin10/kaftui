@@ -311,14 +311,12 @@ impl ProtobufSchemaDeserializer {
                 Value::SFixed64(i) => i.to_string(),
                 Value::SInt32(i) => i.to_string(),
                 Value::SInt64(i) => i.to_string(),
-                Value::String(ref s) => {
-                    format!("\"{}\"", s)
-                }
+                Value::String(ref s) => format!("\"{}\"", s),
                 Value::UInt32(i) => i.to_string(),
                 Value::UInt64(i) => i.to_string(),
                 Value::Unknown(ref unk_value) => match unk_value {
-                    UnknownValue::Fixed32(u) => format!("\"<unknown 32-bit value:{}>\"", u),
-                    UnknownValue::Fixed64(u) => format!("\"<unknown 64-bit value:{}>\"", u),
+                    UnknownValue::Fixed32(u) => format!("\"<unknown 32-bit value: {}>\"", u),
+                    UnknownValue::Fixed64(u) => format!("\"<unknown 64-bit value: {}>\"", u),
                     UnknownValue::Invalid(u, bytes) => format!(
                         "\"<invalid wire type: {} - {} bytes consumed>\"",
                         u,
@@ -328,14 +326,13 @@ impl ProtobufSchemaDeserializer {
                         "\"<unknown variable length value - {} bytes consumed>\"",
                         bytes.len()
                     ),
-                    UnknownValue::Varint(u) => format!("\"<unknown variable int value:{}>\"", u),
+                    UnknownValue::Varint(u) => format!("\"<unknown variable int value: {}>\"", u),
                 },
             };
 
             field_strs.push(format!("\"{}\":{}", msg_field.name, field_str));
         }
 
-        // TODO: ok to assume the top-level is always an object?
         format!("{{{}}}", field_strs.join(","))
     }
 }
