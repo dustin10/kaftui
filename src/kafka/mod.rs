@@ -54,8 +54,6 @@ pub enum ConsumerMode {
     Processing,
 }
 
-// TODO: add Protobuf support
-
 /// Enumerates the well-known formats for the data in a Kafka topic.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum RecordFormat {
