@@ -346,11 +346,7 @@ impl ValueDeserializer for ProtobufSchemaDeserializer {
 
         let json = self.message_to_json(msg_info, &msg_value);
 
-        serde_json::from_str(json.as_str())
-            .context("create JSON value")
-            .and_then(|v: serde_json::Value| {
-                serde_json::to_string_pretty(&v).context("prettify JSON string")
-            })
+        serde_json::to_string_pretty(&json).context("prettify JSON string")
     }
 }
 
