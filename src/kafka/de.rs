@@ -2,7 +2,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use protofish::{
     context::MessageInfo,
-    decode::{MessageValue, UnknownValue, Value},
+    decode::{MessageValue, PackedArray, UnknownValue, Value},
     prelude::Context as ProtoContext,
 };
 use rdkafka::message::{BorrowedHeaders, Headers};
@@ -292,11 +292,21 @@ impl ProtobufSchemaDeserializer {
 
                     self.message_to_json(child_info, child_value)
                 }
-                // TODO: implement packed deserialization
-                Value::Packed(_) => {
-                    tracing::warn!("packed Protobuf value deserialization not yet supported");
-                    String::from("\"<not implemented>\"")
-                }
+                Value::Packed(ref packed_array) => match packed_array {
+                    PackedArray::Bool(bs) => to_json_array_string(bs),
+                    PackedArray::Double(ds) => to_json_array_string(ds),
+                    PackedArray::Fixed32(fs) => to_json_array_string(fs),
+                    PackedArray::Fixed64(fs) => to_json_array_string(fs),
+                    PackedArray::Float(fs) => to_json_array_string(fs),
+                    PackedArray::Int32(is) => to_json_array_string(is),
+                    PackedArray::Int64(is) => to_json_array_string(is),
+                    PackedArray::SFixed32(is) => to_json_array_string(is),
+                    PackedArray::SFixed64(is) => to_json_array_string(is),
+                    PackedArray::SInt32(is) => to_json_array_string(is),
+                    PackedArray::SInt64(is) => to_json_array_string(is),
+                    PackedArray::UInt32(us) => to_json_array_string(us),
+                    PackedArray::UInt64(us) => to_json_array_string(us),
+                },
                 Value::SFixed32(i) => i.to_string(),
                 Value::SFixed64(i) => i.to_string(),
                 Value::SInt32(i) => i.to_string(),
@@ -342,7 +352,10 @@ impl ValueDeserializer for ProtobufSchemaDeserializer {
         // record data starts at byte 5 when produced with the schema registry enabled serializer,
         // we are not technically validating the schema in this deserialzier so we skip those bytes
         // and use the remaining ones to decode the message.
-        // TODO: also assuming a single 0 byte at position 5 for message indexes
+        //
+        // TODO: also assumes a single 0 byte at position 5 for message indexes which can be a
+        // common case in protobuf serialiazation but maybe not always? works when testing against
+        // the confluent schema registry protobuf serializer.
         let data = &data[6..];
 
         let msg_info = match self.context.get_message(&self.message_type) {
@@ -379,4 +392,11 @@ fn to_serde_headers(headers: &BorrowedHeaders) -> SerdeHeaders {
     }
 
     ser_headers
+}
+
+/// Converts a slice of values that implement [`ToString`] into a JSON representation of an array.
+fn to_json_array_string<T: ToString>(values: &[T]) -> String {
+    let strs: Vec<String> = values.iter().map(ToString::to_string).collect();
+
+    format!("[{}]", strs.join(","))
 }
