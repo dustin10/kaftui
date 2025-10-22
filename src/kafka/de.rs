@@ -1,6 +1,10 @@
 use anyhow::Context;
 use async_trait::async_trait;
-use protofish::{context::MessageInfo, decode::{MessageValue, Value}, prelude::Context as ProtoContext};
+use protofish::{
+    context::MessageInfo,
+    decode::{MessageValue, UnknownValue, Value},
+    prelude::Context as ProtoContext,
+};
 use rdkafka::message::{BorrowedHeaders, Headers};
 use schema_registry_client::{
     rest::schema_registry_client::Client,
@@ -252,17 +256,12 @@ impl ProtobufSchemaDeserializer {
                 }
             };
 
-            // TODO: something better here than doing this manually?
-            let rhs = match field_value.value {
+            let field_str = match field_value.value {
                 Value::Bool(b) => match b {
                     true => String::from("true"),
                     false => String::from("false"),
                 },
-                // TODO: implement bytes deserialization
-                Value::Bytes(_) => {
-                    tracing::warn!("packed Protobuf value deserialization not yet supported");
-                    String::from("\"<not implemented>\"")
-                }
+                Value::Bytes(ref bytes) => format!("\"<{} raw bytes omitted>\"", bytes.len()),
                 Value::Double(d) => d.to_string(),
                 Value::Enum(ref enum_value) => {
                     let enum_info = self.context.resolve_enum(enum_value.enum_ref);
@@ -281,11 +280,11 @@ impl ProtobufSchemaDeserializer {
                 Value::Fixed32(i) => i.to_string(),
                 Value::Fixed64(i) => i.to_string(),
                 Value::Float(f) => f.to_string(),
-                // TODO: implement incomplete deserialization
-                Value::Incomplete(_, _) => {
-                    tracing::warn!("incomplete Protobuf value deserialization not yet supported");
-                    String::from("\"<not implemented>\"")
-                }
+                Value::Incomplete(u, ref bytes) => format!(
+                    "\"<incomplete value {} - {} bytes consumed>\"",
+                    u,
+                    bytes.len()
+                ),
                 Value::Int32(i) => i.to_string(),
                 Value::Int64(i) => i.to_string(),
                 Value::Message(ref child_value) => {
@@ -307,14 +306,23 @@ impl ProtobufSchemaDeserializer {
                 }
                 Value::UInt32(i) => i.to_string(),
                 Value::UInt64(i) => i.to_string(),
-                // TODO: implement unknown deserialization
-                Value::Unknown(_) => {
-                    tracing::warn!("unknown Protobuf value deserialization not yet supported");
-                    String::from("\"<not implemented>\"")
-                }
+                Value::Unknown(ref unk_value) => match unk_value {
+                    UnknownValue::Fixed32(u) => format!("\"<unknown 32-bit value:{}>\"", u),
+                    UnknownValue::Fixed64(u) => format!("\"<unknown 64-bit value:{}>\"", u),
+                    UnknownValue::Invalid(u, bytes) => format!(
+                        "\"<invalid wire type: {} - {} bytes consumed>\"",
+                        u,
+                        bytes.len()
+                    ),
+                    UnknownValue::VariableLength(bytes) => format!(
+                        "\"<unknown variable length value - {} bytes consumed>\"",
+                        bytes.len()
+                    ),
+                    UnknownValue::Varint(u) => format!("\"<unknown variable int value:{}>\"", u),
+                },
             };
 
-            field_strs.push(format!("\"{}\":{}", msg_field.name, rhs));
+            field_strs.push(format!("\"{}\":{}", msg_field.name, field_str));
         }
 
         // TODO: ok to assume the top-level is always an object?
@@ -350,7 +358,7 @@ impl ValueDeserializer for ProtobufSchemaDeserializer {
         let msg_value = self.context.decode(msg_info.self_ref, data);
 
         let json = self.message_to_json(msg_info, &msg_value);
-        
+
         serde_json::from_str(json.as_str())
             .context("create JSON value")
             .and_then(|v: serde_json::Value| {
