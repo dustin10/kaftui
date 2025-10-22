@@ -292,18 +292,18 @@ impl ProtobufSchemaDeserializer {
                 Value::UInt32(i) => i.to_string(),
                 Value::UInt64(i) => i.to_string(),
                 Value::Unknown(ref unk_value) => match unk_value {
-                    UnknownValue::Fixed32(u) => format!("\"<unknown 32-bit value: {}>\"", u),
-                    UnknownValue::Fixed64(u) => format!("\"<unknown 64-bit value: {}>\"", u),
-                    UnknownValue::Invalid(u, bytes) => format!(
+                    UnknownValue::Fixed32(value) => format!("\"<unknown 32-bit value: {}>\"", value),
+                    UnknownValue::Fixed64(value) => format!("\"<unknown 64-bit value: {}>\"", value),
+                    UnknownValue::Invalid(wire_type, bytes) => format!(
                         "\"<invalid wire type: {} - {} bytes consumed>\"",
-                        u,
+                        wire_type,
                         bytes.len()
                     ),
                     UnknownValue::VariableLength(bytes) => format!(
                         "\"<unknown variable length value - {} bytes consumed>\"",
                         bytes.len()
                     ),
-                    UnknownValue::Varint(u) => format!("\"<unknown variable int value: {}>\"", u),
+                    UnknownValue::Varint(value) => format!("\"<unknown variable int value: {}>\"", value),
                 },
             };
 
