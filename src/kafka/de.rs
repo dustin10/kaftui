@@ -92,19 +92,19 @@ impl ValueDeserializer for JsonValueDeserializer {
 
 /// Deserializer implementation that converts that uses the Confluent Schema Registry to safely
 /// deserialize data using the JSON schema format.
-pub struct JsonSchemaDeserializer<'a, C>
+pub struct JsonSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
-    json: JsonDeserializer<'a, C>,
+    json: JsonDeserializer<'c, C>,
 }
 
-impl<'a, C> JsonSchemaDeserializer<'a, C>
+impl<'c, C> JsonSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
     /// Creates a new [`JsonSchemaDeserializer`] with the given schema registry [`Client`].
-    pub fn new(client: &'a C) -> Result<Self, SerdeError> {
+    pub fn new(client: &'c C) -> Result<Self, SerdeError> {
         let de_config = DeserializerConfig::new(None, true, HashMap::new());
 
         let json = JsonDeserializer::new(client, None, de_config)?;
@@ -114,7 +114,7 @@ where
 }
 
 #[async_trait]
-impl<'a, C> ValueDeserializer for JsonSchemaDeserializer<'a, C>
+impl<'c, C> ValueDeserializer for JsonSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
@@ -141,19 +141,19 @@ where
 
 /// Deserializer implementation that converts that uses the Confluent Schema Registry to safely
 /// deserialize data using the Avro schema format.
-pub struct AvroSchemaDeserializer<'a, C>
+pub struct AvroSchemaDeserializer<'c, C>
 where
     C: Client,
 {
-    avro: AvroDeserializer<'a, C>,
+    avro: AvroDeserializer<'c, C>,
 }
 
-impl<'a, C> AvroSchemaDeserializer<'a, C>
+impl<'c, C> AvroSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
     /// Creates a new [`AvroSchemaDeserializer`] with the given schema registry [`Client`].
-    pub fn new(client: &'a C) -> Result<Self, SerdeError> {
+    pub fn new(client: &'c C) -> Result<Self, SerdeError> {
         let de_config = DeserializerConfig::new(None, true, HashMap::new());
 
         let avro = AvroDeserializer::new(client, None, de_config)?;
@@ -163,7 +163,7 @@ where
 }
 
 #[async_trait]
-impl<'a, C> ValueDeserializer for AvroSchemaDeserializer<'a, C>
+impl<'c, C> ValueDeserializer for AvroSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
