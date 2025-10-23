@@ -21,10 +21,7 @@ use chrono::{DateTime, Duration, Local};
 use crossterm::event::{KeyCode, KeyEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{DefaultTerminal, crossterm::event::Event as TerminalEvent};
-use schema_registry_client::rest::{
-    client_config::ClientConfig,
-    schema_registry_client::{Client, SchemaRegistryClient},
-};
+use schema_registry_client::rest::schema_registry_client::Client;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -179,7 +176,10 @@ impl State {
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
-pub struct App {
+pub struct App<'c, C>
+where
+    C: Client + Send + Sync,
+{
     /// Configuration for the application.
     pub config: Rc<Config>,
     /// Contains the current state of the application.
@@ -201,15 +201,19 @@ pub struct App {
     /// Responsible for exporting Kafka records to the file system.
     exporter: Exporter,
     /// Client used to interact with the schema registry, if configured.
-    schema_client: Option<SchemaClient<SchemaRegistryClient>>, // TODO: clean this up
+    schema_client: Option<SchemaClient<'c, C>>,
 }
 
-impl App {
+impl<'c, C> App<'c, C>
+where
+    C: Client + Send + Sync,
+{
     /// Creates a new [`App`] with the specified dependencies.
     pub fn new(
         config: Config,
         key_deserializer: Arc<dyn KeyDeserializer>,
         value_deserializer: Arc<dyn ValueDeserializer>,
+        schema_registry_client: Option<&'c C>,
     ) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -286,7 +290,9 @@ impl App {
         let mut components: Vec<Rc<RefCell<dyn Component>>> =
             vec![records_component.clone(), stats_component];
 
-        let schema_client = if let Some(schema_registry_url) = config.schema_registry_url.as_ref() {
+        // if schema registry is enabled push the schemas component and create the client used to
+        // interact with the schema registry
+        let schema_client = if let Some(client) = schema_registry_client {
             let schemas_component = Rc::new(RefCell::new(Schemas::new(
                 SchemasConfig::builder()
                     .scroll_factor(config.scroll_factor)
@@ -297,26 +303,7 @@ impl App {
 
             components.push(schemas_component);
 
-            // TODO: share schema registry client with the deserializer instead of creating a new
-            // one here.
-            let mut schema_registry_client_config =
-                ClientConfig::new(vec![schema_registry_url.clone()]);
-
-            if let Some(bearer) = config.schema_registry_bearer_token.as_ref() {
-                tracing::info!("configuring bearer token auth for schema registry client");
-                schema_registry_client_config.bearer_access_token = Some(bearer.clone());
-            }
-
-            if let Some(user) = config.schema_registry_user.as_ref() {
-                tracing::info!("configuring basic auth for schema registry client");
-                schema_registry_client_config.basic_auth =
-                    Some((user.clone(), config.schema_registry_pass.clone()));
-            }
-
-            let schema_client =
-                SchemaClient::new(SchemaRegistryClient::new(schema_registry_client_config));
-
-            Some(schema_client)
+            Some(SchemaClient::new(client))
         } else {
             None
         };
@@ -331,6 +318,7 @@ impl App {
                 .expect("valid Settings config"),
         ))));
 
+        // if application logs are enabled push the logs component
         if config.logs_enabled {
             let logs_component = Rc::new(RefCell::new(Logs::new(
                 LogsConfig::builder()
@@ -343,6 +331,7 @@ impl App {
             components.push(logs_component);
         }
 
+        // prepare the valid menu item characters based on the components available
         let mut menu_item_chars = Vec::new();
         for i in 0..components.len() {
             let index = u8::try_from(i).expect("valid char") + 1;

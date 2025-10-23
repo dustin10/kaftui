@@ -153,21 +153,22 @@ impl Display for Version {
 
 /// Interacts with the schema registry over HTTP using a pre-configured [`SchemaRegistryClient`].
 #[derive(Clone, Debug)]
-pub struct SchemaClient<C>
+pub struct SchemaClient<'c, C>
 where
     C: Client,
 {
-    /// The schema registry [`Client`] used to interact with the schema registry.
-    client: C,
+    /// A reference to the shared schema registry [`Client`] used to interact with the schema
+    /// registry.
+    client: &'c C,
 }
 
-impl<C> SchemaClient<C>
+impl<'c, C> SchemaClient<'c, C>
 where
     C: Client + Send + Sync,
 {
     /// Creates a new [`HttpSchemaClient`] which uses the provided [`Client`] to interact with the
     /// schema registry over HTTP.
-    pub fn new(client: C) -> Self {
+    pub fn new(client: &'c C) -> Self {
         Self { client }
     }
     /// Loads all of the non-deleted subjects from the schema registry.

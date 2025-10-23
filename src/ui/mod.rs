@@ -24,6 +24,7 @@ use ratatui::{
     style::{Color, Style, Stylize},
     widgets::{Block, Borders, Padding, Paragraph, Tabs},
 };
+use schema_registry_client::rest::schema_registry_client::Client;
 use std::str::FromStr;
 
 /// Text displayed to the user in the footer for the quit key binding.
@@ -90,7 +91,10 @@ pub trait Component {
     }
 }
 
-impl App {
+impl<'c, C> App<'c, C>
+where
+    C: Client + Send + Sync,
+{
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {

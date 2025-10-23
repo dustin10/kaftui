@@ -311,8 +311,6 @@ fn logs_dir() -> String {
 
 /// Runs the application.
 async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Result<()> {
-    // TODO: this was a simple way to get a reference to a SchemaRegistryClient with a static
-    // lifetime. need to re-evaluate this approach later. might have to restructure some things.
     let schema_registry_client = config.schema_registry_url.as_ref().map(|url| {
         let mut client_config = ClientConfig::new(vec![url.clone()]);
         if let Some(bearer) = config.schema_registry_bearer_token.as_ref() {
@@ -327,7 +325,10 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
 
         let client = Box::new(SchemaRegistryClient::new(client_config));
 
-        Box::leak(client)
+        // do not need a mutable ref
+        let client: &SchemaRegistryClient = Box::leak(client);
+
+        client
     });
 
     // TODO: support different formats and make configurable by the user as it could be tied to a
@@ -388,8 +389,13 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
         },
     };
 
-    let app =
-        App::new(config, key_deserializer, value_deserializer).context("initialize application")?;
+    let app = App::new(
+        config,
+        key_deserializer,
+        value_deserializer,
+        schema_registry_client,
+    )
+    .context("initialize application")?;
 
     let terminal = ratatui::init();
 
