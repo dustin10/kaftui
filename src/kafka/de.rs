@@ -198,7 +198,9 @@ where
 /// Deserializer implementation that converts that uses the Confluent Schema Registry to safely
 /// deserialize data using the Protobuf schema format.
 pub struct ProtobufSchemaDeserializer {
+    /// Protobuf context containing the parsed schema information.
     context: ProtoContext,
+    /// Fully qualified Protobuf message type to deserialize the Kafka record data into.
     message_type: String,
 }
 
