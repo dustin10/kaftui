@@ -65,7 +65,10 @@ where
 
 /// Recursively finds all files with the given extension in the specified directory and its
 /// subdirectories, returning their contents as a vector of strings.
-pub fn read_files_recursive(dir: impl AsRef<str>, target_ext: impl AsRef<str>) -> anyhow::Result<Vec<String>> {
+pub fn read_files_recursive(
+    dir: impl AsRef<str>,
+    target_ext: impl AsRef<str>,
+) -> anyhow::Result<Vec<String>> {
     let entries = std::fs::read_dir(dir.as_ref())
         .context(format!("read files from directory {}", dir.as_ref()))?;
 

@@ -524,17 +524,7 @@ impl Schemas {
             .as_ref()
             .expect("schema is selected");
 
-        let schema_text = if schema.kind == "PROTOBUF" {
-            schema.schema.clone()
-        } else {
-            // TODO: do this once when we load the schema rather than on every render?
-            let schema_value: serde_json::Value =
-                serde_json::from_str(&schema.schema).expect("valid schema JSON");
-
-            serde_json::to_string_pretty(&schema_value).expect("valid schema")
-        };
-
-        let schema_paragraph = Paragraph::new(schema_text)
+        let schema_paragraph = Paragraph::new(schema.schema.clone())
             .block(schema_block)
             .wrap(Wrap { trim: false })
             .scroll(self.state.schema_definition_scroll);

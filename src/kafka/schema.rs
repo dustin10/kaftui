@@ -7,7 +7,13 @@ use serde::Serialize;
 use std::fmt::Display;
 
 /// String presented to the user when a schema-releated value is missing or not known.
-const UNKNOWN: &str = "<unknown>";
+const UNKNOWN_SCHEMA_KIND: &str = "<unknown>";
+
+/// String that maps to the type value for an Avro schema returned from the schema registry.
+const AVRO_SCHEMA_KIND: &str = "AVRO";
+
+/// String that maps to the type value for a JSON schema returned from the schema registry.
+const JSON_SCHEMA_KIND: &str = "JSON";
 
 /// Represents a reference to another schema contained in a schema retrieved from the schema
 /// registry.
@@ -26,8 +32,12 @@ impl From<SchemaReference> for SchemaRef {
     /// [`SchemaRef`].
     fn from(value: SchemaReference) -> Self {
         Self {
-            name: value.name.unwrap_or_else(|| UNKNOWN.to_string()),
-            subject: value.subject.unwrap_or_else(|| UNKNOWN.to_string()),
+            name: value
+                .name
+                .unwrap_or_else(|| UNKNOWN_SCHEMA_KIND.to_string()),
+            subject: value
+                .subject
+                .unwrap_or_else(|| UNKNOWN_SCHEMA_KIND.to_string()),
             version: value.version.unwrap_or_default(),
         }
     }
@@ -65,17 +75,26 @@ impl Schema {
 
         let guid = registered_schema
             .guid
-            .unwrap_or_else(|| UNKNOWN.to_string());
+            .unwrap_or_else(|| UNKNOWN_SCHEMA_KIND.to_string());
 
         let version = registered_schema.version.unwrap_or_default();
 
         let kind = registered_schema
             .schema_type
-            .unwrap_or_else(|| UNKNOWN.to_string());
+            .unwrap_or_else(|| UNKNOWN_SCHEMA_KIND.to_string());
 
-        let schema = registered_schema
-            .schema
-            .unwrap_or_else(|| UNKNOWN.to_string());
+        let schema = match registered_schema.schema {
+            Some(s) => match kind.as_str() {
+                AVRO_SCHEMA_KIND | JSON_SCHEMA_KIND => serde_json::from_str(&s)
+                    .and_then(|v: serde_json::Value| serde_json::to_string_pretty(&v))
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("failed to pretty-print schema JSON: {}", e);
+                        s
+                    }),
+                _ => s,
+            },
+            None => UNKNOWN_SCHEMA_KIND.to_string(),
+        };
 
         let references = registered_schema
             .references
