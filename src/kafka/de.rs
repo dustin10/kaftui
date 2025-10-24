@@ -1,3 +1,5 @@
+use crate::util;
+
 use anyhow::Context;
 use async_trait::async_trait;
 use protofish::{
@@ -210,7 +212,7 @@ impl ProtobufSchemaDeserializer {
         protos_dir: impl AsRef<str>,
         message_type: impl Into<String>,
     ) -> anyhow::Result<Self> {
-        let context = read_files_recursive(protos_dir, PROTO_FILE_EXTENSION)
+        let context = util::read_files_recursive(protos_dir, PROTO_FILE_EXTENSION)
             .context("find proto files")
             .and_then(|protos| ProtoContext::parse(protos).context("parse protobuf files"))?;
 
@@ -372,46 +374,11 @@ fn to_serde_headers(headers: &BorrowedHeaders) -> SerdeHeaders {
     ser_headers
 }
 
-/// Recursively finds all files with the given extension in the specified directory and its
-/// subdirectories, returning their contents as a vector of strings.
-fn read_files_recursive(dir: impl AsRef<str>, target_ext: &str) -> anyhow::Result<Vec<String>> {
-    let entries = std::fs::read_dir(dir.as_ref()).context("read configured protobuf directory")?;
-
-    let mut contents: Vec<String> = Vec::new();
-
-    for entry in entries {
-        match entry {
-            Ok(e) => {
-                let path = e.path();
-
-                if path.is_dir() {
-                    let child_dir = match path.into_os_string().into_string() {
-                        Ok(child_dir) => child_dir,
-                        Err(_) => anyhow::bail!("unable to convert proto dir path to string"),
-                    };
-
-                    let child_contents = read_files_recursive(child_dir, target_ext)
-                        .context("recursive find files")?;
-
-                    contents.extend(child_contents);
-                } else if let Some(file_ext) = path.extension()
-                    && file_ext.to_str() == Some(target_ext)
-                {
-                    match std::fs::read_to_string(path) {
-                        Ok(content) => contents.push(content),
-                        Err(e) => anyhow::bail!("unable to read proto file: {}", e),
-                    }
-                }
-            }
-            Err(e) => anyhow::bail!("unable to read proto file entry: {}", e),
-        }
-    }
-
-    Ok(contents)
-}
-
 /// Converts a slice of values that implement [`ToString`] into a JSON representation of an array.
-fn to_json_array_string<T: ToString>(values: &[T]) -> String {
+fn to_json_array_string<T>(values: &[T]) -> String
+where
+    T: ToString,
+{
     let strs: Vec<String> = values.iter().map(ToString::to_string).collect();
 
     format!("[{}]", strs.join(","))

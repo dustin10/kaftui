@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 /// Attempts to read an environment variable with the given key returning the value as a
 /// [`String`]. If no value is present for the environment variable or there was an error
 /// during the attempt to read it, [`None`] is returned.
@@ -59,4 +61,43 @@ where
         Some(v) => transform(v),
         None => default(),
     }
+}
+
+/// Recursively finds all files with the given extension in the specified directory and its
+/// subdirectories, returning their contents as a vector of strings.
+pub fn read_files_recursive(dir: impl AsRef<str>, target_ext: impl AsRef<str>) -> anyhow::Result<Vec<String>> {
+    let entries = std::fs::read_dir(dir.as_ref())
+        .context(format!("read files from directory {}", dir.as_ref()))?;
+
+    let mut contents: Vec<String> = Vec::new();
+
+    for entry in entries {
+        match entry {
+            Ok(e) => {
+                let path = e.path();
+
+                if path.is_dir() {
+                    let child_dir = match path.into_os_string().into_string() {
+                        Ok(child_dir) => child_dir,
+                        Err(_) => anyhow::bail!("unable to convert proto dir path to string"),
+                    };
+
+                    let child_contents = read_files_recursive(child_dir, target_ext.as_ref())
+                        .context("recursive find files")?;
+
+                    contents.extend(child_contents);
+                } else if let Some(file_ext) = path.extension()
+                    && file_ext.to_str() == Some(target_ext.as_ref())
+                {
+                    match std::fs::read_to_string(path) {
+                        Ok(content) => contents.push(content),
+                        Err(e) => anyhow::bail!("unable to read proto file: {}", e),
+                    }
+                }
+            }
+            Err(e) => anyhow::bail!("unable to read proto file entry: {}", e),
+        }
+    }
+
+    Ok(contents)
 }

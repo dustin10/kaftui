@@ -6,13 +6,13 @@ mod ui;
 mod util;
 
 use crate::{
-    app::{App, config::Config},
+    app::{config::Config, App},
     kafka::{
-        RecordFormat, SeekTo,
         de::{
             AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer, KeyDeserializer,
             ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
         },
+        RecordFormat, SeekTo,
     },
     trace::{CaptureLayer, Log},
 };
@@ -28,7 +28,7 @@ use schema_registry_client::rest::{
 use std::{fs::File, io::BufReader, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{EnvFilter, Registry, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
@@ -341,7 +341,6 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
             Some(client) => {
                 tracing::info!("using JSON deserializer with schema registry");
 
-                // TODO: cleanup error handling
                 let json_schema_deserializer =
                     JsonSchemaDeserializer::new(client).expect("JSONSchema deserializer created");
 
@@ -357,7 +356,6 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
             Some(client) => {
                 tracing::info!("using Avro schema deserializer with schema registry");
 
-                // TODO: cleanup error handling
                 let avro_schema_deserializer =
                     AvroSchemaDeserializer::new(client).expect("Avro schema deserializer created");
 
