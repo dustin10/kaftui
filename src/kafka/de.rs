@@ -24,6 +24,10 @@ use std::collections::HashMap;
 /// The file extension for Protobuf schema files.
 const PROTO_FILE_EXTENSION: &str = "proto";
 
+/// The offset to start reading Kafka record data serialized in Protobuf format when using the
+/// schema registry.
+const PROTOBUF_START_OFFSET: usize = 6;
+
 /// A trait which defines the behavior required to deserialize the key of a Kafka message to a
 /// String for display to the end user.
 #[async_trait]
@@ -337,10 +341,11 @@ impl ValueDeserializer for ProtobufSchemaDeserializer {
         // we are not technically validating the schema in this deserialzier so we skip those bytes
         // and use the remaining ones to decode the message.
         //
-        // TODO: also assumes a single 0 byte at position 5 for message indexes which can be a
-        // common case in protobuf serialiazation but maybe not always? works when testing against
-        // the confluent schema registry protobuf serializer.
-        let data = &data[6..];
+        // the current implementation also assumes a single 0 byte at position 5 for message
+        // indexes which can be a common case in protobuf serialiazation. This does indeed work
+        // when testing against the confluent schema registry protobuf serializer but may need to
+        // revisit in the future.
+        let data = &data[PROTOBUF_START_OFFSET..];
 
         let msg_info = match self.context.get_message(&self.message_type) {
             Some(msg_info) => msg_info,
