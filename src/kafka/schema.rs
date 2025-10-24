@@ -4,7 +4,7 @@ use schema_registry_client::rest::{
     schema_registry_client::Client,
 };
 use serde::Serialize;
-use std::fmt::Display;
+use std::{borrow::Cow, fmt::Display};
 
 /// String presented to the user when a schema-releated value is missing or not known.
 const UNKNOWN_SCHEMA_KIND: &str = "<unknown>";
@@ -22,9 +22,9 @@ pub struct SchemaRef {
     /// Name of the referenced schema.
     pub name: String,
     /// Subject the referenced schema belongs to.
-    pub subject: String,
+    pub subject: Subject,
     /// Version of the referenced schema.
-    pub version: i32,
+    pub version: Version,
 }
 
 impl From<SchemaReference> for SchemaRef {
@@ -37,8 +37,9 @@ impl From<SchemaReference> for SchemaRef {
                 .unwrap_or_else(|| UNKNOWN_SCHEMA_KIND.to_string()),
             subject: value
                 .subject
-                .unwrap_or_else(|| UNKNOWN_SCHEMA_KIND.to_string()),
-            version: value.version.unwrap_or_default(),
+                .unwrap_or_else(|| UNKNOWN_SCHEMA_KIND.to_string())
+                .into(),
+            version: value.version.unwrap_or_default().into(),
         }
     }
 }
@@ -140,6 +141,13 @@ impl Display for Subject {
     /// Writes the inner `String` representation of the [`Subject`] to the given formatter.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl<'a> From<Subject> for Cow<'a, str> {
+    /// Converts from a [`Subject`] to a [`Cow`] containing its inner `String` representation.
+    fn from(value: Subject) -> Self {
+        Cow::Owned(value.0)
     }
 }
 
