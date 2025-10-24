@@ -6,13 +6,13 @@ mod ui;
 mod util;
 
 use crate::{
-    app::{App, config::Config},
+    app::{config::Config, App},
     kafka::{
-        RecordFormat, SeekTo,
         de::{
             AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer, KeyDeserializer,
             ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
         },
+        RecordFormat, SeekTo,
     },
     trace::{CaptureLayer, Log},
 };
@@ -28,7 +28,7 @@ use schema_registry_client::rest::{
 use std::{fs::File, io::BufReader, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{EnvFilter, Registry, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
@@ -311,7 +311,37 @@ fn logs_dir() -> String {
 
 /// Runs the application.
 async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Result<()> {
-    let schema_registry_client = config.schema_registry_url.as_ref().map(|url| {
+    let schema_registry_client = create_schema_registry_client(&config);
+
+    let key_deserializer = create_key_deserializer(&config).context("create KeyDeserializer")?;
+
+    let value_deserializer = create_value_deserializer(&config, schema_registry_client)
+        .context("create ValueDeserializer")?;
+
+    let app = App::new(
+        config,
+        key_deserializer,
+        value_deserializer,
+        schema_registry_client,
+    )
+    .context("initialize application")?;
+
+    let terminal = ratatui::init();
+
+    let result = app.run(terminal, logs_rx).await;
+
+    // make sure to always restore terminal before returning
+    ratatui::restore();
+
+    result
+}
+
+/// Creeates a [`SchemaRegistryClient`] if a URL is specified in the configuration. The reference to
+/// the client is intentionally leaked to ensure it has a `'static` lifetime as required by the
+/// Kafka record deserialziers. This is acceptable as the client is intended to live for the entire
+/// duration of the application.
+fn create_schema_registry_client(config: &Config) -> Option<&'static SchemaRegistryClient> {
+    config.schema_registry_url.as_ref().map(|url| {
         let mut client_config = ClientConfig::new(vec![url.clone()]);
         if let Some(bearer) = config.schema_registry_bearer_token.as_ref() {
             tracing::info!("configuring bearer token auth for schema registry client");
@@ -329,12 +359,23 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
         let client: &SchemaRegistryClient = Box::leak(client);
 
         client
-    });
+    })
+}
 
+/// Creates the [`KeyDeserializer`] that will be used to deserialize record keys consumed from
+/// the Kafka topic based on the application configuration.
+fn create_key_deserializer(_config: &Config) -> anyhow::Result<Arc<dyn KeyDeserializer>> {
     // TODO: support different formats and make configurable by the user as it could be tied to a
     // schema in the schema registry.
-    let key_deserializer: Arc<dyn KeyDeserializer> = Arc::new(StringDeserializer);
+    Ok(Arc::new(StringDeserializer))
+}
 
+/// Creates the [`ValueDeserializer`] that will be used to deserialize record values consumed from
+/// the Kafka topic based on the application configuration.
+fn create_value_deserializer(
+    config: &Config,
+    schema_registry_client: Option<&'static SchemaRegistryClient>,
+) -> anyhow::Result<Arc<dyn ValueDeserializer>> {
     let value_deserializer: Arc<dyn ValueDeserializer> = match config.format {
         RecordFormat::None => Arc::new(StringDeserializer),
         RecordFormat::Json => match schema_registry_client {
@@ -387,20 +428,5 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
         },
     };
 
-    let app = App::new(
-        config,
-        key_deserializer,
-        value_deserializer,
-        schema_registry_client,
-    )
-    .context("initialize application")?;
-
-    let terminal = ratatui::init();
-
-    let result = app.run(terminal, logs_rx).await;
-
-    // make sure to always restore terminal before returning
-    ratatui::restore();
-
-    result
+    Ok(value_deserializer)
 }
