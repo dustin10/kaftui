@@ -7,13 +7,13 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{
         Block, Borders, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph, Row, Table,
     },
+    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};
@@ -68,6 +68,13 @@ impl<'a> SettingsConfig<'a> {
     /// Creates new default [`SettingsConfigBuilder`].
     pub fn builder() -> SettingsConfigBuilder<'a> {
         SettingsConfigBuilder::default()
+    }
+}
+
+impl<'a> From<SettingsConfig<'a>> for Settings {
+    /// Converts from an owned [`SettingsConfig`] to an owned [`Settings`].
+    fn from(value: SettingsConfig<'a>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -248,7 +255,7 @@ pub struct Settings {
 
 impl Settings {
     /// Creates a new [`Settings`] component using the specified [`SettingsConfig`].
-    pub fn new(config: SettingsConfig<'_>) -> Self {
+    fn new(config: SettingsConfig<'_>) -> Self {
         let theme = config.theme.into();
 
         let mut state = SettingsState::default();
@@ -263,7 +270,7 @@ impl Settings {
     /// Renders the sidebar menu panel.
     fn render_sidebar(&mut self, frame: &mut Frame, area: Rect) {
         let mut menu_block = Block::bordered()
-            .title(" Options ")
+            .title(" Configuration ")
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 

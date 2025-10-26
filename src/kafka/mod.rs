@@ -8,14 +8,14 @@ use chrono::{DateTime, Local};
 use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
-    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
     config::RDKafkaLogLevel,
     consumer::{
-        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
-        Rebalance, StreamConsumer, stream_consumer::StreamPartitionQueue,
+        stream_consumer::StreamPartitionQueue, BaseConsumer, CommitMode, Consumer as RDConsumer,
+        ConsumerContext as RDConsumerContext, Rebalance, StreamConsumer,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
+    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};
@@ -404,7 +404,7 @@ pub enum ConsumerEvent {
     Statistics(Box<Statistics>),
 }
 
-#[derive(Builder, Clone, Debug)]
+#[derive(Builder, Clone)]
 pub struct ConsumerConfig {
     /// Configuration properties that will be set for the Kafka consumer.
     props: HashMap<String, String>,
@@ -417,6 +417,14 @@ pub struct ConsumerConfig {
     seek_to: SeekTo,
     /// Any filter to apply to the record.
     filter: Option<String>,
+    /// Specifies the [`KeyDeserializer`] that should be used to deserialize the key of the Kafka
+    /// record.
+    key_deserializer: Arc<dyn KeyDeserializer>,
+    /// Specifies the [`ValueDeserializer`] that should be used to deserialize the value of the
+    /// Kafka record.
+    value_deserializer: Arc<dyn ValueDeserializer>,
+    /// Sender for the Kafka consumer channel.
+    consumer_tx: Sender<ConsumerEvent>,
 }
 
 impl ConsumerConfig {
@@ -424,6 +432,15 @@ impl ConsumerConfig {
     /// [`ConsumerConfig`].
     pub fn builder() -> ConsumerConfigBuilder {
         ConsumerConfigBuilder::default()
+    }
+}
+
+impl TryFrom<ConsumerConfig> for Consumer {
+    type Error = anyhow::Error;
+
+    /// Attempts to convert the [`ConsumerConfig`] into a [`Consumer`].
+    fn try_from(config: ConsumerConfig) -> Result<Self, Self::Error> {
+        Self::new(config)
     }
 }
 
@@ -454,12 +471,7 @@ pub struct Consumer {
 
 impl Consumer {
     /// Creates a new [`Consumer`] with the specified dependencies.
-    pub fn new(
-        config: ConsumerConfig,
-        key_deserializer: Arc<dyn KeyDeserializer>,
-        value_deserializer: Arc<dyn ValueDeserializer>,
-        consumer_tx: Sender<ConsumerEvent>,
-    ) -> anyhow::Result<Self> {
+    fn new(config: ConsumerConfig) -> anyhow::Result<Self> {
         let mut client_config = ClientConfig::new();
 
         // apply default config
@@ -478,7 +490,7 @@ impl Consumer {
             }
         }
 
-        let context = ConsumerContext::new(consumer_tx.clone());
+        let context = ConsumerContext::new(config.consumer_tx.clone());
 
         let consumer: StreamConsumer<ConsumerContext> = client_config
             .set_log_level(RDKafkaLogLevel::Debug)
@@ -509,11 +521,11 @@ impl Consumer {
             consumer: Arc::new(consumer),
             topic: config.topic,
             partitions,
-            key_deserializer,
-            value_deserializer,
+            key_deserializer: config.key_deserializer,
+            value_deserializer: config.value_deserializer,
             seek_to: config.seek_to,
             filter: config.filter,
-            consumer_tx,
+            consumer_tx: config.consumer_tx,
         })
     }
     /// Starts the consumption of records from the specified Kafka topic.

@@ -1,8 +1,8 @@
 use crate::{
-    app::{BufferedKeyPress, config::Theme},
+    app::{config::Theme, BufferedKeyPress},
     event::Event,
     kafka::{ConsumerMode, Record},
-    ui::{Component, widget::ConsumerStatusLine},
+    ui::{widget::ConsumerStatusLine, Component},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
@@ -10,7 +10,6 @@ use chrono::{Duration, Local};
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     symbols::Marker,
@@ -19,8 +18,9 @@ use ratatui::{
         Axis, Bar, BarChart, BarGroup, Block, Borders, Chart, Dataset, GraphType, Padding,
         Paragraph, Row, Table,
     },
+    Frame,
 };
-use rdkafka::{Statistics, statistics::Partition};
+use rdkafka::{statistics::Partition, Statistics};
 use std::{cell::Cell, collections::BTreeMap, rc::Rc, str::FromStr};
 
 /// Number of columns to render between bars in a bar chart.
@@ -269,7 +269,7 @@ impl<'a> From<StatsConfig<'_>> for Stats<'a> {
 
 impl<'a> Stats<'a> {
     /// Creates a new [`Stats`] component using the specified [`StatsConfig`].
-    pub fn new(config: StatsConfig<'_>) -> Self {
+    fn new(config: StatsConfig<'_>) -> Self {
         let state = StatsState::new(config.consumer_mode);
 
         let theme: StatsTheme = config.theme.into();

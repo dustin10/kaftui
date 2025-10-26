@@ -250,22 +250,19 @@ where
             .partitions(partitions)
             .seek_to(config.seek_to.clone())
             .filter(config.filter.clone())
+            .key_deserializer(key_deserializer)
+            .value_deserializer(value_deserializer)
+            .consumer_tx(consumer_tx)
             .build()
             .expect("valid ConsumerConfig");
 
-        let consumer = Consumer::new(
-            consumer_config,
-            key_deserializer,
-            value_deserializer,
-            consumer_tx,
-        )
-        .context("create consumer")?;
+        let consumer = Consumer::try_from(consumer_config).context("create Kafka consumer")?;
 
-        let exporter = Exporter::new(config.export_directory.clone(), config.format);
+        let exporter = Exporter::new(config.export_directory.clone());
 
         let consumer_mode = Rc::new(Cell::new(ConsumerMode::Processing));
 
-        let records_component = Rc::new(RefCell::new(Records::new(
+        let records_component = Rc::new(RefCell::new(Records::from(
             RecordsConfig::builder()
                 .consumer_mode(Rc::clone(&consumer_mode))
                 .topic(config.topic.clone())
@@ -277,7 +274,7 @@ where
                 .expect("valid Records config"),
         )));
 
-        let stats_component = Rc::new(RefCell::new(Stats::new(
+        let stats_component = Rc::new(RefCell::new(Stats::from(
             StatsConfig::builder()
                 .consumer_mode(Rc::clone(&consumer_mode))
                 .topic(config.topic.clone())
@@ -293,7 +290,7 @@ where
         // if schema registry is enabled push the schemas component and create the client used to
         // interact with the schema registry
         let schema_client = if let Some(client) = schema_registry_client {
-            let schemas_component = Rc::new(RefCell::new(Schemas::new(
+            let schemas_component = Rc::new(RefCell::new(Schemas::from(
                 SchemasConfig::builder()
                     .scroll_factor(config.scroll_factor)
                     .theme(&config.theme)
@@ -310,7 +307,7 @@ where
 
         let config = Rc::new(config);
 
-        components.push(Rc::new(RefCell::new(Settings::new(
+        components.push(Rc::new(RefCell::new(Settings::from(
             SettingsConfig::builder()
                 .config(Rc::clone(&config))
                 .theme(&config.theme)
@@ -320,7 +317,7 @@ where
 
         // if application logs are enabled push the logs component
         if config.logs_enabled {
-            let logs_component = Rc::new(RefCell::new(Logs::new(
+            let logs_component = Rc::new(RefCell::new(Logs::from(
                 LogsConfig::builder()
                     .max_history(config.logs_max_history as usize)
                     .theme(&config.theme)
@@ -331,7 +328,7 @@ where
             components.push(logs_component);
         }
 
-        // prepare the valid menu item characters based on the components available
+        // cache the valid menu item characters based on the configured component 
         let mut menu_item_chars = Vec::new();
         for i in 0..components.len() {
             let index = u8::try_from(i).expect("valid char") + 1;
@@ -533,7 +530,7 @@ where
     fn on_export_record(&mut self, record: Record) {
         tracing::debug!("exporting selected record");
 
-        let notification = match self.exporter.export_record(record) {
+        let notification = match self.exporter.export_record(record, self.config.format) {
             Ok(path) => {
                 tracing::info!("record exported to {}", path);
                 Notification::success("Record Exported Successfully")

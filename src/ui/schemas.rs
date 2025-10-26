@@ -445,7 +445,7 @@ pub struct Schemas {
 
 impl Schemas {
     /// Creates a new [`Schemas`] component using the specified [`SchemasConfig`].
-    pub fn new(config: SchemasConfig<'_>) -> Self {
+    fn new(config: SchemasConfig<'_>) -> Self {
         Self {
             state: SchemasState::new(),
             scroll_factor: config.scroll_factor,

@@ -369,7 +369,7 @@ impl From<RecordsConfig<'_>> for Records {
 
 impl Records {
     /// Creates a new [`Records`] component using the specified [`RecordsConfig`].
-    pub fn new(config: RecordsConfig<'_>) -> Self {
+    fn new(config: RecordsConfig<'_>) -> Self {
         Self {
             topic: config.topic,
             filter: config.filter,

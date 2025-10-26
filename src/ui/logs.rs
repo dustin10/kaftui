@@ -161,7 +161,7 @@ impl From<LogsConfig<'_>> for Logs {
 
 impl Logs {
     /// Creates a new [`Logs`] component using the specified [`LogsConfig`].
-    pub fn new(config: LogsConfig<'_>) -> Self {
+    fn new(config: LogsConfig<'_>) -> Self {
         let state = LogsState::new(config.max_history);
 
         let theme = config.theme.into();
