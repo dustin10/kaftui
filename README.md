@@ -45,9 +45,9 @@ First, install the `kafktui` application using `cargo`. The minimum required ver
 > Note that currently the `rdkafka` shared library is configured to be dynamically linked, so it should be installed
 on the user's system before installation of the `kaftui` application. If you would like to statically link the `rdkafka`
 library, then change the `dynamic-linking` feature to `static-linking` in the `Cargo.toml` file before building and
-installing the application. If you would like to build the `rdkafka` library from source the change the value to
-`cmake-build`. See the [rdkafka-sys docs](https://github.com/fede1024/rust-rdkafka/tree/master/rdkafka-sys#features)
-for more details.
+installing the application. If you would like to build the `rdkafka` library from source then change the value to
+`cmake-build`. This option requires CMake to be installed. See the
+[rdkafka-sys docs](https://github.com/fede1024/rust-rdkafka/tree/master/rdkafka-sys#features) for more details.
 
 Next, execute the application passing the `--bootstrap-servers` and `--topic` arguments and start viewing records from
 the topic.
