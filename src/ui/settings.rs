@@ -1,19 +1,21 @@
 use crate::{
-    app::config::{Config, Theme},
+    app::config::{Config, PersistedConfig, Profile, Theme},
     kafka::SeekTo,
     ui::{BufferedKeyPress, Component, Event},
 };
 
+use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    Frame,
+    layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph, Row, Table,
+        Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Padding,
+        Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     },
-    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};
@@ -25,8 +27,11 @@ const SETTINGS_KEY_BINDINGS: [&str; 2] = [super::KEY_BINDING_QUIT, super::KEY_BI
 /// Enumerates the widgets that can be focused in the [`Settings`] component.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 enum SettingsWidget {
+    /// Main menu list.
     #[default]
     Menu,
+    /// Profile selection list.
+    Profiles,
 }
 
 /// Enumerates the items available for selection in the sidebar menu.
@@ -37,7 +42,7 @@ enum SettingsMenuItem {
     Active,
     /// When selected, the profile viewer will be displayed to the user where they can view
     /// any configured application profiles.
-    Profile,
+    Profiles,
 }
 
 impl From<usize> for SettingsMenuItem {
@@ -49,7 +54,7 @@ impl From<usize> for SettingsMenuItem {
     fn from(value: usize) -> Self {
         match value {
             0 => SettingsMenuItem::Active,
-            1 => SettingsMenuItem::Profile,
+            1 => SettingsMenuItem::Profiles,
             _ => panic!("invalid settings menu item index"),
         }
     }
@@ -212,9 +217,40 @@ struct SettingsState {
     active_widget: SettingsWidget,
     /// Contains the current state of the sidebar menu list.
     menu_list_state: ListState,
+    /// Persisted application configuration loaded from disk.
+    persisted_config: PersistedConfig,
+    /// Contains the current state of the profiles list.
+    profiles_list_state: ListState,
+    /// Contains the current state of the profiles list scrollbar.
+    profiles_scroll_state: ScrollbarState,
 }
 
 impl SettingsState {
+    /// Creates a new default [`SettingsState`].
+    fn new() -> anyhow::Result<Self> {
+        let persisted_config = PersistedConfig::load_from_home_dir()
+            .context("load PersistedConfig from home directory")?;
+
+        Ok(Self {
+            active_widget: SettingsWidget::default(),
+            menu_list_state: ListState::default(),
+            persisted_config,
+            profiles_list_state: ListState::default(),
+            profiles_scroll_state: ScrollbarState::default(),
+        })
+    }
+}
+
+impl SettingsState {
+    fn select_next_widget(&mut self) {
+        self.active_widget = match self.selected_menu_item() {
+            SettingsMenuItem::Active => SettingsWidget::Menu,
+            SettingsMenuItem::Profiles => match self.active_widget {
+                SettingsWidget::Menu => SettingsWidget::Profiles,
+                SettingsWidget::Profiles => SettingsWidget::Menu,
+            },
+        };
+    }
     /// Gets the currently selected [`SettingsMenuItem`].
     fn selected_menu_item(&self) -> SettingsMenuItem {
         self.menu_list_state
@@ -238,6 +274,22 @@ impl SettingsState {
     fn select_menu_item_bottom(&mut self) {
         self.menu_list_state.select_last();
     }
+    /// Selects the first item in the profiles list.
+    fn select_profile_item_top(&mut self) {
+        self.profiles_list_state.select_first();
+    }
+    /// Selects the next item in the profiles list.
+    fn select_profile_item_next(&mut self) {
+        self.profiles_list_state.select_next();
+    }
+    /// Selects the previous item in the profiles list.
+    fn select_profile_item_prev(&mut self) {
+        self.profiles_list_state.select_previous();
+    }
+    /// Selects the last item in the profiles list.
+    fn select_profile_item_bottom(&mut self) {
+        self.profiles_list_state.select_last();
+    }
 }
 
 /// The application [`Component`] that is responsible for displaying the current application
@@ -258,7 +310,8 @@ impl Settings {
     fn new(config: SettingsConfig<'_>) -> Self {
         let theme = config.theme.into();
 
-        let mut state = SettingsState::default();
+        // TODO: better error handling
+        let mut state = SettingsState::new().expect("SettingsState created");
         state.menu_list_state.select_first();
 
         Self {
@@ -289,10 +342,10 @@ impl Settings {
         frame.render_stateful_widget(menu_list, area, &mut self.state.menu_list_state);
     }
     /// Renders the main panel based on the currently selected menu item.
-    fn render_main_panel(&self, frame: &mut Frame, area: Rect) {
+    fn render_main_panel(&mut self, frame: &mut Frame, area: Rect) {
         match self.state.selected_menu_item() {
             SettingsMenuItem::Active => self.render_active_config(frame, area),
-            SettingsMenuItem::Profile => self.render_profiles(frame, area),
+            SettingsMenuItem::Profiles => self.render_profiles(frame, area),
         }
     }
     /// Renders the current applcation configuration to the main panel.
@@ -316,20 +369,20 @@ impl Settings {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(middle_panel);
 
-        self.render_active_config_consumer(frame, left_top_panel);
-        self.render_active_config_consumer_properties(frame, left_bottom_panel);
-        self.render_active_config_schema(frame, middle_top_panel);
-        self.render_active_config_misc(frame, middle_bottom_panel);
+        let config = self.config.deref();
+
+        self.render_active_config_consumer(config, frame, left_top_panel);
+        self.render_active_config_consumer_properties(config, frame, left_bottom_panel);
+        self.render_active_config_schema(config, frame, middle_top_panel);
+        self.render_active_config_misc(config, frame, middle_bottom_panel);
         self.render_active_config_theme(frame, right_panel);
     }
     /// Renders the active consumer configuration for the application.
-    fn render_active_config_consumer(&self, frame: &mut Frame, area: Rect) {
+    fn render_active_config_consumer(&self, config: &Config, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Consumer ")
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
-
-        let config = self.config.deref();
 
         let seek_to = match &config.seek_to {
             SeekTo::None => String::from("<none>"),
@@ -390,33 +443,37 @@ impl Settings {
         frame.render_widget(list, area);
     }
     /// Renders a table containing the consumer properties if any are configured.
-    fn render_active_config_consumer_properties(&self, frame: &mut Frame, area: Rect) {
-        let config = self.config.deref();
-
-        if let Some(consumer_properties) = config.consumer_properties.as_ref() {
-            let props_block = Block::bordered()
-                .title(" Consumer Properties ")
-                .border_style(self.theme.panel_border_color)
-                .padding(Padding::new(1, 1, 0, 0));
-
-            let props_rows: Vec<Row> = consumer_properties
-                .iter()
-                .map(|(k, v)| Row::new([k.as_str(), v.as_str()]))
-                .collect();
-
-            let props_table = Table::new(props_rows, [Constraint::Min(1), Constraint::Fill(3)])
-                .column_spacing(1)
-                .header(Row::new([
-                    "Key".bold().style(self.theme.label_color),
-                    "Value".bold().style(self.theme.label_color),
-                ]))
-                .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-                .block(props_block);
-
-            frame.render_widget(props_table, area);
-        } else {
+    fn render_active_config_consumer_properties(
+        &self,
+        config: &Config,
+        frame: &mut Frame,
+        area: Rect,
+    ) {
+        let Some(consumer_properties) = config.consumer_properties.as_ref() else {
             self.render_message(frame, area, "¯\\_(ツ)_/¯", Some(" Consumer Properties "));
-        }
+            return;
+        };
+
+        let props_block = Block::bordered()
+            .title(" Consumer Properties ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let props_rows: Vec<Row> = consumer_properties
+            .iter()
+            .map(|(k, v)| Row::new([k.as_str(), v.as_str()]))
+            .collect();
+
+        let props_table = Table::new(props_rows, [Constraint::Min(1), Constraint::Fill(3)])
+            .column_spacing(1)
+            .header(Row::new([
+                "Key".bold().style(self.theme.label_color),
+                "Value".bold().style(self.theme.label_color),
+            ]))
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+            .block(props_block);
+
+        frame.render_widget(props_table, area);
     }
     /// Renders the given message centered both vertically and horizontally in the given area.
     fn render_message(&self, frame: &mut Frame, area: Rect, msg: &str, title: Option<&str>) {
@@ -445,13 +502,11 @@ impl Settings {
         frame.render_widget(message_text, text_area);
     }
     /// Renders the schema related configuration for the application.
-    fn render_active_config_schema(&self, frame: &mut Frame, area: Rect) {
+    fn render_active_config_schema(&self, config: &Config, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Schema ")
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
-
-        let config = self.config.deref();
 
         let list_items = vec![
             ListItem::new(Text::from_iter([
@@ -508,6 +563,28 @@ impl Settings {
                         .unwrap_or_else(|| String::from("<none>")),
                 ),
             ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Protobuf Directory", self.theme.label_color)),
+                Line::from(
+                    config
+                        .protobuf_dir
+                        .as_ref()
+                        .cloned()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Protobuf Type", self.theme.label_color)),
+                Line::from(
+                    config
+                        .protobuf_type
+                        .as_ref()
+                        .cloned()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
         ];
 
         let list = List::new(list_items).block(block);
@@ -515,13 +592,11 @@ impl Settings {
         frame.render_widget(list, area);
     }
     /// Renders the miscellaneous configuration for the application.
-    fn render_active_config_misc(&self, frame: &mut Frame, area: Rect) {
+    fn render_active_config_misc(&self, config: &Config, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Misc ")
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
-
-        let config = self.config.deref();
 
         let list_items = vec![
             ListItem::new(Text::from_iter([
@@ -641,9 +716,272 @@ impl Settings {
 
         frame.render_widget(list, area);
     }
-    /// Renders the prorfile viewer to the main panel.
-    fn render_profiles(&self, frame: &mut Frame, area: Rect) {
-        self.render_message(frame, area, "Under Construction", Some(" Profile Manager "));
+    /// Renders the profile viewer to the main panel.
+    fn render_profiles(&mut self, frame: &mut Frame, area: Rect) {
+        let Some(profiles) = self.state.persisted_config.profiles.as_ref() else {
+            self.render_message(frame, area, "No Profiles Configured", None);
+            return;
+        };
+
+        let [details_panel, sidebar_panel] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+            .areas(area);
+
+        let mut profiles_block = Block::bordered()
+            .title(" Profiles ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        if self.state.active_widget == SettingsWidget::Profiles {
+            profiles_block = profiles_block
+                .border_type(BorderType::Thick)
+                .border_style(self.theme.selected_panel_border_color);
+        }
+
+        let profile_list_items: Vec<ListItem> = profiles
+            .iter()
+            .map(|p| ListItem::new(p.name.as_str()))
+            .collect();
+
+        let profiles_list = List::new(profile_list_items)
+            .block(profiles_block)
+            .highlight_style(Modifier::REVERSED)
+            .highlight_symbol(">")
+            .highlight_spacing(HighlightSpacing::Always);
+
+        frame.render_stateful_widget(
+            profiles_list,
+            sidebar_panel,
+            &mut self.state.profiles_list_state,
+        );
+
+        self.state.profiles_scroll_state = self
+            .state
+            .profiles_scroll_state
+            .content_length(profiles.len());
+
+        let scrollbar = Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
+
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(Margin {
+                horizontal: 1,
+                vertical: 1,
+            }),
+            &mut self.state.profiles_scroll_state,
+        );
+
+        match self.state.profiles_list_state.selected() {
+            None => self.render_message(frame, details_panel, "Select a Profile", None),
+            Some(idx) => {
+                let profile = self
+                    .state
+                    .persisted_config
+                    .profiles
+                    .as_ref()
+                    .expect("profiles exist")
+                    .get(idx)
+                    .expect("valid profile index");
+
+                let [top_panel, bottom_panel] = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .areas(details_panel);
+
+                let [top_left_panel, top_right_panel] = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .areas(top_panel);
+
+                self.render_profile_consumer(profile, frame, top_left_panel);
+                self.render_profile_schema(profile, frame, top_right_panel);
+                self.render_profile_consumer_properties(profile, frame, bottom_panel);
+            }
+        }
+    }
+    /// Renders the consumer configuration for the [`Profile`].
+    fn render_profile_consumer(&self, profile: &Profile, frame: &mut Frame, area: Rect) {
+        let block = Block::bordered()
+            .title(" Consumer ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let list_items = vec![
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Bootstrap Servers", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .bootstrap_servers
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Topic", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .topic
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Partitions", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .partitions
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Group ID", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .group_id
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Filter", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .filter
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+        ];
+
+        let list = List::new(list_items).block(block);
+
+        frame.render_widget(list, area);
+    }
+    /// Renders a table containing the consumer properties for the [`Profile`].
+    fn render_profile_consumer_properties(&self, profile: &Profile, frame: &mut Frame, area: Rect) {
+        let Some(consumer_properties) = profile.consumer_properties.as_ref() else {
+            self.render_message(frame, area, "¯\\_(ツ)_/¯", Some(" Consumer Properties "));
+            return;
+        };
+
+        let props_block = Block::bordered()
+            .title(" Consumer Properties ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let props_rows: Vec<Row> = consumer_properties
+            .iter()
+            .map(|(k, v)| Row::new([k.as_str(), v.as_str()]))
+            .collect();
+
+        let props_table = Table::new(props_rows, [Constraint::Min(1), Constraint::Fill(3)])
+            .column_spacing(1)
+            .header(Row::new([
+                "Key".bold().style(self.theme.label_color),
+                "Value".bold().style(self.theme.label_color),
+            ]))
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+            .block(props_block);
+
+        frame.render_widget(props_table, area);
+    }
+    /// Renders the schema related configuration for the [`Profile`].
+    fn render_profile_schema(&self, profile: &Profile, frame: &mut Frame, area: Rect) {
+        let block = Block::bordered()
+            .title(" Schema ")
+            .border_style(self.theme.panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let list_items = vec![
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Format", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .format
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Registry URL", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .schema_registry_url
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Registry Auth Token", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .schema_registry_bearer_token
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled(
+                    "Registry Basic Auth User",
+                    self.theme.label_color,
+                )),
+                Line::from(
+                    profile
+                        .schema_registry_user
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled(
+                    "Registry Basic Auth Password",
+                    self.theme.label_color,
+                )),
+                Line::from(
+                    profile
+                        .schema_registry_pass
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Protobuf Directory", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .protobuf_dir
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Protobuf Type", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .protobuf_type
+                        .clone()
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+        ];
+
+        let list = List::new(list_items).block(block);
+
+        frame.render_widget(list, area);
     }
 }
 
@@ -651,6 +989,13 @@ impl Component for Settings {
     /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str {
         "Settings"
+    }
+    /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
+    /// application.
+    fn on_app_event(&mut self, event: &Event) {
+        if let Event::SelectNextWidget = event {
+            self.state.select_next_widget();
+        }
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
     /// for processing.
@@ -680,6 +1025,25 @@ impl Component for Settings {
                     }
                     _ => None,
                 },
+                SettingsWidget::Profiles => match c {
+                    'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                        self.state.select_profile_item_top();
+                        None
+                    }
+                    'j' => {
+                        self.state.select_profile_item_next();
+                        None
+                    }
+                    'k' => {
+                        self.state.select_profile_item_prev();
+                        None
+                    }
+                    'G' => {
+                        self.state.select_profile_item_bottom();
+                        None
+                    }
+                    _ => None,
+                },
             },
             _ => None,
         }
@@ -699,7 +1063,7 @@ impl Component for Settings {
         let mut key_bindings = Vec::from(SETTINGS_KEY_BINDINGS);
 
         match self.state.active_widget {
-            SettingsWidget::Menu => {
+            SettingsWidget::Menu | SettingsWidget::Profiles => {
                 key_bindings.push(super::KEY_BINDING_TOP);
                 key_bindings.push(super::KEY_BINDING_NEXT);
                 key_bindings.push(super::KEY_BINDING_PREV);

@@ -4,7 +4,7 @@ use anyhow::Context;
 use chrono::Utc;
 use config::{Config as ConfigRs, ConfigError, Environment, Map, Source, Value, ValueKind};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io::ErrorKind};
+use std::{collections::HashMap, io::ErrorKind, path::Path};
 
 /// Prefix for the default group id for the Kafka consumer generated from the hostname of the
 /// machine the application is running on.
@@ -22,6 +22,9 @@ const DEFAULT_EXPORT_DIRECTORY: &str = ".";
 
 /// Default maximum number of logs that should be stored in memory.
 const DEFAULT_LOGS_MAX_HISTORY: u16 = 2048;
+
+/// Name of the configuration file stored in the user's home directory.
+const PERSISTED_CONFIG_FILE_NAME: &str = ".kaftui.json";
 
 impl From<SeekTo> for ValueKind {
     /// Converts from an owned [`SeekTo`] to a [`ValueKind`].
@@ -107,15 +110,8 @@ impl Config {
         P: AsRef<str>,
         S: Source + Send + Sync + 'static,
     {
-        let file_path = std::env::home_dir()
-            .context("resolve home directory")?
-            .join(".kaftui.json");
-
-        let persisted_config = match std::fs::read_to_string(file_path) {
-            Ok(s) => serde_json::from_str(&s).context("deserialize persisted config from JSON")?,
-            Err(e) if e.kind() == ErrorKind::NotFound => PersistedConfig::default(),
-            Err(e) => return Err(e).context("read persisted config file"),
-        };
+        let persisted_config = PersistedConfig::load_from_home_dir()
+            .context("load PersistedConfig from home directory")?;
 
         let profile = profile_name.and_then(|name| {
             persisted_config.profiles.as_ref().and_then(|ps| {
@@ -211,18 +207,41 @@ fn generate_group_id() -> String {
 /// Configuration that resides in the .kaftui.json file persisted on the user's machine.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PersistedConfig {
+pub struct PersistedConfig {
     /// Contains any pre-configured [`Profile`]s that the user may have previously configured.
-    profiles: Option<Vec<Profile>>,
+    pub profiles: Option<Vec<Profile>>,
     /// Maximum number of [`Records`] that should be held in memory at any given time after being
     /// consumed from the Kafka topic.
-    max_records: Option<usize>,
+    pub max_records: Option<usize>,
     /// Controls how many lines each press of a key scrolls the record value text.
-    scroll_factor: Option<u16>,
+    pub scroll_factor: Option<u16>,
     /// Directory on the file system where exported files will be saved.
-    export_directory: Option<String>,
+    pub export_directory: Option<String>,
     /// Color configuration for the UI components of the application.
-    theme: Option<Theme>,
+    pub theme: Option<Theme>,
+}
+
+impl PersistedConfig {
+    /// Loads the [`PersistedConfig`] from the `.kaftui.json` file in the current user's home
+    /// directory.
+    pub fn load_from_home_dir() -> anyhow::Result<Self> {
+        let path = std::env::home_dir()
+            .context("resolve home directory of current user")?
+            .join(PERSISTED_CONFIG_FILE_NAME);
+
+        Self::load_from_file(path)
+    }
+    /// Loads the [`PersistedConfig`] from the JSON file at the specified path.
+    pub fn load_from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        match std::fs::read_to_string(path) {
+            Ok(s) => serde_json::from_str(&s).context("deserialize PersistedConfig from JSON"),
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                tracing::info!("no persisted config file found, using defaults");
+                Ok(PersistedConfig::default())
+            }
+            Err(e) => Err(e).context("read PersistedConfig file"),
+        }
+    }
 }
 
 impl Source for PersistedConfig {
@@ -264,39 +283,39 @@ impl Source for PersistedConfig {
 /// execution of the application.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Profile {
+pub struct Profile {
     /// Name that uniquely identifies a profile.
-    name: String,
+    pub name: String,
     /// Kafka bootstrap servers host value that the application will connect to.
-    bootstrap_servers: Option<String>,
+    pub bootstrap_servers: Option<String>,
     /// Name of the Kafka topic to consume messages from.
-    topic: Option<String>,
+    pub topic: Option<String>,
     /// CSV of partitions numbers that the consumer should be assigned.
-    partitions: Option<String>,
+    pub partitions: Option<String>,
     /// Specifies the format of the data in the Kafka topic, for example `json`.
-    format: Option<String>,
+    pub format: Option<String>,
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
-    schema_registry_url: Option<String>,
+    pub schema_registry_url: Option<String>,
     /// Specifies the bearer auth token used to connect to the the Schema Registry.
-    schema_registry_bearer_token: Option<String>,
+    pub schema_registry_bearer_token: Option<String>,
     /// Specifies the basic auth user used to connect to the the Schema Registry.
-    schema_registry_user: Option<String>,
+    pub schema_registry_user: Option<String>,
     /// Specifies the basic auth password used to connect to the the Schema Registry.
-    schema_registry_pass: Option<String>,
+    pub schema_registry_pass: Option<String>,
     /// Specifies the directory where the `.proto` files are located.
-    protobuf_dir: Option<String>,
+    pub protobuf_dir: Option<String>,
     /// Specifies the Protobuf message type which maps to the records in the Kafka topic.
-    protobuf_type: Option<String>,
+    pub protobuf_type: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
-    group_id: Option<String>,
+    pub group_id: Option<String>,
     /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
     /// from the Kafka topic that the end user may not be interested in. A message will only be
     /// presented to the user if it matches the filter.
-    filter: Option<String>,
+    pub filter: Option<String>,
     /// Additional configuration properties that should be applied to the Kafka consumer.
-    consumer_properties: Option<HashMap<String, String>>,
+    pub consumer_properties: Option<HashMap<String, String>>,
 }
 
 impl Source for Profile {

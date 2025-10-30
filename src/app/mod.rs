@@ -328,7 +328,7 @@ where
             components.push(logs_component);
         }
 
-        // cache the valid menu item characters based on the configured component 
+        // cache the valid menu item characters based on the configured component
         let mut menu_item_chars = Vec::new();
         for i in 0..components.len() {
             let index = u8::try_from(i).expect("valid char") + 1;
