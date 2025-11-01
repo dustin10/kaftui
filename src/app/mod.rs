@@ -307,13 +307,16 @@ where
 
         let config = Rc::new(config);
 
-        components.push(Rc::new(RefCell::new(Settings::from(
+        let settings_component = Settings::try_from(
             SettingsConfig::builder()
                 .config(Rc::clone(&config))
                 .theme(&config.theme)
                 .build()
                 .expect("valid Settings config"),
-        ))));
+        )
+        .context("create Settings component")?;
+
+        components.push(Rc::new(RefCell::new(settings_component)));
 
         // if application logs are enabled push the logs component
         if config.logs_enabled {

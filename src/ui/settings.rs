@@ -8,7 +8,6 @@ use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
@@ -16,6 +15,7 @@ use ratatui::{
         Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Padding,
         Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     },
+    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};
@@ -76,9 +76,11 @@ impl<'a> SettingsConfig<'a> {
     }
 }
 
-impl<'a> From<SettingsConfig<'a>> for Settings {
-    /// Converts from an owned [`SettingsConfig`] to an owned [`Settings`].
-    fn from(value: SettingsConfig<'a>) -> Self {
+impl<'a> TryFrom<SettingsConfig<'a>> for Settings {
+    type Error = anyhow::Error;
+
+    /// Attempts to convert from an owned [`SettingsConfig`] to an owned [`Settings`].
+    fn try_from(value: SettingsConfig<'a>) -> Result<Self, Self::Error> {
         Self::new(value)
     }
 }
@@ -228,6 +230,7 @@ struct SettingsState {
 impl SettingsState {
     /// Creates a new default [`SettingsState`].
     fn new() -> anyhow::Result<Self> {
+        // TODO: only load persisted config once
         let persisted_config = PersistedConfig::load_from_home_dir()
             .context("load PersistedConfig from home directory")?;
 
@@ -307,18 +310,17 @@ pub struct Settings {
 
 impl Settings {
     /// Creates a new [`Settings`] component using the specified [`SettingsConfig`].
-    fn new(config: SettingsConfig<'_>) -> Self {
+    fn new(config: SettingsConfig<'_>) -> anyhow::Result<Self> {
         let theme = config.theme.into();
 
-        // TODO: better error handling
-        let mut state = SettingsState::new().expect("SettingsState created");
+        let mut state = SettingsState::new().context("SettingsState created")?;
         state.menu_list_state.select_first();
 
-        Self {
+        Ok(Self {
             state,
             config: config.config,
             theme,
-        }
+        })
     }
     /// Renders the sidebar menu panel.
     fn render_sidebar(&mut self, frame: &mut Frame, area: Rect) {
