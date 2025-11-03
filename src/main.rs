@@ -6,13 +6,13 @@ mod ui;
 mod util;
 
 use crate::{
-    app::{App, config::Config},
+    app::{config::Config, App},
     kafka::{
-        RecordFormat, SeekTo,
         de::{
             AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer, KeyDeserializer,
             ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
         },
+        RecordFormat, SeekTo,
     },
     trace::{CaptureLayer, Log},
 };
@@ -28,7 +28,7 @@ use schema_registry_client::rest::{
 use std::{fs::File, io::BufReader, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{EnvFilter, Registry, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
@@ -413,13 +413,13 @@ fn create_value_deserializer(
                     .as_ref()
                     .expect("protobuf dir is set when format is protobuf");
 
-                let message_type = config
+                let value_type = config
                     .protobuf_type
                     .as_ref()
                     .expect("protobuf type is set when format is protobuf");
 
                 let protobuf_schema_deserializer =
-                    ProtobufSchemaDeserializer::new(protobuf_dir, message_type)
+                    ProtobufSchemaDeserializer::new(protobuf_dir, None, value_type)
                         .context("create Protobuf schema deserializer")?;
 
                 Arc::new(protobuf_schema_deserializer)

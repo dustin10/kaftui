@@ -742,7 +742,11 @@ where
     async fn create_record(&self, msg: &BorrowedMessage<'_>) -> Record {
         let key = match msg.key() {
             None => None,
-            Some(data) => match self.key_deserializer.deserialize_key(data).await {
+            Some(data) => match self
+                .key_deserializer
+                .deserialize_key(msg.topic(), msg.headers(), data)
+                .await
+            {
                 Ok(key) => Some(key),
                 Err(e) => {
                     tracing::error!("error deserializing message key: {}", e);

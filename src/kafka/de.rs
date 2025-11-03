@@ -33,7 +33,12 @@ const PROTOBUF_START_OFFSET: usize = 6;
 #[async_trait]
 pub trait KeyDeserializer: Send + Sync {
     /// Transforms the bytes into a String representation of the key.
-    async fn deserialize_key(&self, data: &[u8]) -> anyhow::Result<String>;
+    async fn deserialize_key(
+        &self,
+        topic: &str,
+        headers: Option<&BorrowedHeaders>,
+        data: &[u8],
+    ) -> anyhow::Result<String>;
 }
 
 /// A trait which defines the behavior required to deserialize the value of a Kafka message to a
@@ -56,7 +61,12 @@ pub struct StringDeserializer;
 impl KeyDeserializer for StringDeserializer {
     /// Transforms the array of bytes into a UTF-8 string, replacing any invalid sequences with
     /// the Unicode replacement character.
-    async fn deserialize_key(&self, data: &[u8]) -> anyhow::Result<String> {
+    async fn deserialize_key(
+        &self,
+        _topic: &str,
+        _headers: Option<&BorrowedHeaders>,
+        data: &[u8],
+    ) -> anyhow::Result<String> {
         Ok(String::from_utf8_lossy(data).to_string())
     }
 }
@@ -102,6 +112,7 @@ pub struct JsonSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
+    /// [`JsonDeserializer`] instance used to perform the deserialization.
     json: JsonDeserializer<'c, C>,
 }
 
@@ -120,11 +131,38 @@ where
 }
 
 #[async_trait]
+impl<'c, C> KeyDeserializer for JsonSchemaDeserializer<'c, C>
+where
+    C: Client + Sync,
+{
+    /// Transforms the record value bytes into a string using the JSON schema deserializer.
+    async fn deserialize_key(
+        &self,
+        topic: &str,
+        headers: Option<&BorrowedHeaders>,
+        data: &[u8],
+    ) -> anyhow::Result<String> {
+        let ctx = SerializationContext {
+            topic: topic.to_string(),
+            serde_type: SerdeType::Key,
+            serde_format: SerdeFormat::Json,
+            headers: headers.map(to_serde_headers),
+        };
+
+        self.json
+            .deserialize(&ctx, data)
+            .await
+            .map(|v| v.to_string())
+            .map_err(|e| anyhow::anyhow!("unable to deserialize JSON key: {}", e))
+    }
+}
+
+#[async_trait]
 impl<'c, C> ValueDeserializer for JsonSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
-    /// Transforms the array of bytes into a string using the JSON schema deserializer.
+    /// Transforms the record key bytes into a string using the JSON schema deserializer.
     async fn deserialize_value(
         &self,
         topic: &str,
@@ -151,6 +189,7 @@ pub struct AvroSchemaDeserializer<'c, C>
 where
     C: Client,
 {
+    /// [`AvroDeserializer`] instance used to perform the deserialization.
     avro: AvroDeserializer<'c, C>,
 }
 
@@ -169,11 +208,44 @@ where
 }
 
 #[async_trait]
+impl<'c, C> KeyDeserializer for AvroSchemaDeserializer<'c, C>
+where
+    C: Client + Sync,
+{
+    /// Transforms the record key bytes into a string using the Avro schema deserializer.
+    async fn deserialize_key(
+        &self,
+        topic: &str,
+        headers: Option<&BorrowedHeaders>,
+        data: &[u8],
+    ) -> anyhow::Result<String> {
+        let ctx = SerializationContext {
+            topic: topic.to_string(),
+            serde_type: SerdeType::Key,
+            serde_format: SerdeFormat::Json,
+            headers: headers.map(to_serde_headers),
+        };
+
+        match self.avro.deserialize(&ctx, data).await {
+            Ok(named_value) => {
+                let value: serde_json::Value = named_value
+                    .value
+                    .try_into()
+                    .context("convert Avro key to serde_json value")?;
+
+                Ok(value.to_string())
+            }
+            Err(e) => anyhow::bail!("unable to deserialize Avro key: {}", e),
+        }
+    }
+}
+
+#[async_trait]
 impl<'c, C> ValueDeserializer for AvroSchemaDeserializer<'c, C>
 where
     C: Client + Sync,
 {
-    /// Transforms the array of bytes into a string using the Avro schema deserializer.
+    /// Transforms the record value bytes into a string using the Avro schema deserializer.
     async fn deserialize_value(
         &self,
         topic: &str,
@@ -192,7 +264,7 @@ where
                 let value: serde_json::Value = named_value
                     .value
                     .try_into()
-                    .context("convert avro value to serde_json value")?;
+                    .context("convert Avro value to serde_json value")?;
 
                 serde_json::to_string_pretty(&value).context("prettify JSON string")
             }
@@ -206,15 +278,18 @@ where
 pub struct ProtobufSchemaDeserializer {
     /// Protobuf context containing the parsed schema information.
     context: ProtoContext,
-    /// Fully qualified Protobuf message type to deserialize the Kafka record data into.
-    message_type: String,
+    /// Fully qualified Protobuf message type to deserialize the Kafka record key data into.
+    key_type: Option<String>,
+    /// Fully qualified Protobuf message type to deserialize the Kafka record value data into.
+    value_type: String,
 }
 
 impl ProtobufSchemaDeserializer {
-    /// Creates a new [`ProtoSchemaDeserializer`].
+    /// Creates a new [`ProtobufSchemaDeserializer`].
     pub fn new(
         protos_dir: impl AsRef<str>,
-        message_type: impl Into<String>,
+        key_type: Option<String>,
+        value_type: impl Into<String>,
     ) -> anyhow::Result<Self> {
         let context = util::read_files_recursive(protos_dir, PROTO_FILE_EXTENSION)
             .context("find proto files")
@@ -222,8 +297,40 @@ impl ProtobufSchemaDeserializer {
 
         Ok(Self {
             context,
-            message_type: message_type.into(),
+            key_type,
+            value_type: value_type.into(),
         })
+    }
+    /// Decodes the given Protobuf message data into a [`MessageValue`] using the specified message
+    /// type.
+    fn decode(
+        &self,
+        message_type: &str,
+        data: &[u8],
+    ) -> anyhow::Result<(&MessageInfo, MessageValue)> {
+        // data starts at byte 5 when produced with the schema registry enabled serializer,
+        // we are not technically validating the schema in this deserialzier so we skip those bytes
+        // and use the remaining ones to decode the message.
+        //
+        // the current implementation also assumes a single 0 byte at position 5 for message
+        // indexes which can be a common case in protobuf serialiazation. This does indeed work
+        // when testing against the confluent schema registry protobuf serializer but may need to
+        // revisit in the future.
+        let data = &data[PROTOBUF_START_OFFSET..];
+
+        let msg_info = match self.context.get_message(message_type) {
+            Some(msg_info) => msg_info,
+            None => {
+                anyhow::bail!(
+                    "failed to load protobuf message info for type {}",
+                    message_type
+                );
+            }
+        };
+
+        let msg_value = self.context.decode(msg_info.self_ref, data);
+
+        Ok((msg_info, msg_value))
     }
     /// Recursively converts a Protobuf message value to a JSON string representation.
     fn message_to_json(&self, msg_info: &MessageInfo, msg_value: &MessageValue) -> String {
@@ -329,39 +436,43 @@ impl ProtobufSchemaDeserializer {
 }
 
 #[async_trait]
+impl KeyDeserializer for ProtobufSchemaDeserializer {
+    /// Transforms the record key bytes into a string using the Protobuf schema deserializer.
+    async fn deserialize_key(
+        &self,
+        _topic: &str,
+        _headers: Option<&BorrowedHeaders>,
+        data: &[u8],
+    ) -> anyhow::Result<String> {
+        let Some(message_type) = self.key_type.as_ref() else {
+            anyhow::bail!("no protobuf message type configured for key deserialization");
+        };
+
+        self.decode(message_type, data)
+            .context("decode key protobuf message")
+            .map(|(msg_info, msg_value)| self.message_to_json(msg_info, &msg_value))
+    }
+}
+
+#[async_trait]
 impl ValueDeserializer for ProtobufSchemaDeserializer {
-    /// Transforms the array of bytes into a string using the Protobuf schema deserializer.
+    /// Transforms the record value bytes into a string using the Protobuf schema deserializer.
     async fn deserialize_value(
         &self,
         _topic: &str,
         _headers: Option<&BorrowedHeaders>,
         data: &[u8],
     ) -> anyhow::Result<String> {
-        // record data starts at byte 5 when produced with the schema registry enabled serializer,
-        // we are not technically validating the schema in this deserialzier so we skip those bytes
-        // and use the remaining ones to decode the message.
-        //
-        // the current implementation also assumes a single 0 byte at position 5 for message
-        // indexes which can be a common case in protobuf serialiazation. This does indeed work
-        // when testing against the confluent schema registry protobuf serializer but may need to
-        // revisit in the future.
-        let data = &data[PROTOBUF_START_OFFSET..];
-
-        let msg_info = match self.context.get_message(&self.message_type) {
-            Some(msg_info) => msg_info,
-            None => {
-                anyhow::bail!(
-                    "failed to load protobuf message info for type {}",
-                    self.message_type
-                );
-            }
-        };
-
-        let msg_value = self.context.decode(msg_info.self_ref, data);
+        let (msg_info, msg_value) = self
+            .decode(&self.value_type, data)
+            .context("decode value protobuf message")?;
 
         let json = self.message_to_json(msg_info, &msg_value);
 
-        serde_json::to_string_pretty(&json).context("prettify JSON string")
+        let json_value: serde_json::Value =
+            serde_json::from_str(&json).context("create JSON value")?;
+
+        serde_json::to_string_pretty(&json_value).context("pretty print JSON string")
     }
 }
 
