@@ -8,14 +8,14 @@ use chrono::{DateTime, Local};
 use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
-    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
     config::RDKafkaLogLevel,
     consumer::{
-        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
-        Rebalance, StreamConsumer, stream_consumer::StreamPartitionQueue,
+        stream_consumer::StreamPartitionQueue, BaseConsumer, CommitMode, Consumer as RDConsumer,
+        ConsumerContext as RDConsumerContext, Rebalance, StreamConsumer,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
+    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};
@@ -29,19 +29,19 @@ const SEEK_TO_NONE: &str = "none";
 /// deserialization operations.
 const SEEK_TO_RESET: &str = "reset";
 
-/// String representation of the [`RecordFormat::None`] enum variant. Used in serialization and
+/// String representation of the [`Format::None`] enum variant. Used in serialization and
 /// deserialization operations.
 const RECORD_FORMAT_NONE: &str = "none";
 
-/// String representation of the [`RecordFormat::Json`] enum variant. Used in serialization and
+/// String representation of the [`Format::Json`] enum variant. Used in serialization and
 /// deserialization operations.
 const RECORD_FORMAT_JSON: &str = "json";
 
-/// String representation of the [`RecordFormat::Avro`] enum variant. Used in serialization and
+/// String representation of the [`Format::Avro`] enum variant. Used in serialization and
 /// deserialization operations.
 const RECORD_FORMAT_AVRO: &str = "avro";
 
-/// String representation of the [`RecordFormat::Protobuf`] enum variant. Used in serialization and
+/// String representation of the [`Format::Protobuf`] enum variant. Used in serialization and
 /// deserialization operations.
 const RECORD_FORMAT_PROTOBUF: &str = "protobuf";
 
@@ -56,7 +56,7 @@ pub enum ConsumerMode {
 
 /// Enumerates the well-known formats for the data in a Kafka topic.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
-pub enum RecordFormat {
+pub enum Format {
     /// Records in the topic pare produced with no particular format.
     #[default]
     None,
@@ -68,8 +68,8 @@ pub enum RecordFormat {
     Protobuf,
 }
 
-impl Display for RecordFormat {
-    /// Writes a string representation of the [`RecordFormat`] value to the
+impl Display for Format {
+    /// Writes a string representation of the [`Format`] value to the
     /// [`std::fmt::Formatter`].
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
@@ -83,11 +83,11 @@ impl Display for RecordFormat {
     }
 }
 
-impl<T> From<T> for RecordFormat
+impl<T> From<T> for Format
 where
     T: AsRef<str>,
 {
-    /// Converts the value to the corresponding [`RecordFormat`].
+    /// Converts the value to the corresponding [`Format`].
     fn from(value: T) -> Self {
         match value.as_ref() {
             RECORD_FORMAT_JSON => Self::Json,
@@ -98,7 +98,7 @@ where
     }
 }
 
-impl<'de> serde::Deserialize<'de> for RecordFormat {
+impl<'de> serde::Deserialize<'de> for Format {
     /// Deserialize this value into the given [`serde::Deserializer`].
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -108,7 +108,7 @@ impl<'de> serde::Deserialize<'de> for RecordFormat {
     }
 }
 
-impl serde::Serialize for RecordFormat {
+impl serde::Serialize for Format {
     /// Serialize this value into the given [`serde::Serializer`].
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

@@ -62,6 +62,26 @@ To use a custom group id for the consumer simply specify it using the `--group-i
 > kaftui --bootstrap-servers localhost:9092 --topic orders --group-id tui-consumer
 ```
 
+If the value in the Kafka records is in raw JSON format, i.e. **not** serialized using the schema registry, then simply
+set the `--value-format` argument to `json` to have it pretty printed on display.
+
+```sh
+> kaftui --bootstrap-servers localhost:9092 --topic orders --value-format json
+```
+
+If the value in the Kafka records is serialized using the `JSONSchema`, `Avro` or `Protobuf` formats using the schema
+registry, then specify the appropriate `--value-format` argument along with the schema registry connection details.
+
+```sh
+# avro example
+> kaftui --bootstrap-servers localhost:9092 --topic orders --value-format avro --schema-registry-url http://localhost:8081
+```
+
+```sh
+# protobuf example
+> kaftui --bootstrap-servers localhost:9092 --topic orders --value-format protobuf --schema-registry-url http://localhost:8081 \
+    --protobuf-dir ./protos --value-protobuf-type com.example.Order
+```
 ## CLI Arguments
 
 * `--bootstrap-servers, -b` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
@@ -74,13 +94,14 @@ Kafka topic.
 * `--schema-registry-bearer-token` - Bearer authentication token used to connect to the the Schema Registry.
 * `--schema-registry-user` - Basic authentication user used to connect to the the Schema Registry.
 * `--schema-registry-pass` - Basic authentication password used to connect to the the Schema Registry.
-* `--format` - Specifies the format of the data contained in the Kafka topic. By default the data is assumed to be in no
-special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or `protobuf`.
-If `avro` or `protobuf` is specified, then the `--schema-registry-url` argument is currently required.
+* `--value-format` - Specifies the format of the value contained in the Kafka topic. By default the value is assumed to
+be in no special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or
+`protobuf`. If `avro` or `protobuf` is specified, then the `--schema-registry-url` argument is currently required.
 * `--protobuf-dir` - Path to a directory that contains the `.proto` protobuf descriptor files that should be used to
-deserialize protobuf encoded Kafka records. This argument is required when the `--format` argument is set to `protobuf`.
-* `--protobuf-type` - Fully qualified Protobuf message type that corresponds to the records in the Kafka topic. This
-argument is required when the `--format` argument is set to `protobuf`.
+deserialize protobuf encoded Kafka records. This argument is required when the `--value-format` argument is set to
+`protobuf`.
+* `--value-protobuf-type` - Fully qualified Protobuf message type that corresponds to the value of the records in the
+Kafka topic. This argument is required when the `--value-format` argument is set to `protobuf`.
 * `--seek-to` - CSV of colon (`:`) separated pairs of partition and offset values that the Kafka consumer will seek to
 before starting to consume records. For example, `0:42,1:10` would cause the consumer to seek to offset `42` on partition
 `0` and offset `10` on partition `1`. A value of `reset` can also be specified for this argument which will cause the
@@ -169,10 +190,11 @@ The following properties are supported in profiles.
 * `schemaRegistryBearerToken` - Bearer authentication token used to connect to the the Schema Registry.
 * `schemaRegistryUser` - Basic authentication user used to connect to the the Schema Registry.
 * `schemaRegistryPass` - Basic authentication password used to connect to the the Schema Registry.
-* `format` - Format of the data contained in the Kafka topic.
+* `valueFormat` - Format the value of the records contained in the Kafka topic are encoded in.
 * `protobufDir` - Path to a directory that contains the `.proto` files that should be used to deserialize protobuf
 encoded Kafka records.
-* `protobufType` - Fully qualified Protobuf message type that corresponds to the records in the Kafka topic.
+* `valueProtobufType` - Fully qualified Protobuf message type that corresponds to the value of the records in the Kafka
+topic.
 * `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
 * `filter` - JSONPath filter that is applied to a record.
 * `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and
@@ -245,12 +267,12 @@ set of values that are available to configure the application from this file.
       "sasl.username": "<username>",
       "sasl.password": "<password>"
     },
-    "format": "json"
+    "valueFormat": "json"
   }, {
     "name": "cloud-user-avro",
     "bootstrapServers": "kafka-brokers.acme.com:9092",
     "topic": "user",
-    "format": "avro",
+    "valueFormat": "avro",
     "schemaRegistryUrl": "https://schema-registry.acme.com:8081",
     "schemaRegistryUser": "<basic-auth-user>",
     "schemaRegistryPass": "<basic-auth-pass>",
@@ -264,9 +286,9 @@ set of values that are available to configure the application from this file.
     "name": "cloud-user-proto",
     "bootstrapServers": "kafka-brokers.acme.com:9092",
     "topic": "user",
-    "format": "protobuf",
+    "valueFormat": "protobuf",
     "protobufDir": "./protos",
-    "protobufType": "com.example.User",
+    "valueProtobufType": "com.example.User",
     "schemaRegistryUrl": "https://schema-registry.acme.com:8081",
     "schemaRegistryUser": "<basic-auth-user>",
     "schemaRegistryPass": "<basic-auth-pass>",

@@ -1,4 +1,4 @@
-use crate::kafka::{RecordFormat, SeekTo};
+use crate::kafka::{Format, SeekTo};
 
 use anyhow::Context;
 use chrono::Utc;
@@ -33,9 +33,9 @@ impl From<SeekTo> for ValueKind {
     }
 }
 
-impl From<RecordFormat> for ValueKind {
-    /// Converts from an owned [`RecordFormat`] to a [`ValueKind`].
-    fn from(value: RecordFormat) -> Self {
+impl From<Format> for ValueKind {
+    /// Converts from an owned [`Format`] to a [`ValueKind`].
+    fn from(value: Format) -> Self {
         Self::String(value.to_string())
     }
 }
@@ -50,9 +50,9 @@ pub struct Config {
     /// CSV of partitions numbers that the consumer should be assigned. If none, all of the
     /// partitions which make up the topic will be assigned.
     pub partitions: Option<String>,
-    /// Variant of the [`RecordFormat`] enum which specifies the format of the data in the Kafka
-    /// topic. Defaults to [`RecordFormat::None`].
-    pub format: RecordFormat,
+    /// Variant of the [`Format`] enum which specifies the format of the value in the Kafka
+    /// topic. Defaults to [`Format::None`].
+    pub value_format: Format,
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
     pub schema_registry_url: Option<String>,
@@ -64,8 +64,8 @@ pub struct Config {
     pub schema_registry_pass: Option<String>,
     /// Specifies the directory where the `.proto` files are located.
     pub protobuf_dir: Option<String>,
-    /// Specifies the Protobuf message type which maps to the records in the Kafka topic.
-    pub protobuf_type: Option<String>,
+    /// Specifies the Protobuf message type which maps to the value of records in the Kafka topic.
+    pub value_protobuf_type: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     pub group_id: String,
@@ -150,7 +150,7 @@ impl Source for Defaults {
     fn collect(&self) -> Result<Map<String, Value>, ConfigError> {
         let mut cfg = Map::new();
 
-        cfg.insert(String::from("format"), Value::from(RecordFormat::default()));
+        cfg.insert(String::from("format"), Value::from(Format::default()));
 
         cfg.insert(String::from("group_id"), Value::from(generate_group_id()));
 
@@ -292,8 +292,8 @@ pub struct Profile {
     pub topic: Option<String>,
     /// CSV of partitions numbers that the consumer should be assigned.
     pub partitions: Option<String>,
-    /// Specifies the format of the data in the Kafka topic, for example `json`.
-    pub format: Option<String>,
+    /// Specifies the format of the value in the Kafka topic, for example `json`.
+    pub value_format: Option<String>,
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
     pub schema_registry_url: Option<String>,
@@ -305,8 +305,8 @@ pub struct Profile {
     pub schema_registry_pass: Option<String>,
     /// Specifies the directory where the `.proto` files are located.
     pub protobuf_dir: Option<String>,
-    /// Specifies the Protobuf message type which maps to the records in the Kafka topic.
-    pub protobuf_type: Option<String>,
+    /// Specifies the Protobuf message type which maps to the value of records in the Kafka topic.
+    pub value_protobuf_type: Option<String>,
     /// Id of the consumer group that the application will use when consuming messages from the
     /// Kafka topic.
     pub group_id: Option<String>,
@@ -341,9 +341,9 @@ impl Source for Profile {
             cfg.insert(String::from("partitions"), Value::from(partitions.clone()));
         }
 
-        if let Some(format) = self.format.as_ref() {
-            let record_format: RecordFormat = format.into();
-            cfg.insert(String::from("format"), Value::from(record_format));
+        if let Some(value_format) = self.value_format.as_ref() {
+            let format: Format = value_format.into();
+            cfg.insert(String::from("value_format"), Value::from(format));
         }
 
         if let Some(schema_registry_url) = self.schema_registry_url.as_ref() {
@@ -381,10 +381,10 @@ impl Source for Profile {
             );
         }
 
-        if let Some(protobuf_type) = self.protobuf_type.as_ref() {
+        if let Some(value_protobuf_type) = self.value_protobuf_type.as_ref() {
             cfg.insert(
-                String::from("protobuf_type"),
-                Value::from(protobuf_type.clone()),
+                String::from("value_protobuf_type"),
+                Value::from(value_protobuf_type.clone()),
             );
         }
 

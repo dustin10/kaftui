@@ -8,7 +8,6 @@ use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
@@ -16,6 +15,7 @@ use ratatui::{
         Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Padding,
         Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     },
+    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};
@@ -512,8 +512,8 @@ impl Settings {
 
         let list_items = vec![
             ListItem::new(Text::from_iter([
-                Line::from(Span::styled("Format", self.theme.label_color)),
-                Line::from(config.format.to_string().to_uppercase()),
+                Line::from(Span::styled("Value Format", self.theme.label_color)),
+                Line::from(config.value_format.to_string().to_uppercase()),
             ])),
             ListItem::new(""),
             ListItem::new(Text::from_iter([
@@ -578,10 +578,10 @@ impl Settings {
             ])),
             ListItem::new(""),
             ListItem::new(Text::from_iter([
-                Line::from(Span::styled("Protobuf Type", self.theme.label_color)),
+                Line::from(Span::styled("Value Protobuf Type", self.theme.label_color)),
                 Line::from(
                     config
-                        .protobuf_type
+                        .value_protobuf_type
                         .as_ref()
                         .cloned()
                         .unwrap_or_else(|| String::from("<none>")),
@@ -617,7 +617,7 @@ impl Settings {
             ])),
             ListItem::new(""),
             ListItem::new(Text::from_iter([
-                Line::from(Span::styled("Scroll Factory", self.theme.label_color)),
+                Line::from(Span::styled("Scroll Factor", self.theme.label_color)),
                 Line::from(config.scroll_factor.to_string()),
             ])),
         ];
@@ -905,10 +905,10 @@ impl Settings {
 
         let list_items = vec![
             ListItem::new(Text::from_iter([
-                Line::from(Span::styled("Format", self.theme.label_color)),
+                Line::from(Span::styled("Value Format", self.theme.label_color)),
                 Line::from(
                     profile
-                        .format
+                        .value_format
                         .clone()
                         .unwrap_or_else(|| String::from("<none>")),
                 ),
@@ -971,10 +971,10 @@ impl Settings {
             ])),
             ListItem::new(""),
             ListItem::new(Text::from_iter([
-                Line::from(Span::styled("Protobuf Type", self.theme.label_color)),
+                Line::from(Span::styled("Value Protobuf Type", self.theme.label_color)),
                 Line::from(
                     profile
-                        .protobuf_type
+                        .value_protobuf_type
                         .clone()
                         .unwrap_or_else(|| String::from("<none>")),
                 ),

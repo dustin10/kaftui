@@ -1,6 +1,6 @@
 use crate::kafka::{
-    Record, RecordFormat,
     schema::{Schema, SchemaRef, Version},
+    Format, Record,
 };
 
 use anyhow::Context;
@@ -35,18 +35,16 @@ struct ExportedRecord {
 
 impl ExportedRecord {
     /// Converts a reference to a [`Record`] to an [`ExportedRecord`].
-    fn from_record(record: Record, format: RecordFormat) -> Self {
+    fn from_record(record: Record, format: Format) -> Self {
         let json_value = record.value.as_ref().map(|v| match format {
-            RecordFormat::None => serde_json::Value::String(v.clone()),
-            RecordFormat::Json | RecordFormat::Avro | RecordFormat::Protobuf => {
-                match serde_json::from_str(v) {
-                    Ok(json) => json,
-                    Err(e) => {
-                        tracing::error!("failed to serialize record value to JSON: {}", e);
-                        serde_json::Value::String(v.clone())
-                    }
+            Format::None => serde_json::Value::String(v.clone()),
+            Format::Json | Format::Avro | Format::Protobuf => match serde_json::from_str(v) {
+                Ok(json) => json,
+                Err(e) => {
+                    tracing::error!("failed to serialize record value to JSON: {}", e);
+                    serde_json::Value::String(v.clone())
                 }
-            }
+            },
         });
 
         Self {
@@ -118,7 +116,7 @@ impl Exporter {
         Self { base_dir }
     }
     /// Exports the given [`Record`] to the file system in JSON format.
-    pub fn export_record(&self, record: Record, format: RecordFormat) -> anyhow::Result<String> {
+    pub fn export_record(&self, record: Record, format: Format) -> anyhow::Result<String> {
         let exported_record = ExportedRecord::from_record(record, format);
 
         let json = serde_json::to_string_pretty(&exported_record)

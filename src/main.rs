@@ -12,7 +12,7 @@ use crate::{
             AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer, KeyDeserializer,
             ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
         },
-        RecordFormat, SeekTo,
+        Format, SeekTo,
     },
     trace::{CaptureLayer, Log},
 };
@@ -50,11 +50,11 @@ struct Cli {
     /// than the bootstrap servers and group id. Typically, configuration for authentication, etc.
     #[arg(long)]
     consumer_properties: Option<String>,
-    /// Specifies the format of the data contained in the Kafka topic. By default, the data is
+    /// Specifies the format of the value contained in the Kafka topic. By default, the value is
     /// assumed to be in no special format and no special handling will be applied to it when
     /// displayed. Valid values: `json`, `avro`, or `protobuf`.
     #[arg(long)]
-    format: Option<String>,
+    value_format: Option<String>,
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
     #[arg(long)]
@@ -72,10 +72,10 @@ struct Cli {
     /// when the format is set to `protobuf`.
     #[arg(long)]
     protobuf_dir: Option<String>,
-    /// Specifies the Protobuf message type which corresponds to the records in the Kafka topic.
-    /// This argument is required when the format is set to `protobuf`.
+    /// Specifies the Protobuf message type which corresponds to the value of the records in the
+    /// Kafka topic. This argument is required when the format is set to `protobuf`.
     #[arg(long)]
-    protobuf_type: Option<String>,
+    value_protobuf_type: Option<String>,
     /// Id of the consumer group that the application will use when consuming records from the
     /// Kafka topic. By default a group id will be generated from the hostname of the machine that
     /// is executing the application.
@@ -128,10 +128,10 @@ impl Source for Cli {
             cfg.insert(String::from("partitions"), Value::from(partitions.clone()));
         }
 
-        if let Some(format) = self.format.as_ref() {
+        if let Some(value_format) = self.value_format.as_ref() {
             cfg.insert(
-                String::from("format"),
-                Value::from(RecordFormat::from(format)),
+                String::from("value_format"),
+                Value::from(Format::from(value_format)),
             );
         }
 
@@ -142,10 +142,10 @@ impl Source for Cli {
             );
         }
 
-        if let Some(protobuf_type) = self.protobuf_type.as_ref() {
+        if let Some(value_protobuf_type) = self.value_protobuf_type.as_ref() {
             cfg.insert(
-                String::from("protobuf_type"),
-                Value::from(protobuf_type.clone()),
+                String::from("value_protobuf_type"),
+                Value::from(value_protobuf_type.clone()),
             );
         }
 
@@ -376,11 +376,11 @@ fn create_value_deserializer(
     config: &Config,
     schema_registry_client: Option<&'static SchemaRegistryClient>,
 ) -> anyhow::Result<Arc<dyn ValueDeserializer>> {
-    let value_deserializer: Arc<dyn ValueDeserializer> = match config.format {
-        RecordFormat::None => Arc::new(StringDeserializer),
-        RecordFormat::Json => match schema_registry_client {
+    let value_deserializer: Arc<dyn ValueDeserializer> = match config.value_format {
+        Format::None => Arc::new(StringDeserializer),
+        Format::Json => match schema_registry_client {
             Some(client) => {
-                tracing::info!("using JSON deserializer with schema registry");
+                tracing::info!("using JSONSchema value deserializer with schema registry");
 
                 let json_schema_deserializer =
                     JsonSchemaDeserializer::new(client).expect("JSONSchema deserializer created");
@@ -388,35 +388,37 @@ fn create_value_deserializer(
                 Arc::new(json_schema_deserializer)
             }
             None => {
-                tracing::info!("using JSON deserializer without schema registry");
+                tracing::info!("using JSON value deserializer without schema registry");
 
                 Arc::new(JsonValueDeserializer)
             }
         },
-        RecordFormat::Avro => match schema_registry_client {
+        Format::Avro => match schema_registry_client {
             Some(client) => {
-                tracing::info!("using Avro schema deserializer with schema registry");
+                tracing::info!("using Avro schema value deserializer with schema registry");
 
                 let avro_schema_deserializer =
                     AvroSchemaDeserializer::new(client).expect("Avro schema deserializer created");
 
                 Arc::new(avro_schema_deserializer)
             }
-            None => anyhow::bail!("schema registry url must be specified when format is avro"),
+            None => {
+                anyhow::bail!("schema registry url must be specified when value format is avro")
+            }
         },
-        RecordFormat::Protobuf => match schema_registry_client {
+        Format::Protobuf => match schema_registry_client {
             Some(_client) => {
-                tracing::info!("using Protobuf schema deserializer with schema registry");
+                tracing::info!("using Protobuf schema value deserializer with schema registry");
 
                 let protobuf_dir = config
                     .protobuf_dir
                     .as_ref()
-                    .expect("protobuf dir is set when format is protobuf");
+                    .expect("protobuf dir is set when value format is protobuf");
 
                 let value_type = config
-                    .protobuf_type
+                    .value_protobuf_type
                     .as_ref()
-                    .expect("protobuf type is set when format is protobuf");
+                    .expect("value protobuf type is set when value format is protobuf");
 
                 let protobuf_schema_deserializer =
                     ProtobufSchemaDeserializer::new(protobuf_dir, None, value_type)
@@ -424,7 +426,9 @@ fn create_value_deserializer(
 
                 Arc::new(protobuf_schema_deserializer)
             }
-            None => anyhow::bail!("schema registry url must be specified when format is protobuf"),
+            None => {
+                anyhow::bail!("schema registry url must be specified when value format is protobuf")
+            }
         },
     };
 
