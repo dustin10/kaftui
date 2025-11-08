@@ -73,14 +73,19 @@ If the value in the Kafka records is serialized using the `JSONSchema`, `Avro` o
 registry, then specify the appropriate `--value-format` argument along with the schema registry connection details.
 
 ```sh
-# avro example
-> kaftui --bootstrap-servers localhost:9092 --topic orders --value-format avro --schema-registry-url http://localhost:8081
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --value-format avro \
+    --schema-registry-url http://localhost:8081
 ```
 
 ```sh
-# protobuf example
-> kaftui --bootstrap-servers localhost:9092 --topic orders --value-format protobuf --schema-registry-url http://localhost:8081 \
-    --protobuf-dir ./protos --value-protobuf-type com.example.Order
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --value-format protobuf \
+    --schema-registry-url http://localhost:8081 \
+    --protobuf-dir ./protos \
+    --value-protobuf-type com.example.Order
 ```
 ## CLI Arguments
 
