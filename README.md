@@ -167,7 +167,9 @@ specified as a header then the following command would accomplish this.
 
 ```sh
 # only view records where tenantId header value is 42
-> kaftui --bootstrap-servers localhost:9092 --topic orders --filter "$.headers[?(@.tenantId=='42')]"
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --filter "$.headers[?(@.tenantId=='42')]"
 ```
 
 As another example, the user may only want to view records that are on partition `0` of the topic. One way to do this
@@ -176,7 +178,9 @@ argument instead. See the [CLI Arguments](#CLI-Arguments) section for more detai
 
 ```sh
 # only view records from partition 0
-> kaftui --bootstrap-servers localhost:9092 --topic orders --filter "$.info[?(@.partition=='0')]"
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --filter "$.info[?(@.partition=='0')]"
 ```
 
 ## Profiles
@@ -207,6 +211,13 @@ group id. Typically used for configuration authentication, etc.
 
 See the [Persisted Configuration](#Persisted-Configuration) section below for how to configure profiles as well as a
 few examples.
+
+Once a profile has been configured, the profile name can simply be passed to the application using the `--profile`
+argument rather than specifying all the individual configuration values on the command line.
+
+```sh
+> kaftui --profile local-orders-proto
+```
 
 ## Theme
 
