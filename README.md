@@ -121,7 +121,7 @@ Kafka topic.
 * `--schema-registry-bearer-token` - Bearer authentication token used to connect to the the Schema Registry.
 * `--schema-registry-user` - Basic authentication user used to connect to the the Schema Registry.
 * `--schema-registry-pass` - Basic authentication password used to connect to the the Schema Registry.
-* `--value-format` - Specifies the format of the value contained in the Kafka topic. By default the value is assumed to
+* `--value-format, -v` - Specifies the format of the value contained in the Kafka topic. By default the value is assumed to
 be in no special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or
 `protobuf`. If `avro` or `protobuf` is specified, then the `--schema-registry-url` argument is currently required.
 * `--protobuf-dir` - Path to a directory that contains the `.proto` protobuf descriptor files that should be used to

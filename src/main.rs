@@ -53,7 +53,7 @@ struct Cli {
     /// Specifies the format of the value contained in the Kafka topic. By default, the value is
     /// assumed to be in no special format and no special handling will be applied to it when
     /// displayed. Valid values: `json`, `avro`, or `protobuf`.
-    #[arg(long)]
+    #[arg(short, long)]
     value_format: Option<String>,
     /// Specifies the URL of the Schema Registry that should be used to validate data when
     /// deserializing records from the Kafka topic.
