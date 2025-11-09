@@ -69,8 +69,22 @@ set the `--value-format` argument to `json` to have it pretty printed on display
 > kaftui --bootstrap-servers localhost:9092 --topic orders --value-format json
 ```
 
-If the value in the Kafka records is serialized using the `JSONSchema`, `Avro` or `Protobuf` formats using the schema
-registry, then specify the appropriate `--value-format` argument along with the schema registry connection details.
+### Schema Registry
+
+If the value in the Kafka records has been serialized using the `JSONSchema`, `Avro` or `Protobuf` formats using the
+schema registry enabled serializers, i.e. the magic bytes are prepended to the record value, then specify the appropriate
+`--value-format` argument along with the schema registry connection details.
+
+#### JSONSchema
+
+```sh
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --value-format json \
+    --schema-registry-url http://localhost:8081
+```
+
+#### Avro
 
 ```sh
 > kaftui --bootstrap-servers localhost:9092 \
@@ -78,6 +92,14 @@ registry, then specify the appropriate `--value-format` argument along with the 
     --value-format avro \
     --schema-registry-url http://localhost:8081
 ```
+
+#### Protobuf
+
+When consuming Protobuf encoded records, the `.proto` descriptor files that were used to serialize the records must
+be made available to the application so that it can properly deserialize the records. The path to the directory
+containing the `.proto` files must be specified using the `--protobuf-dir` argument. Additionally, the fully qualified
+Protobuf message type that corresponds to the value of the records in the Kafka topic must be specified using the
+`--value-protobuf-type` argument.
 
 ```sh
 > kaftui --bootstrap-servers localhost:9092 \
@@ -148,8 +170,9 @@ screens are available to the user depending on the configuration used when execu
 
 * `Records` - Displays the records consumed from the Kafka topic.
 * `Stats` - Displays basic statistics for the Kafka consumer.
-* `Schema Registry` - Browse schemas in the registry. Only available when the schema registry has been configured.
-* `Settings` - Displays the active configuration values being used by the application.
+* `Schemas` - Browse schemas in the schema registry. Only available when the schema registry has been configured.
+* `Settings` - Displays the active configuration values being used by the application as well as configuration details
+for any [profiles](#Profiles) that have been configured.
 * `Logs` - Displays the logs produced by the application. Only available when logs have been enabled. These logs can
 be useful when trying to debug issues with the application.
 
@@ -341,7 +364,7 @@ set of values that are available to configure the application from this file.
 
 Most of the available configuration above was discussed in previous sections. The list below outlines the rest.
 
-* `scrollFactor` - Determines the number of lines to scroll the record value panel with each keypress.
+* `scrollFactor` - Determines the number of lines to scroll the text area panels in the UI with each keypress.
 * `exportDirectory` - Specifies the directory on the file system where exported records should be saved.
 * `maxRecords` - Maximum number of records that should be held in memory at any given time after being consumed from
 the Kafka topic.
