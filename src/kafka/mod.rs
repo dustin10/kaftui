@@ -485,6 +485,8 @@ impl Consumer {
         client_config.set("enable.auto.commit", "false");
 
         if tracing::enabled!(tracing::Level::DEBUG) {
+            client_config.set("debug", "consumer,cgrp,topic");
+
             for (k, v) in client_config.config_map().iter() {
                 tracing::debug!("consumer property {} set to {}", k, v,);
             }
