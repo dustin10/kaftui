@@ -9,8 +9,8 @@ use crate::{
     app::{config::Config, App},
     kafka::{
         de::{
-            AvroSchemaDeserializer, JsonSchemaDeserializer, JsonValueDeserializer, KeyDeserializer,
-            ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
+            AvroSchemaDeserializer, JsonSchemaDeserializer, JsonStringDeserializer,
+            KeyDeserializer, ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
         },
         Format, SeekTo,
     },
@@ -50,9 +50,14 @@ struct Cli {
     /// than the bootstrap servers and group id. Typically, configuration for authentication, etc.
     #[arg(long)]
     consumer_properties: Option<String>,
-    /// Specifies the format of the value contained in the Kafka topic. By default, the value is
-    /// assumed to be in no special format and no special handling will be applied to it when
-    /// displayed. Valid values: `json`, `avro`, or `protobuf`.
+    /// Specifies the format of the key for the records contained in the Kafka topic. By default,
+    /// the key is assumed to be in no special format and no special handling will be applied to it
+    /// when displayed. Valid values: `json`, `avro`, or `protobuf`.
+    #[arg(short, long)]
+    key_format: Option<String>,
+    /// Specifies the format of the value of the records contained in the Kafka topic. By default,
+    /// the value is assumed to be in no special format and no special handling will be applied to
+    /// it when displayed. Valid values: `json`, `avro`, or `protobuf`.
     #[arg(short, long)]
     value_format: Option<String>,
     /// Specifies the URL of the Schema Registry that should be used to validate data when
@@ -72,6 +77,10 @@ struct Cli {
     /// when the format is set to `protobuf`.
     #[arg(long)]
     protobuf_dir: Option<String>,
+    /// Specifies the Protobuf message type which corresponds to the key of the records in the
+    /// Kafka topic.
+    #[arg(long)]
+    key_protobuf_type: Option<String>,
     /// Specifies the Protobuf message type which corresponds to the value of the records in the
     /// Kafka topic. This argument is required when the format is set to `protobuf`.
     #[arg(long)]
@@ -128,6 +137,13 @@ impl Source for Cli {
             cfg.insert(String::from("partitions"), Value::from(partitions.clone()));
         }
 
+        if let Some(key_format) = self.key_format.as_ref() {
+            cfg.insert(
+                String::from("key_format"),
+                Value::from(Format::from(key_format)),
+            );
+        }
+
         if let Some(value_format) = self.value_format.as_ref() {
             cfg.insert(
                 String::from("value_format"),
@@ -139,6 +155,13 @@ impl Source for Cli {
             cfg.insert(
                 String::from("protobuf_dir"),
                 Value::from(protobuf_dir.clone()),
+            );
+        }
+
+        if let Some(key_protobuf_type) = self.key_protobuf_type.as_ref() {
+            cfg.insert(
+                String::from("key_protobuf_type"),
+                Value::from(key_protobuf_type.clone()),
             );
         }
 
@@ -313,7 +336,8 @@ fn logs_dir() -> String {
 async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Result<()> {
     let schema_registry_client = create_schema_registry_client(&config);
 
-    let key_deserializer = create_key_deserializer(&config).context("create KeyDeserializer")?;
+    let key_deserializer = create_key_deserializer(&config, schema_registry_client)
+        .context("create KeyDeserializer")?;
 
     let value_deserializer = create_value_deserializer(&config, schema_registry_client)
         .context("create ValueDeserializer")?;
@@ -362,12 +386,72 @@ fn create_schema_registry_client(config: &Config) -> Option<&'static SchemaRegis
     })
 }
 
+// TODO: remove the possible duplication of key and value deserializer creation
+
 /// Creates the [`KeyDeserializer`] that will be used to deserialize record keys consumed from
 /// the Kafka topic based on the application configuration.
-fn create_key_deserializer(_config: &Config) -> anyhow::Result<Arc<dyn KeyDeserializer>> {
-    // TODO: support different formats and make configurable by the user as it could be tied to a
-    // schema in the schema registry.
-    Ok(Arc::new(StringDeserializer))
+fn create_key_deserializer(
+    config: &Config,
+    schema_registry_client: Option<&'static SchemaRegistryClient>,
+) -> anyhow::Result<Arc<dyn KeyDeserializer>> {
+    let key_deserializer: Arc<dyn KeyDeserializer> = match config.key_format {
+        Format::None => Arc::new(StringDeserializer),
+        Format::Json => match schema_registry_client {
+            Some(client) => {
+                tracing::info!("using JSONSchema key deserializer with schema registry");
+
+                let json_schema_deserializer =
+                    JsonSchemaDeserializer::new(client).expect("JSONSchema deserializer created");
+
+                Arc::new(json_schema_deserializer)
+            }
+            None => {
+                tracing::info!("using JSON key deserializer without schema registry");
+
+                Arc::new(JsonStringDeserializer)
+            }
+        },
+        Format::Avro => match schema_registry_client {
+            Some(client) => {
+                tracing::info!("using Avro schema key deserializer with schema registry");
+
+                let avro_schema_deserializer =
+                    AvroSchemaDeserializer::new(client).expect("Avro schema deserializer created");
+
+                Arc::new(avro_schema_deserializer)
+            }
+            None => {
+                anyhow::bail!("schema registry url must be specified when key format is avro")
+            }
+        },
+        Format::Protobuf => match schema_registry_client {
+            Some(_client) => {
+                tracing::info!("using Protobuf schema key deserializer with schema registry");
+
+                let protobuf_dir = config
+                    .protobuf_dir
+                    .as_ref()
+                    .expect("protobuf dir is set when value format is protobuf");
+
+                let key_type = config
+                    .key_protobuf_type
+                    .as_ref()
+                    .expect("key protobuf type is set when key format is protobuf");
+
+                // TODO; cleanup deserializer creation
+                let protobuf_schema_deserializer =
+                    ProtobufSchemaDeserializer::new(protobuf_dir, Some(key_type), key_type)
+                        .context("create Protobuf schema deserializer")?;
+
+                Arc::new(protobuf_schema_deserializer)
+            }
+            None => {
+                anyhow::bail!("schema registry url must be specified when key format is protobuf")
+            }
+        },
+    };
+
+    Ok(key_deserializer)
 }
 
 /// Creates the [`ValueDeserializer`] that will be used to deserialize record values consumed from
@@ -390,7 +474,7 @@ fn create_value_deserializer(
             None => {
                 tracing::info!("using JSON value deserializer without schema registry");
 
-                Arc::new(JsonValueDeserializer)
+                Arc::new(JsonStringDeserializer)
             }
         },
         Format::Avro => match schema_registry_client {
@@ -415,13 +499,16 @@ fn create_value_deserializer(
                     .as_ref()
                     .expect("protobuf dir is set when value format is protobuf");
 
+                let key_type: Option<String> = None;
+
                 let value_type = config
                     .value_protobuf_type
                     .as_ref()
                     .expect("value protobuf type is set when value format is protobuf");
 
+                // TODO; cleanup deserializer creation
                 let protobuf_schema_deserializer =
-                    ProtobufSchemaDeserializer::new(protobuf_dir, None, value_type)
+                    ProtobufSchemaDeserializer::new(protobuf_dir, key_type, value_type)
                         .context("create Protobuf schema deserializer")?;
 
                 Arc::new(protobuf_schema_deserializer)

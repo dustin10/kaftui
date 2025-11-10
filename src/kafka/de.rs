@@ -85,12 +85,37 @@ impl ValueDeserializer for StringDeserializer {
     }
 }
 
-/// Implementation of the [`ValueDeserializer`] trait the parses the Kafka message value to JSON
-/// and then pretty-prints it.
-pub struct JsonValueDeserializer;
+/// Deserializer implementation that parses the data to a JSON string without schema validation.
+pub struct JsonStringDeserializer;
+
+impl JsonStringDeserializer {
+    /// Deserializes the given array of bytes into a [`serde_json::Value`].
+    fn deserialize(&self, data: &[u8]) -> anyhow::Result<serde_json::Value> {
+        let s = std::str::from_utf8(data).context("invalid UTF8 string data")?;
+
+        let json: serde_json::Value = serde_json::from_str(s).context("create JSON value")?;
+
+        Ok(json)
+    }
+}
 
 #[async_trait]
-impl ValueDeserializer for JsonValueDeserializer {
+impl KeyDeserializer for JsonStringDeserializer {
+    /// Transforms the array of bytes into a JSON string.
+    async fn deserialize_key(
+        &self,
+        _topic: &str,
+        _headers: Option<&BorrowedHeaders>,
+        data: &[u8],
+    ) -> anyhow::Result<String> {
+        self.deserialize(data)
+            .context("deserialize JSON data")
+            .and_then(|v| serde_json::to_string(&v).context("create JSON string"))
+    }
+}
+
+#[async_trait]
+impl ValueDeserializer for JsonStringDeserializer {
     /// Transforms the array of bytes into a pretty-printed JSON string.
     async fn deserialize_value(
         &self,
@@ -98,11 +123,9 @@ impl ValueDeserializer for JsonValueDeserializer {
         _headers: Option<&BorrowedHeaders>,
         data: &[u8],
     ) -> anyhow::Result<String> {
-        let s = std::str::from_utf8(data).context("invalid UTF8 string data")?;
-
-        let json: serde_json::Value = serde_json::from_str(s).context("create JSON value")?;
-
-        serde_json::to_string_pretty(&json).context("prettify JSON string")
+        self.deserialize(data)
+            .context("deserialize JSON data")
+            .and_then(|v| serde_json::to_string_pretty(&v).context("prettify JSON string"))
     }
 }
 
@@ -288,7 +311,7 @@ impl ProtobufSchemaDeserializer {
     /// Creates a new [`ProtobufSchemaDeserializer`].
     pub fn new(
         protos_dir: impl AsRef<str>,
-        key_type: Option<String>,
+        key_type: Option<impl Into<String>>,
         value_type: impl Into<String>,
     ) -> anyhow::Result<Self> {
         let context = util::read_files_recursive(protos_dir, PROTO_FILE_EXTENSION)
@@ -297,7 +320,7 @@ impl ProtobufSchemaDeserializer {
 
         Ok(Self {
             context,
-            key_type,
+            key_type: key_type.map(|k| k.into()),
             value_type: value_type.into(),
         })
     }

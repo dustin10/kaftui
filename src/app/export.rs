@@ -8,8 +8,9 @@ use chrono::{DateTime, Local};
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// Default prefix used for the name of the exported file when no partition key is set.
-const DEFAULT_EXPORT_FILE_PREFIX: &str = "record-export";
+/// Default prefix used for the name of the exported file when no partition key is set or it is in
+/// a format that should not be used in the file name.
+const DEFAULT_EXPORT_FILE_PREFIX: &str = "record";
 
 /// View of a [`Record`] that is saved to a file in JSON format when the user requests that the
 /// selected record be exported. This allows for better handling of the value field which would
@@ -35,8 +36,8 @@ struct ExportedRecord {
 
 impl ExportedRecord {
     /// Converts a reference to a [`Record`] to an [`ExportedRecord`].
-    fn from_record(record: Record, format: Format) -> Self {
-        let json_value = record.value.as_ref().map(|v| match format {
+    fn from_record(record: Record, value_format: Format) -> Self {
+        let json_value = record.value.as_ref().map(|v| match value_format {
             Format::None => serde_json::Value::String(v.clone()),
             Format::Json | Format::Avro | Format::Protobuf => match serde_json::from_str(v) {
                 Ok(json) => json,
@@ -116,16 +117,25 @@ impl Exporter {
         Self { base_dir }
     }
     /// Exports the given [`Record`] to the file system in JSON format.
-    pub fn export_record(&self, record: Record, format: Format) -> anyhow::Result<String> {
-        let exported_record = ExportedRecord::from_record(record, format);
+    pub fn export_record(
+        &self,
+        record: Record,
+        key_format: Format,
+        value_format: Format,
+    ) -> anyhow::Result<String> {
+        let exported_record = ExportedRecord::from_record(record, value_format);
 
         let json = serde_json::to_string_pretty(&exported_record)
             .context("serialize exported record to JSON")?;
 
-        let name = exported_record
-            .key
-            .as_ref()
-            .map_or(DEFAULT_EXPORT_FILE_PREFIX, |v| v);
+        let name = if let Some(key) = exported_record.key.as_ref() {
+            match key_format {
+                Format::None => key,
+                Format::Json | Format::Avro | Format::Protobuf => DEFAULT_EXPORT_FILE_PREFIX,
+            }
+        } else {
+            DEFAULT_EXPORT_FILE_PREFIX
+        };
 
         let file_path = format!(
             "{}{}{}-{}-{}.json",

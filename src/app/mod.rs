@@ -533,7 +533,11 @@ where
     fn on_export_record(&mut self, record: Record) {
         tracing::debug!("exporting selected record");
 
-        let notification = match self.exporter.export_record(record, self.config.value_format) {
+        let notification = match self.exporter.export_record(
+            record,
+            self.config.key_format,
+            self.config.value_format,
+        ) {
             Ok(path) => {
                 tracing::info!("record exported to {}", path);
                 Notification::success("Record Exported Successfully")

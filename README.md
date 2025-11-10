@@ -14,7 +14,9 @@ The `kaftui` application provides the following features to users.
 * [Filter](#Filtering) out records the user may not be interested in using a JSONPath filter.
 * Configure [profiles](#Profiles) to easily connect to different Kafka clusters.
 * [Theme](#Theme) the application to match any existing terminal color scheme.
-* Schema Registry integration for deserializing records in `JSONSchema`, `Avro` and `Protobuf` format.
+* Schema Registry integration for deserializing key and value data of records in `JSONSchema`, `Avro` and `Protobuf`
+format.
+* Schema browser for viewing subjects and their schemas within the application.
 * Export schemas to a file on disk.
 
 The application also keeps track of basic statistics during execution and presents them in a dedicated UI for the user.
@@ -71,15 +73,24 @@ set the `--value-format` argument to `json` to have it pretty printed on display
 
 ### Schema Registry
 
-If the value in the Kafka records has been serialized using the `JSONSchema`, `Avro` or `Protobuf` formats using the
-schema registry enabled serializers, i.e. the magic bytes are prepended to the record value, then specify the appropriate
-`--value-format` argument along with the schema registry connection details.
+If the key and/or value in the Kafka records has been serialized into `JSONSchema`, `Avro` or `Protobuf` format using
+the schema registry enabled serializers, i.e. the magic bytes are prepended to the record key or value data, then
+specify the corresponding `--key-format` and/or `--value-format` argument along with the schema registry connection
+details in order for the `kaftui` application to properly deserialize the records for display.
 
 #### JSONSchema
 
 ```sh
 > kaftui --bootstrap-servers localhost:9092 \
     --topic orders \
+    --value-format json \
+    --schema-registry-url http://localhost:8081
+```
+
+```sh
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --key-format json \
     --value-format json \
     --schema-registry-url http://localhost:8081
 ```
@@ -93,13 +104,22 @@ schema registry enabled serializers, i.e. the magic bytes are prepended to the r
     --schema-registry-url http://localhost:8081
 ```
 
+```sh
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --key-format avro \
+    --value-format avro \
+    --schema-registry-url http://localhost:8081
+```
+
 #### Protobuf
 
 When consuming Protobuf encoded records, the `.proto` descriptor files that were used to serialize the records must
 be made available to the application so that it can properly deserialize the records. The path to the directory
 containing the `.proto` files must be specified using the `--protobuf-dir` argument. Additionally, the fully qualified
 Protobuf message type that corresponds to the value of the records in the Kafka topic must be specified using the
-`--value-protobuf-type` argument.
+`--value-protobuf-type` argument. If the partition key for the records is also encoded in Protobuf format, then the
+`--key-format`, `--key-protobuf-type` arguments must also be specified.
 
 ```sh
 > kaftui --bootstrap-servers localhost:9092 \
@@ -109,6 +129,18 @@ Protobuf message type that corresponds to the value of the records in the Kafka 
     --protobuf-dir ./protos \
     --value-protobuf-type com.example.Order
 ```
+
+```sh
+> kaftui --bootstrap-servers localhost:9092 \
+    --topic orders \
+    --key-format protobuf \
+    --value-format protobuf \
+    --schema-registry-url http://localhost:8081 \
+    --protobuf-dir ./protos \
+    --value-protobuf-type com.example.OrderKey \
+    --value-protobuf-type com.example.Order
+```
+
 ## CLI Arguments
 
 * `--bootstrap-servers, -b` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
@@ -121,12 +153,17 @@ Kafka topic.
 * `--schema-registry-bearer-token` - Bearer authentication token used to connect to the the Schema Registry.
 * `--schema-registry-user` - Basic authentication user used to connect to the the Schema Registry.
 * `--schema-registry-pass` - Basic authentication password used to connect to the the Schema Registry.
-* `--value-format, -v` - Specifies the format of the value contained in the Kafka topic. By default the value is assumed to
+* `--key-format, -k` - Specifies the format of the key contained in the Kafka topic. By default the value is assumed to
 be in no special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or
 `protobuf`. If `avro` or `protobuf` is specified, then the `--schema-registry-url` argument is currently required.
+* `--value-format, -v` - Specifies the format of the value contained in the Kafka topic. By default the value is assumed to
+be in no special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or
+`protobuf`. If `avro` or `protobuf` is specified, then th`e `--schema-registry-url` argument is currently required.
 * `--protobuf-dir` - Path to a directory that contains the `.proto` protobuf descriptor files that should be used to
 deserialize protobuf encoded Kafka records. This argument is required when the `--value-format` argument is set to
 `protobuf`.
+* `--key-protobuf-type` - Fully qualified Protobuf message type that corresponds to the key of the records in the
+Kafka topic. This argument is required when the `--value-format` argument is set to `protobuf`.
 * `--value-protobuf-type` - Fully qualified Protobuf message type that corresponds to the value of the records in the
 Kafka topic. This argument is required when the `--value-format` argument is set to `protobuf`.
 * `--seek-to` - CSV of colon (`:`) separated pairs of partition and offset values that the Kafka consumer will seek to
@@ -325,8 +362,10 @@ set of values that are available to configure the application from this file.
     "name": "cloud-user-proto",
     "bootstrapServers": "kafka-brokers.acme.com:9092",
     "topic": "user",
+    "keyFormat": "protobuf",
     "valueFormat": "protobuf",
     "protobufDir": "./protos",
+    "keyProtobufType": "com.example.UserKey",
     "valueProtobufType": "com.example.User",
     "schemaRegistryUrl": "https://schema-registry.acme.com:8081",
     "schemaRegistryUser": "<basic-auth-user>",

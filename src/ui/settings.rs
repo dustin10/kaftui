@@ -512,6 +512,11 @@ impl Settings {
 
         let list_items = vec![
             ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Key Format", self.theme.label_color)),
+                Line::from(config.key_format.to_string().to_uppercase()),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
                 Line::from(Span::styled("Value Format", self.theme.label_color)),
                 Line::from(config.value_format.to_string().to_uppercase()),
             ])),
@@ -905,11 +910,23 @@ impl Settings {
 
         let list_items = vec![
             ListItem::new(Text::from_iter([
+                Line::from(Span::styled("Key Format", self.theme.label_color)),
+                Line::from(
+                    profile
+                        .key_format
+                        .clone()
+                        .map(|s| s.to_uppercase())
+                        .unwrap_or_else(|| String::from("<none>")),
+                ),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Text::from_iter([
                 Line::from(Span::styled("Value Format", self.theme.label_color)),
                 Line::from(
                     profile
                         .value_format
                         .clone()
+                        .map(|s| s.to_uppercase())
                         .unwrap_or_else(|| String::from("<none>")),
                 ),
             ])),
