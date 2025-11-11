@@ -304,7 +304,7 @@ pub struct ProtobufSchemaDeserializer {
     /// Fully qualified Protobuf message type to deserialize the Kafka record key data into.
     key_type: Option<String>,
     /// Fully qualified Protobuf message type to deserialize the Kafka record value data into.
-    value_type: String,
+    value_type: Option<String>,
 }
 
 impl ProtobufSchemaDeserializer {
@@ -312,7 +312,7 @@ impl ProtobufSchemaDeserializer {
     pub fn new(
         protos_dir: impl AsRef<str>,
         key_type: Option<impl Into<String>>,
-        value_type: impl Into<String>,
+        value_type: Option<impl Into<String>>,
     ) -> anyhow::Result<Self> {
         let context = util::read_files_recursive(protos_dir, PROTO_FILE_EXTENSION)
             .context("find proto files")
@@ -321,7 +321,7 @@ impl ProtobufSchemaDeserializer {
         Ok(Self {
             context,
             key_type: key_type.map(|k| k.into()),
-            value_type: value_type.into(),
+            value_type: value_type.map(|k| k.into()),
         })
     }
     /// Decodes the given Protobuf message data into a [`MessageValue`] using the specified message
@@ -486,8 +486,12 @@ impl ValueDeserializer for ProtobufSchemaDeserializer {
         _headers: Option<&BorrowedHeaders>,
         data: &[u8],
     ) -> anyhow::Result<String> {
+        let Some(message_type) = self.value_type.as_ref() else {
+            anyhow::bail!("no protobuf message type configured for value deserialization");
+        };
+
         let (msg_info, msg_value) = self
-            .decode(&self.value_type, data)
+            .decode(message_type, data)
             .context("decode value protobuf message")?;
 
         let json = self.message_to_json(msg_info, &msg_value);

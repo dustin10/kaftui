@@ -336,11 +336,9 @@ fn logs_dir() -> String {
 async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Result<()> {
     let schema_registry_client = create_schema_registry_client(&config);
 
-    let key_deserializer = create_key_deserializer(&config, schema_registry_client)
-        .context("create KeyDeserializer")?;
-
-    let value_deserializer = create_value_deserializer(&config, schema_registry_client)
-        .context("create ValueDeserializer")?;
+    let (key_deserializer, value_deserializer) =
+        create_deserializers(&config, schema_registry_client)
+            .context("create key and value deserializers")?;
 
     let app = App::new(
         config,
@@ -386,7 +384,89 @@ fn create_schema_registry_client(config: &Config) -> Option<&'static SchemaRegis
     })
 }
 
-// TODO: remove the possible duplication of key and value deserializer creation
+/// Creates both the [`KeyDeserializer`] and [`ValueDeserializer`] that will be used to deserialize
+/// record keys and values consumed from the Kafka topic based on the application configuration.
+fn create_deserializers(
+    config: &Config,
+    schema_registry_client: Option<&'static SchemaRegistryClient>,
+) -> anyhow::Result<(Arc<dyn KeyDeserializer>, Arc<dyn ValueDeserializer>)> {
+    // give special handling to the case where both key and value formats are the same to avoid
+    // creating two deserializers of the same type
+    match (config.key_format, config.value_format) {
+        (Format::None, Format::None) => {
+            tracing::info!("using simple string key and value deserializer");
+
+            let deserializer = Arc::new(StringDeserializer);
+
+            Ok((deserializer.clone(), deserializer))
+        }
+        (Format::Json, Format::Json) => match schema_registry_client {
+            Some(schema_registry_client) => {
+                tracing::info!("using JSONSchema key and value deserializer with schema registry");
+
+                let json_schema_deserializer = JsonSchemaDeserializer::new(schema_registry_client)
+                    .expect("JSONSchema deserializer created");
+
+                let deserializer = Arc::new(json_schema_deserializer);
+
+                Ok((deserializer.clone(), deserializer))
+            }
+            None => {
+                tracing::info!("using JSON key and value deserializer without schema registry");
+
+                let deserializer = Arc::new(JsonStringDeserializer);
+
+                Ok((deserializer.clone(), deserializer))
+            }
+        },
+        (Format::Avro, Format::Avro) => match schema_registry_client {
+            Some(client) => {
+                tracing::info!("using Avro schema key and value deserializer with schema registry");
+
+                let avro_schema_deserializer =
+                    AvroSchemaDeserializer::new(client).expect("Avro schema deserializer created");
+
+                let deserializer = Arc::new(avro_schema_deserializer);
+
+                Ok((deserializer.clone(), deserializer))
+            }
+            None => {
+                anyhow::bail!("schema registry url must be specified when key format is avro")
+            }
+        },
+        (Format::Protobuf, Format::Protobuf) => {
+            tracing::info!("using Protobuf schema key and value deserializer with schema registry");
+
+            let protobuf_dir = config.protobuf_dir.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("protobuf dir must be set when key format is protobuf")
+            })?;
+
+            if config.key_protobuf_type.is_none() && config.value_protobuf_type.is_none() {
+                anyhow::bail!(
+                    "key and value protobuf type must be specified when format is protobuf"
+                );
+            }
+
+            let protobuf_schema_deserializer = ProtobufSchemaDeserializer::new(
+                protobuf_dir,
+                config.key_protobuf_type.clone(),
+                config.value_protobuf_type.clone(),
+            )
+            .context("create Protobuf schema deserializer")?;
+
+            let deserializer = Arc::new(protobuf_schema_deserializer);
+
+            Ok((deserializer.clone(), deserializer))
+        }
+        (_, _) => {
+            let key_deserializer = create_key_deserializer(config, schema_registry_client)?;
+
+            let value_deserializer = create_value_deserializer(config, schema_registry_client)?;
+
+            Ok((key_deserializer, value_deserializer))
+        }
+    }
+}
 
 /// Creates the [`KeyDeserializer`] that will be used to deserialize record keys consumed from
 /// the Kafka topic based on the application configuration.
@@ -428,20 +508,24 @@ fn create_key_deserializer(
             Some(_client) => {
                 tracing::info!("using Protobuf schema key deserializer with schema registry");
 
-                let protobuf_dir = config
-                    .protobuf_dir
-                    .as_ref()
-                    .expect("protobuf dir is set when value format is protobuf");
+                let protobuf_dir = config.protobuf_dir.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("protobuf dir must be set when key format is protobuf")
+                })?;
 
-                let key_type = config
-                    .key_protobuf_type
-                    .as_ref()
-                    .expect("key protobuf type is set when key format is protobuf");
+                if config.key_protobuf_type.is_none() {
+                    anyhow::bail!(
+                        "key protobuf type must be specified when key format is protobuf"
+                    );
+                }
 
-                // TODO; cleanup deserializer creation
-                let protobuf_schema_deserializer =
-                    ProtobufSchemaDeserializer::new(protobuf_dir, Some(key_type), key_type)
-                        .context("create Protobuf schema deserializer")?;
+                let value_type: Option<String> = None;
+
+                let protobuf_schema_deserializer = ProtobufSchemaDeserializer::new(
+                    protobuf_dir,
+                    config.key_protobuf_type.clone(),
+                    value_type,
+                )
+                .context("create Protobuf schema deserializer")?;
 
                 Arc::new(protobuf_schema_deserializer)
             }
@@ -494,22 +578,24 @@ fn create_value_deserializer(
             Some(_client) => {
                 tracing::info!("using Protobuf schema value deserializer with schema registry");
 
-                let protobuf_dir = config
-                    .protobuf_dir
-                    .as_ref()
-                    .expect("protobuf dir is set when value format is protobuf");
+                let protobuf_dir = config.protobuf_dir.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("protobuf dir must be set when value format is protobuf")
+                })?;
+
+                if config.value_protobuf_type.is_none() {
+                    anyhow::bail!(
+                        "key protobuf type must be specified when value format is protobuf"
+                    );
+                }
 
                 let key_type: Option<String> = None;
 
-                let value_type = config
-                    .value_protobuf_type
-                    .as_ref()
-                    .expect("value protobuf type is set when value format is protobuf");
-
-                // TODO; cleanup deserializer creation
-                let protobuf_schema_deserializer =
-                    ProtobufSchemaDeserializer::new(protobuf_dir, key_type, value_type)
-                        .context("create Protobuf schema deserializer")?;
+                let protobuf_schema_deserializer = ProtobufSchemaDeserializer::new(
+                    protobuf_dir,
+                    key_type,
+                    config.value_protobuf_type.clone(),
+                )
+                .context("create Protobuf schema deserializer")?;
 
                 Arc::new(protobuf_schema_deserializer)
             }
