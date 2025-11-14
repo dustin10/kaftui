@@ -3,18 +3,21 @@ mod records;
 mod schemas;
 mod settings;
 mod stats;
+mod topics;
 mod widget;
 
-pub use crate::{
+pub use crate::ui::{
+    logs::{Logs, LogsConfig},
+    records::{Records, RecordsConfig},
+    schemas::{Schemas, SchemasConfig},
+    settings::{Settings, SettingsConfig},
+    stats::{Stats, StatsConfig},
+    topics::{Topics, TopicsConfig},
+};
+
+use crate::{
     app::{App, BufferedKeyPress, NotificationStatus},
     event::Event,
-    ui::{
-        logs::{Logs, LogsConfig},
-        records::{Records, RecordsConfig},
-        schemas::{Schemas, SchemasConfig},
-        settings::{Settings, SettingsConfig},
-        stats::{Stats, StatsConfig},
-    },
 };
 
 use crossterm::event::KeyEvent;

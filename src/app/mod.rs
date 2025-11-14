@@ -6,13 +6,14 @@ use crate::{
     event::{Event, EventBus},
     kafka::{
         Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
+        admin::{AdminClient, AdminClientConfig, Topic},
         de::{KeyDeserializer, ValueDeserializer},
         schema::{Schema, SchemaClient, Subject, Version},
     },
     trace::Log,
     ui::{
         Component, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig, Settings,
-        SettingsConfig, Stats, StatsConfig,
+        SettingsConfig, Stats, StatsConfig, Topics, TopicsConfig,
     },
 };
 
@@ -202,6 +203,8 @@ where
     exporter: Exporter,
     /// Client used to interact with the schema registry, if configured.
     schema_client: Option<SchemaClient<'c, C>>,
+    /// Admin client used to query the Kafka cluster for topic configurations.
+    admin_client: AdminClient,
 }
 
 impl<'c, C> App<'c, C>
@@ -245,7 +248,7 @@ where
             .unwrap_or_default();
 
         let consumer_config = ConsumerConfig::builder()
-            .props(consumer_props)
+            .props(consumer_props.clone())
             .topic(config.topic.clone())
             .partitions(partitions)
             .seek_to(config.seek_to.clone())
@@ -261,6 +264,21 @@ where
         let exporter = Exporter::new(config.export_directory.clone());
 
         let consumer_mode = Rc::new(Cell::new(ConsumerMode::Processing));
+
+        let admin_client_config = AdminClientConfig::builder()
+            .properties(consumer_props)
+            .build()
+            .expect("valid AdminClientConfig");
+
+        let admin_client =
+            AdminClient::new(admin_client_config).context("create Kafka admin client")?;
+
+        let topics_component = Rc::new(RefCell::new(Topics::from(
+            TopicsConfig::builder()
+                .theme(&config.theme)
+                .build()
+                .expect("valid Topics config"),
+        )));
 
         let records_component = Rc::new(RefCell::new(Records::from(
             RecordsConfig::builder()
@@ -285,7 +303,7 @@ where
         )));
 
         let mut components: Vec<Rc<RefCell<dyn Component>>> =
-            vec![records_component.clone(), stats_component];
+            vec![topics_component, records_component.clone(), stats_component];
 
         // if schema registry is enabled push the schemas component and create the client used to
         // interact with the schema registry
@@ -354,6 +372,7 @@ where
             menu_item_chars,
             buffered_key_press: None,
             schema_client,
+            admin_client,
         })
     }
     /// Run the main loop of the application.
@@ -512,6 +531,8 @@ where
                 self.load_schema_version(&subject, version).await
             }
             Event::ExportSchema(schema) => self.on_export_schema(schema),
+            Event::LoadTopics => self.load_topics().await,
+            Event::LoadTopicConfig(topic) => self.load_topic_config(topic).await,
             _ => {
                 self.components
                     .iter()
@@ -550,6 +571,29 @@ where
 
         self.event_bus
             .send(Event::DisplayNotification(notification));
+    }
+    /// Loads the topics that exist on the the Kafka cluster.
+    async fn load_topics(&self) {
+        let topics = vec![
+            Topic {
+                name: String::from("user"),
+            },
+            Topic {
+                name: String::from("order"),
+            },
+        ];
+
+        self.event_bus.send(Event::TopicsLoaded(topics));
+    }
+    /// Loads the configuration for the specified topic from the Kafka cluster.
+    async fn load_topic_config(&self, topic: Topic) {
+        let config_fut = self.admin_client.load_topic_config(&topic.name);
+        let metadata_fut = self.admin_client.load_topic_config(&topic.name);
+        // TODO: let metadata_fut = self.consumer.load_topic_metadata(&topic.name);
+
+        let (_config_result, _metadata_result) = futures::join!(config_fut, metadata_fut);
+
+        todo!()
     }
     /// Loads the non-deleted subjects from the schema registry.
     async fn load_subjects(&self) {

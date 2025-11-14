@@ -8,6 +8,7 @@ use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
@@ -15,7 +16,6 @@ use ratatui::{
         Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Padding,
         Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     },
-    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};

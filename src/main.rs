@@ -6,13 +6,13 @@ mod ui;
 mod util;
 
 use crate::{
-    app::{config::Config, App},
+    app::{App, config::Config},
     kafka::{
+        Format, SeekTo,
         de::{
             AvroSchemaDeserializer, JsonSchemaDeserializer, JsonStringDeserializer,
             KeyDeserializer, ProtobufSchemaDeserializer, StringDeserializer, ValueDeserializer,
         },
-        Format, SeekTo,
     },
     trace::{CaptureLayer, Log},
 };
@@ -28,7 +28,7 @@ use schema_registry_client::rest::{
 use std::{fs::File, io::BufReader, sync::Arc};
 use tokio::sync::mpsc::Receiver;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{prelude::*, EnvFilter, Registry};
+use tracing_subscriber::{EnvFilter, Registry, prelude::*};
 
 /// A TUI application which can be used to view records published to a Kafka topic.
 #[derive(Clone, Debug, Default, Parser)]
