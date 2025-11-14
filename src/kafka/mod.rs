@@ -1,21 +1,25 @@
+pub mod admin;
 pub mod de;
 pub mod schema;
 
-use crate::kafka::de::{KeyDeserializer, ValueDeserializer};
+use crate::kafka::{
+    admin::Topic,
+    de::{KeyDeserializer, ValueDeserializer},
+};
 
 use anyhow::Context;
 use chrono::{DateTime, Local};
 use derive_builder::Builder;
 use futures::TryStreamExt;
 use rdkafka::{
-    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
     config::RDKafkaLogLevel,
     consumer::{
-        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
-        Rebalance, StreamConsumer, stream_consumer::StreamPartitionQueue,
+        stream_consumer::StreamPartitionQueue, BaseConsumer, CommitMode, Consumer as RDConsumer,
+        ConsumerContext as RDConsumerContext, Rebalance, StreamConsumer,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
+    ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};
@@ -633,6 +637,24 @@ impl Consumer {
         self.consumer
             .resume(&assignment)
             .context("resume consumer assignments")
+    }
+    /// Retrieves metadata for the specified topic from the Kafka cluster. If no topic is
+    /// specified, metadata for all topics is retrieved.
+    pub fn fetch_topic_metadata(
+        &self,
+        topic: Option<&str>,
+        timeout: impl Into<Duration>,
+    ) -> anyhow::Result<Vec<Topic>> {
+        let metadata: Vec<Topic> = self
+            .consumer
+            .fetch_metadata(topic, timeout.into())
+            .context("fetch topic metadata")?
+            .topics()
+            .iter()
+            .map(Into::into)
+            .collect();
+
+        Ok(metadata)
     }
 }
 

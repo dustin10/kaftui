@@ -2,6 +2,7 @@ use crate::{
     app::Notification,
     kafka::{
         Record,
+        admin::{Topic, TopicConfig},
         schema::{Schema, Subject, Version},
     },
     trace::Log,
@@ -40,7 +41,7 @@ pub enum Event {
     DisplayNotification(Notification),
     /// Fires when a [`Log`] is emitted by the application.
     LogEmitted(Log),
-    /// Fires when the list of subjects need to be loaded from the schema registry.
+    /// Fires when the list of subjects needs to be loaded from the schema registry.
     LoadSubjects,
     /// Fires when the list of subjects has been loaded from the schema registry.
     SubjectsLoaded(Vec<Subject>),
@@ -54,6 +55,14 @@ pub enum Event {
     SchemaVersionLoaded(Option<Schema>),
     /// Fires when the user wants to export a [`Schema`] to a file.
     ExportSchema(Schema),
+    /// Fires when the list of topics needs to be loaded from the Kafka cluster.
+    LoadTopics,
+    /// Fires when the list of topics has been loaded from the Kafka cluster.
+    TopicsLoaded(Vec<Topic>),
+    /// Fires when configuration details for a topic needs to be loaded from the Kafka cluster.
+    LoadTopicConfig(Topic),
+    /// Fires when a topic configuration has been loaded from the Kafka cluster.
+    TopicConfigLoaded(Option<TopicConfig>),
 }
 
 /// The bus over which [`Event`]s are published.

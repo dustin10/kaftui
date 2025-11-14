@@ -8,6 +8,7 @@ The `kaftui` application provides the following features to users.
 
 * View records from a topic including headers and payload value in an easy to read format.
 * Pause and resume the Kafka consumer.
+* Browse topics on the Kafka cluster and view their configuration.
 * Assign all or specific partitions of the topic to the Kafka consumer.
 * Seek to a specific offset on a single or multiple partitions of the topic.
 * Export any record consumed to a file on disk.
@@ -30,6 +31,11 @@ The following statistics are currently tracked.
 * Throughput in records per second.
 * Number of Kafka records consumed per partition.
 * Detailed per-partition information.
+
+There is also a dedicated UI for browsing the topics available on the Kafka cluster along with their configuration
+details and current partition information.
+
+![kaftui application topics ui running with the default theme](assets/kaftui-default-topics.png)
 
 When using the schema registry, a subject browser will be available to the user as well where the subjects, their
 schemas and the various versions of the schemas can be viewed and compared.
@@ -205,6 +211,7 @@ the user is currently viewing and the active widget within that screen. The foll
 The number keys can be used to switch between the various screens available in the `kaftui` application. The following
 screens are available to the user depending on the configuration used when executing the application.
 
+* `Topics` - Displays the topics available on the Kafka cluster along with their configuration details.
 * `Records` - Displays the records consumed from the Kafka topic.
 * `Stats` - Displays basic statistics for the Kafka consumer.
 * `Schemas` - Browse schemas in the schema registry. Only available when the schema registry has been configured.
@@ -311,6 +318,8 @@ section for an example of a theme.
 The screenshot below is an example of a `kaftui` theme configuration that is inspired by the Dracula theme.
 
 ![kaftui application records ui running with a dracula theme](assets/kaftui-dracula-records.png)
+
+![kaftui application topics ui running with a dracula theme](assets/kaftui-dracula-topics.png)
 
 ![kaftui application stats ui running with a dracula theme](assets/kaftui-dracula-stats.png)
 

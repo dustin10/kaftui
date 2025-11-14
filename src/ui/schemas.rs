@@ -36,7 +36,7 @@ enum SchemasWidget {
 /// Manages state related to schemas and the UI that renders them to the user.
 #[derive(Debug, Default)]
 struct SchemasState {
-    /// Stores the widget that the currently has focus.
+    /// Stores the widget that currently has focus.
     active_widget: SchemasWidget,
     /// Current subjects retrieved from the schema registry.
     subjects: Vec<Subject>,
@@ -144,7 +144,7 @@ impl SchemasState {
         }
 
         self.subjects_list_state.select_previous();
-        self.subjects_scroll_state.last();
+        self.subjects_scroll_state.prev();
 
         self.versions_list_state.select(None);
 
@@ -419,7 +419,7 @@ pub struct SchemasConfig<'a> {
 
 impl<'a> SchemasConfig<'a> {
     /// Creates a new default [`SchemasConfigBuilder`] which can be used to create a new
-    /// [`Schemas`].
+    /// [`SchemasConfig`].
     pub fn builder() -> SchemasConfigBuilder<'a> {
         SchemasConfigBuilder::default()
     }
@@ -732,7 +732,7 @@ impl Schemas {
 }
 
 impl Component for Schemas {
-    // Returns the name of the [`Component`] which is displayed to the user as a menu item.
+    /// Returns the name of the [`Component`] which is displayed to the user as a menu item.
     fn name(&self) -> &'static str {
         "Schemas"
     }
