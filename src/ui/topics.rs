@@ -35,6 +35,18 @@ const TOPIC_CONFIG_HEADERS: [(&str, u16); 3] = [("Key", 5), ("Value", 4), ("Defa
 /// Headers for the topic partitions table along with their fill constraints.
 const TOPIC_PARTITIONS_HEADERS: [(&str, u16); 3] = [("ID", 3), ("Leader", 3), ("Replicas", 4)];
 
+/// Enumerates representing the current network status of the [`Topics`] component.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+enum NetworkStatus {
+    /// The component is idle and not performing any network operations.
+    #[default]
+    Idle,
+    /// The component is currently loading the list of topics from the Kafka cluster.
+    LoadingTopics,
+    /// The component is currently loading the configuration for the selected topic.
+    LoadingTopicConfig,
+}
+
 /// Enumeration of the widgets in the [`Topics`] component that can have focus.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 enum TopicsWidget {
@@ -57,6 +69,8 @@ struct TopicsState {
     topics_list_state: ListState,
     /// Manages state of the topics list scrollbar.
     topics_scroll_state: ScrollbarState,
+    /// Current network status of the component.
+    network_status: NetworkStatus,
 }
 
 impl TopicsState {
@@ -218,15 +232,22 @@ impl Topics {
     }
     /// Invoked when the list of topics has been loaded from the Kafka cluster.
     fn on_topics_loaded(&mut self, topics: Vec<Topic>) {
+        self.state.network_status = NetworkStatus::Idle;
         self.state.topics = topics;
     }
     /// Invoked when the configuration for the selected topic has been loaded from the Kafka
     /// cluster.
     fn on_topic_config_loaded(&mut self, topic_config: Option<TopicConfig>) {
+        self.state.network_status = NetworkStatus::Idle;
         self.state.selected_topic_config = topic_config;
     }
     /// Renders the list of topics contained in the Kafka cluster.
     fn render_topics(&mut self, frame: &mut Frame, area: Rect) {
+        if self.state.network_status == NetworkStatus::LoadingTopics {
+            self.render_message(frame, area, "Loading topics...");
+            return;
+        }
+
         let mut topics_block = Block::bordered()
             .title(" Topics ")
             .border_style(self.theme.panel_border_color)
@@ -276,6 +297,11 @@ impl Topics {
     }
     /// Renders the details of a topic, if one is currently selected.
     fn render_topic_details(&self, frame: &mut Frame, area: Rect) {
+        if self.state.network_status == NetworkStatus::LoadingTopicConfig {
+            self.render_message(frame, area, "Loading config...");
+            return;
+        }
+
         if let Some(_selected_topic) = &self.state.selected_topic {
             let [config_panel, partitions_panel] = Layout::default()
                 .direction(Direction::Horizontal)
@@ -294,8 +320,16 @@ impl Topics {
             return;
         };
 
+        let title = format!(
+            " Config - {} ",
+            self.state
+                .selected_topic
+                .as_ref()
+                .map_or("", |t| t.name.as_str())
+        );
+
         let config_block = Block::bordered()
-            .title(" Config ")
+            .title(title)
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
@@ -329,8 +363,10 @@ impl Topics {
             return;
         };
 
+        let title = format!(" Partitions - {} ", topic.partitions.len());
+
         let partitions_block = Block::bordered()
-            .title(" Partitions ")
+            .title(title)
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
@@ -411,7 +447,7 @@ impl Component for Topics {
         event: KeyEvent,
         buffered: Option<&BufferedKeyPress>,
     ) -> Option<Event> {
-        match event.code {
+        let mapped_event = match event.code {
             KeyCode::Char(c) => match c {
                 'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
                     .state
@@ -432,7 +468,13 @@ impl Component for Topics {
                 _ => None,
             },
             _ => None,
+        };
+
+        if let Some(Event::LoadTopicConfig(_)) = mapped_event {
+            self.state.network_status = NetworkStatus::LoadingTopicConfig;
         }
+
+        mapped_event
     }
     /// Allows the [`Component`] to render the status line text into the footer.
     fn render_status_line(&self, frame: &mut Frame, area: Rect) {
@@ -467,6 +509,7 @@ impl Component for Topics {
     /// [`Component`] can also return an optional [`Event`] that will be dispatched.
     fn on_activate(&mut self) -> Option<Event> {
         if self.state.topics.is_empty() {
+            self.state.network_status = NetworkStatus::LoadingTopics;
             Some(Event::LoadTopics)
         } else {
             None
