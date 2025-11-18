@@ -488,11 +488,21 @@ where
         let app_event = match key_event.code {
             KeyCode::Esc => Some(Event::Quit),
             KeyCode::Tab => Some(Event::SelectNextWidget),
-            KeyCode::Char(c) if self.menu_item_chars.contains(&c) => {
-                let digit = c.to_digit(10).expect("valid digit") - 1;
-                let selected = digit as usize;
+            KeyCode::Char(c) => {
+                let mapped_event = self
+                    .state
+                    .active_component
+                    .borrow_mut()
+                    .map_key_event(key_event, self.buffered_key_press.as_ref());
 
-                Some(Event::SelectComponent(selected))
+                if mapped_event.is_none() && self.menu_item_chars.contains(&c) {
+                    let digit = c.to_digit(10).expect("valid digit") - 1;
+                    let selected = digit as usize;
+
+                    Some(Event::SelectComponent(selected))
+                } else {
+                    mapped_event
+                }
             }
             _ => self
                 .state

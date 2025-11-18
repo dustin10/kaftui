@@ -8,7 +8,6 @@ use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
@@ -16,6 +15,7 @@ use ratatui::{
         Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Padding,
         Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     },
+    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};
@@ -1028,38 +1028,38 @@ impl Component for Settings {
                 SettingsWidget::Menu => match c {
                     'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                         self.state.select_menu_item_top();
-                        None
+                        Some(Event::Void)
                     }
                     'j' => {
                         self.state.select_menu_item_next();
-                        None
+                        Some(Event::Void)
                     }
                     'k' => {
                         self.state.select_menu_item_prev();
-                        None
+                        Some(Event::Void)
                     }
                     'G' => {
                         self.state.select_menu_item_bottom();
-                        None
+                        Some(Event::Void)
                     }
                     _ => None,
                 },
                 SettingsWidget::Profiles => match c {
                     'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                         self.state.select_profile_item_top();
-                        None
+                        Some(Event::Void)
                     }
                     'j' => {
                         self.state.select_profile_item_next();
-                        None
+                        Some(Event::Void)
                     }
                     'k' => {
                         self.state.select_profile_item_prev();
-                        None
+                        Some(Event::Void)
                     }
                     'G' => {
                         self.state.select_profile_item_bottom();
-                        None
+                        Some(Event::Void)
                     }
                     _ => None,
                 },

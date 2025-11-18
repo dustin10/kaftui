@@ -849,15 +849,15 @@ impl Component for Schemas {
                     SchemasWidget::Schema => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_schema_definition_top();
-                            None
+                            Some(Event::Void)
                         }
                         'j' => {
                             self.state.scroll_schema_definition_down(self.scroll_factor);
-                            None
+                            Some(Event::Void)
                         }
                         'k' => {
                             self.state.scroll_schema_definition_up(self.scroll_factor);
-                            None
+                            Some(Event::Void)
                         }
                         _ => None,
                     },
@@ -891,19 +891,19 @@ impl Component for Schemas {
                     SchemasWidget::References => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_references_top();
-                            None
+                            Some(Event::Void)
                         }
                         'j' => {
                             self.state.scroll_references_down();
-                            None
+                            Some(Event::Void)
                         }
                         'k' => {
                             self.state.scroll_references_up();
-                            None
+                            Some(Event::Void)
                         }
                         'G' => {
                             self.state.scroll_references_bottom();
-                            None
+                            Some(Event::Void)
                         }
                         _ => None,
                     },

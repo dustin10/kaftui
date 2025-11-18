@@ -19,6 +19,15 @@ use ratatui::{
 };
 use std::str::FromStr;
 
+/// Text displayed to the user in the footer for the filter key binding.
+const KEY_BINDING_FILTER: &str = "(/) filter";
+
+/// Text displayed to the user in the footer for the stop filtering key binding.
+const KEY_BINDING_APPLY_FILTER: &str = "(enter) apply filter";
+
+/// Text displayed to the user in the footer for the clear filter key binding.
+const KEY_BINDING_CLEAR_FILTER: &str = "(c) clear filter";
+
 /// Key bindings that are always displayed to the user in the footer when viewing the topics
 /// screen.
 const TOPICS_KEY_BINDINGS: [&str; 5] = [
@@ -53,14 +62,18 @@ enum TopicsWidget {
     /// Topics list widget.
     #[default]
     Topics,
+    /// Topics filter input widget.
+    FilterInput,
 }
 
 #[derive(Debug, Default)]
 struct TopicsState {
     /// Stores the widget that currently has focus.
     active_widget: TopicsWidget,
-    /// List of topics retrieved from the Kafka cluster.
+    /// List of all topics retrieved from the Kafka cluster.
     topics: Vec<Topic>,
+    /// List of only the topics currently visible to the user based on the filter value.
+    visible_topics: Vec<Topic>,
     /// Currently selected topic.
     selected_topic: Option<Topic>,
     /// Configuration details for the currently selected topic.
@@ -71,30 +84,65 @@ struct TopicsState {
     topics_scroll_state: ScrollbarState,
     /// Current network status of the component.
     network_status: NetworkStatus,
+    /// Current filter applied to the topics list.
+    topics_filter: Option<String>,
 }
 
 impl TopicsState {
+    /// Updates the list of visible topics based on the current filter value.
+    fn update_visible_topics(&mut self) {
+        let filter = self.topics_filter.as_ref().map_or("", |f| f.as_str());
+
+        // TODO: this feels wasteful when there is a large set of topics. try to avoid this clone
+        // here by maybe using indices instead or some other method.
+        self.visible_topics = self
+            .topics
+            .clone()
+            .into_iter()
+            .filter(|t| t.name.starts_with(filter))
+            .collect();
+    }
+    /// Deselects the currently selected topic.
+    fn deselect_topic(&mut self) {
+        self.topics_list_state.select(None);
+        self.selected_topic = None;
+    }
+    /// Invoked when the user starts filtering topics.
+    fn on_start_filter(&mut self) {
+        self.active_widget = TopicsWidget::FilterInput;
+        self.deselect_topic();
+    }
+    /// Invoked when the user applies the topic filter.
+    fn on_apply_filter(&mut self) {
+        self.active_widget = TopicsWidget::Topics;
+    }
+    /// Invoked when the user clears the topic filter.
+    fn on_clear_filter(&mut self) {
+        self.topics_filter = None;
+        self.deselect_topic();
+        self.update_visible_topics();
+    }
     /// Selects the first topic in the list.
     fn select_first_topic(&mut self) -> Option<&Topic> {
-        if self.topics.is_empty() {
+        if self.visible_topics.is_empty() {
             return None;
         }
 
         self.topics_list_state.select_first();
         self.topics_scroll_state.first();
 
-        self.selected_topic = self.topics.first().cloned();
+        self.selected_topic = self.visible_topics.first().cloned();
 
         self.selected_topic.as_ref()
     }
     /// Selects the next topic in the list.
     fn select_next_topic(&mut self) -> Option<&Topic> {
-        if self.topics.is_empty() {
+        if self.visible_topics.is_empty() {
             return None;
         }
 
         if let Some(curr_idx) = self.topics_list_state.selected()
-            && curr_idx == self.topics.len() - 1
+            && curr_idx == self.visible_topics.len() - 1
         {
             return None;
         }
@@ -104,13 +152,13 @@ impl TopicsState {
 
         let idx = self.topics_list_state.selected().expect("topic selected");
 
-        self.selected_topic = self.topics.get(idx).cloned();
+        self.selected_topic = self.visible_topics.get(idx).cloned();
 
         self.selected_topic.as_ref()
     }
     /// Selects the previous topic in the list.
     fn select_prev_topic(&mut self) -> Option<&Topic> {
-        if self.topics.is_empty() {
+        if self.visible_topics.is_empty() {
             return None;
         }
 
@@ -119,20 +167,20 @@ impl TopicsState {
 
         let idx = self.topics_list_state.selected().expect("topic selected");
 
-        self.selected_topic = self.topics.get(idx).cloned();
+        self.selected_topic = self.visible_topics.get(idx).cloned();
 
         self.selected_topic.as_ref()
     }
     /// Selects the last topic in the list.
     fn select_last_topic(&mut self) -> Option<&Topic> {
-        if self.topics.is_empty() {
+        if self.visible_topics.is_empty() {
             return None;
         }
 
         self.topics_list_state.select_last();
         self.topics_scroll_state.last();
 
-        self.selected_topic = self.topics.last().cloned();
+        self.selected_topic = self.visible_topics.last().cloned();
 
         self.selected_topic.as_ref()
     }
@@ -199,6 +247,7 @@ impl<'a> From<TopicsConfig<'a>> for Topics {
 
 /// The application [`Component`] that is responsible for displaying topics that exist on the Kafka
 /// cluster.
+#[derive(Debug)]
 pub struct Topics {
     /// Current state of the component and it's underlying widgets.
     state: TopicsState,
@@ -233,7 +282,11 @@ impl Topics {
     /// Invoked when the list of topics has been loaded from the Kafka cluster.
     fn on_topics_loaded(&mut self, topics: Vec<Topic>) {
         self.state.network_status = NetworkStatus::Idle;
+
         self.state.topics = topics;
+        self.state.topics.sort();
+
+        self.state.update_visible_topics();
     }
     /// Invoked when the configuration for the selected topic has been loaded from the Kafka
     /// cluster.
@@ -241,10 +294,27 @@ impl Topics {
         self.state.network_status = NetworkStatus::Idle;
         self.state.selected_topic_config = topic_config;
     }
+    /// Renders the filter input box for filtering topics.
+    fn render_filter_input(&mut self, frame: &mut Frame, area: Rect) {
+        let filter_block = Block::bordered()
+            .title(" Filter ")
+            .border_type(BorderType::Thick)
+            .border_style(self.theme.selected_panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let filter = self.state.topics_filter.as_ref().map_or("", |f| f.as_str());
+
+        let filter_text = Paragraph::new(filter).block(filter_block);
+
+        frame.render_widget(filter_text, area);
+    }
     /// Renders the list of topics contained in the Kafka cluster.
     fn render_topics(&mut self, frame: &mut Frame, area: Rect) {
         if self.state.network_status == NetworkStatus::LoadingTopics {
             self.render_message(frame, area, "Loading topics...");
+            return;
+        } else if self.state.visible_topics.is_empty() {
+            self.render_message(frame, area, "No topics found");
             return;
         }
 
@@ -261,7 +331,7 @@ impl Topics {
 
         let list_items: Vec<ListItem> = self
             .state
-            .topics
+            .visible_topics
             .iter()
             .map(|t| ListItem::new::<&str>(t.name.as_ref()))
             .collect();
@@ -448,24 +518,65 @@ impl Component for Topics {
         buffered: Option<&BufferedKeyPress>,
     ) -> Option<Event> {
         let mapped_event = match event.code {
-            KeyCode::Char(c) => match c {
-                'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
-                    .state
-                    .select_first_topic()
-                    .map(|t| Event::LoadTopicConfig(t.clone())),
-                'j' => self
-                    .state
-                    .select_next_topic()
-                    .map(|t| Event::LoadTopicConfig(t.clone())),
-                'k' => self
-                    .state
-                    .select_prev_topic()
-                    .map(|t| Event::LoadTopicConfig(t.clone())),
-                'G' => self
-                    .state
-                    .select_last_topic()
-                    .map(|t| Event::LoadTopicConfig(t.clone())),
-                _ => None,
+            KeyCode::Enter => {
+                self.state.on_apply_filter();
+                Some(Event::Void)
+            }
+            KeyCode::Backspace | KeyCode::Delete => {
+                if self.state.active_widget == TopicsWidget::FilterInput
+                    && let Some(filter) = self.state.topics_filter.as_mut()
+                {
+                    filter.pop();
+                    self.state.update_visible_topics();
+                }
+
+                if let Some(filter) = self.state.topics_filter.as_ref()
+                    && filter.is_empty()
+                {
+                    self.state.topics_filter = None;
+                }
+
+                Some(Event::Void)
+            }
+            KeyCode::Char(c) => match self.state.active_widget {
+                TopicsWidget::Topics => match c {
+                    '/' => {
+                        self.state.on_start_filter();
+                        Some(Event::Void)
+                    }
+                    'c' if self.state.topics_filter.is_some() => {
+                        self.state.on_clear_filter();
+                        Some(Event::Void)
+                    }
+                    'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
+                        .state
+                        .select_first_topic()
+                        .map(|t| Event::LoadTopicConfig(t.clone())),
+                    'j' => self
+                        .state
+                        .select_next_topic()
+                        .map(|t| Event::LoadTopicConfig(t.clone())),
+                    'k' => self
+                        .state
+                        .select_prev_topic()
+                        .map(|t| Event::LoadTopicConfig(t.clone())),
+                    'G' => self
+                        .state
+                        .select_last_topic()
+                        .map(|t| Event::LoadTopicConfig(t.clone())),
+                    _ => None,
+                },
+                TopicsWidget::FilterInput => {
+                    if let Some(filter) = self.state.topics_filter.as_mut() {
+                        filter.push(c);
+                    } else {
+                        self.state.topics_filter = Some(c.to_string());
+                    }
+
+                    self.state.update_visible_topics();
+
+                    Some(Event::Void)
+                }
             },
             _ => None,
         };
@@ -478,9 +589,19 @@ impl Component for Topics {
     }
     /// Allows the [`Component`] to render the status line text into the footer.
     fn render_status_line(&self, frame: &mut Frame, area: Rect) {
+        let filter_value = self
+            .state
+            .topics_filter
+            .as_ref()
+            .map_or("<none>", |f| f.as_str());
+
         let line = Line::from_iter([
-            Span::styled("Topics: ", Style::from(self.theme.label_color).bold()),
+            Span::styled("Total: ", Style::from(self.theme.label_color).bold()),
             Span::raw(self.state.topics.len().to_string()),
+            Span::raw(" | "),
+            Span::styled("Visible: ", Style::from(self.theme.label_color).bold()),
+            Span::raw(self.state.visible_topics.len().to_string()),
+            Span::raw(format!(" (Filter: {})", filter_value)),
         ]);
 
         let text = Paragraph::new(line).left_aligned();
@@ -489,7 +610,21 @@ impl Component for Topics {
     }
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
-        let text = Paragraph::new(TOPICS_KEY_BINDINGS.join(" | "))
+        let mut key_bindings = Vec::from(TOPICS_KEY_BINDINGS);
+
+        match (self.state.active_widget, self.state.topics_filter.as_ref()) {
+            (TopicsWidget::Topics, None) => {
+                key_bindings.push(KEY_BINDING_FILTER);
+            }
+            (TopicsWidget::Topics, Some(_)) => {
+                key_bindings.push(KEY_BINDING_CLEAR_FILTER);
+            }
+            (TopicsWidget::FilterInput, _) => {
+                key_bindings.push(KEY_BINDING_APPLY_FILTER);
+            }
+        }
+
+        let text = Paragraph::new(key_bindings.join(" | "))
             .style(self.theme.key_bindings_text_color)
             .right_aligned();
 
@@ -502,7 +637,20 @@ impl Component for Topics {
             .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
             .areas(area);
 
-        self.render_topics(frame, left_panel);
+        let topics_panel = if self.state.active_widget == TopicsWidget::FilterInput {
+            let [filter_panel, topics_panel] = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Max(3), Constraint::Min(1)])
+                .areas(left_panel);
+
+            self.render_filter_input(frame, filter_panel);
+
+            topics_panel
+        } else {
+            left_panel
+        };
+
+        self.render_topics(frame, topics_panel);
         self.render_topic_details(frame, right_panel);
     }
     /// Hook for the [`Component`] to run any logic required when it becomes active. The

@@ -633,53 +633,53 @@ impl Component for Records {
                     RecordsWidget::List => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.select_first();
-                            None
+                            Some(Event::Void)
                         }
                         'j' => {
                             self.state.select_next();
-                            None
+                            Some(Event::Void)
                         }
                         'k' => {
                             self.state.select_prev();
-                            None
+                            Some(Event::Void)
                         }
                         'G' => {
                             self.state.select_last();
-                            None
+                            Some(Event::Void)
                         }
                         _ => None,
                     },
                     RecordsWidget::Value => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_value_top();
-                            None
+                            Some(Event::Void)
                         }
                         'j' => {
                             self.state.scroll_value_down(self.scroll_factor);
-                            None
+                            Some(Event::Void)
                         }
                         'k' => {
                             self.state.scroll_value_up(self.scroll_factor);
-                            None
+                            Some(Event::Void)
                         }
                         _ => None,
                     },
                     RecordsWidget::Headers => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_headers_top();
-                            None
+                            Some(Event::Void)
                         }
                         'j' => {
                             self.state.scroll_headers_down();
-                            None
+                            Some(Event::Void)
                         }
                         'k' => {
                             self.state.scroll_headers_up();
-                            None
+                            Some(Event::Void)
                         }
                         'G' => {
                             self.state.scroll_headers_bottom();
-                            None
+                            Some(Event::Void)
                         }
                         _ => None,
                     },

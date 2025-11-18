@@ -247,19 +247,19 @@ impl Component for Logs {
             KeyCode::Char(c) => match c {
                 'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                     self.state.scroll_list_top();
-                    None
+                    Some(Event::Void)
                 }
                 'j' => {
                     self.state.scroll_list_down();
-                    None
+                    Some(Event::Void)
                 }
                 'k' => {
                     self.state.scroll_list_up();
-                    None
+                    Some(Event::Void)
                 }
                 'G' => {
                     self.state.scroll_list_bottom();
-                    None
+                    Some(Event::Void)
                 }
                 _ => None,
             },

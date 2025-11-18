@@ -12,7 +12,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 /// Represents a partition of a Kafka topic including the IDs of the current leader and replica
 /// brokers.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Partition {
     /// ID of the partition.
     pub id: i32,
@@ -34,12 +34,26 @@ impl From<&MetadataPartition> for Partition {
 }
 
 /// Represents a Kafka topic including it's name and partitions.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Topic {
     /// Name of the topic.
     pub name: String,
     /// Partition details for the topic.
     pub partitions: Vec<Partition>,
+}
+
+impl PartialOrd for Topic {
+    /// Compares two [`Topic`] instances for ordering.
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Topic {
+    /// Compares two [`Topic`] instances based on their names for ordering.
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
 }
 
 impl From<&MetadataTopic> for Topic {
