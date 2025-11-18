@@ -23,13 +23,29 @@ use std::str::FromStr;
 /// screen.
 const SCHEMAS_KEY_BINDINGS: [&str; 2] = [super::KEY_BINDING_QUIT, super::KEY_BINDING_CHANGE_FOCUS];
 
+/// Enumerates the possible network states of the [`Topics`] component.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+enum NetworkStatus {
+    /// The component is idle and not performing any network operations.
+    #[default]
+    Idle,
+    /// The component is currently loading the list of subjects from the schema registry.
+    LoadingSubjects,
+    /// The component is currently loading a schema from the schema registry.
+    LoadingSchema,
+}
+
 /// Enumeration of the widgets in the [`Schemas`] component that can have focus.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 enum SchemasWidget {
+    /// The subjects list widget.
     #[default]
     Subjects,
+    /// The schema definition widget.
     Schema,
+    /// The schema versions list widget.
     Versions,
+    /// The schema references list widget.
     References,
 }
 
@@ -60,6 +76,8 @@ struct SchemasState {
     references_list_state: ListState,
     /// Manages state of the schema references list scrollbar.
     references_scroll_state: ScrollbarState,
+    /// Current network status of the component.
+    network_status: NetworkStatus,
 }
 
 impl SchemasState {
@@ -454,10 +472,16 @@ impl Schemas {
     }
     /// Invoked when the list of subjects has been loaded from the schema registry.
     fn on_subjects_loaded(&mut self, subjects: Vec<Subject>) {
+        self.state.network_status = NetworkStatus::Idle;
         self.state.subjects = subjects;
     }
     /// Renders the list of subjects.
     fn render_subjects(&mut self, frame: &mut Frame, area: Rect) {
+        if self.state.network_status == NetworkStatus::LoadingSubjects {
+            self.render_message(frame, area, "Loading subjects...", None);
+            return;
+        }
+
         let mut subjects_block = Block::bordered()
             .title(" Subjects ")
             .border_style(self.theme.panel_border_color)
@@ -507,6 +531,11 @@ impl Schemas {
     }
     /// Renders the schema definition for the selected subject.
     fn render_schema(&self, frame: &mut Frame, area: Rect) {
+        if self.state.network_status == NetworkStatus::LoadingSchema {
+            self.render_message(frame, area, "Loading schema...", None);
+            return;
+        }
+
         let mut schema_block = Block::bordered()
             .title(" Schema ")
             .border_style(self.theme.panel_border_color)
@@ -719,6 +748,7 @@ impl Schemas {
     /// Invoked when the latest schema version and all available versions have been loaded from the
     /// schema registry.
     fn on_latest_schema_loaded(&mut self, schema: Option<Schema>, versions: Vec<Version>) {
+        self.state.network_status = NetworkStatus::Idle;
         self.state.selected_schema = schema;
 
         self.state.available_versions = versions;
@@ -727,6 +757,7 @@ impl Schemas {
     }
     /// Invoked when a schema version has been loaded from the schema registry.
     fn on_schema_version_loaded(&mut self, schema: Option<Schema>) {
+        self.state.network_status = NetworkStatus::Idle;
         self.state.selected_schema = schema;
     }
 }
@@ -788,25 +819,33 @@ impl Component for Schemas {
                     .as_ref()
                     .map(|s| Event::ExportSchema(s.clone())),
                 _ => match self.state.active_widget {
-                    SchemasWidget::Subjects => match c {
-                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
-                            .state
-                            .select_first_subject()
-                            .map(|s| Event::LoadLatestSchema(s.clone())),
-                        'j' => self
-                            .state
-                            .select_next_subject()
-                            .map(|s| Event::LoadLatestSchema(s.clone())),
-                        'k' => self
-                            .state
-                            .select_prev_subject()
-                            .map(|s| Event::LoadLatestSchema(s.clone())),
-                        'G' => self
-                            .state
-                            .select_last_subject()
-                            .map(|s| Event::LoadLatestSchema(s.clone())),
-                        _ => None,
-                    },
+                    SchemasWidget::Subjects => {
+                        let mapped_event = match c {
+                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
+                                .state
+                                .select_first_subject()
+                                .map(|s| Event::LoadLatestSchema(s.clone())),
+                            'j' => self
+                                .state
+                                .select_next_subject()
+                                .map(|s| Event::LoadLatestSchema(s.clone())),
+                            'k' => self
+                                .state
+                                .select_prev_subject()
+                                .map(|s| Event::LoadLatestSchema(s.clone())),
+                            'G' => self
+                                .state
+                                .select_last_subject()
+                                .map(|s| Event::LoadLatestSchema(s.clone())),
+                            _ => None,
+                        };
+
+                        if mapped_event.is_some() {
+                            self.state.network_status = NetworkStatus::LoadingSchema;
+                        }
+
+                        mapped_event
+                    }
                     SchemasWidget::Schema => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_schema_definition_top();
@@ -822,25 +861,33 @@ impl Component for Schemas {
                         }
                         _ => None,
                     },
-                    SchemasWidget::Versions => match c {
-                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
-                            .state
-                            .select_first_schema_version()
-                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                        'j' => self
-                            .state
-                            .select_next_schema_version()
-                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                        'k' => self
-                            .state
-                            .select_prev_schema_version()
-                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                        'G' => self
-                            .state
-                            .select_last_schema_version()
-                            .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                        _ => None,
-                    },
+                    SchemasWidget::Versions => {
+                        let mapped_event = match c {
+                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
+                                .state
+                                .select_first_schema_version()
+                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
+                            'j' => self
+                                .state
+                                .select_next_schema_version()
+                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
+                            'k' => self
+                                .state
+                                .select_prev_schema_version()
+                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
+                            'G' => self
+                                .state
+                                .select_last_schema_version()
+                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
+                            _ => None,
+                        };
+
+                        if mapped_event.is_some() {
+                            self.state.network_status = NetworkStatus::LoadingSchema;
+                        }
+
+                        mapped_event
+                    }
                     SchemasWidget::References => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_references_top();
@@ -921,6 +968,7 @@ impl Component for Schemas {
     /// [`Component`] can also return an optional [`Event`] that will be dispatched.
     fn on_activate(&mut self) -> Option<Event> {
         if self.state.subjects.is_empty() {
+            self.state.network_status = NetworkStatus::LoadingSubjects;
             Some(Event::LoadSubjects)
         } else {
             None

@@ -35,7 +35,7 @@ const TOPIC_CONFIG_HEADERS: [(&str, u16); 3] = [("Key", 5), ("Value", 4), ("Defa
 /// Headers for the topic partitions table along with their fill constraints.
 const TOPIC_PARTITIONS_HEADERS: [(&str, u16); 3] = [("ID", 3), ("Leader", 3), ("Replicas", 4)];
 
-/// Enumerates representing the current network status of the [`Topics`] component.
+/// Enumerates the possible network states of the [`Topics`] component.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 enum NetworkStatus {
     /// The component is idle and not performing any network operations.

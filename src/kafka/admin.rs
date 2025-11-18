@@ -3,10 +3,10 @@ use crate::kafka::Consumer;
 use anyhow::Context;
 use derive_builder::Builder;
 use rdkafka::{
+    ClientConfig, ClientContext,
     admin::{AdminClient as RDAdminClient, AdminOptions, ConfigEntry, ResourceSpecifier},
     config::{FromClientConfigAndContext, RDKafkaLogLevel},
     metadata::{MetadataPartition, MetadataTopic},
-    ClientConfig, ClientContext,
 };
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
