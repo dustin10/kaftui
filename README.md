@@ -33,7 +33,8 @@ The following statistics are currently tracked.
 * Detailed per-partition information.
 
 There is also a dedicated UI for browsing the topics available on the Kafka cluster along with their configuration
-details and current partition information.
+details and current partition information. When viewing the topics, the user can press the `/` key to filter the list
+based on a starts with string match.
 
 ![kaftui application topics ui running with the default theme](assets/kaftui-default-topics.png)
 
