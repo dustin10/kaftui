@@ -642,6 +642,7 @@ impl Component for Topics {
                 key_bindings.push(KEY_BINDING_FILTER);
             }
             (TopicsWidget::Topics, Some(_)) => {
+                key_bindings.push(KEY_BINDING_FILTER);
                 key_bindings.push(KEY_BINDING_CLEAR_FILTER);
             }
             (TopicsWidget::FilterInput, _) => {
