@@ -342,7 +342,7 @@ impl Topics {
             self.state.topics_scroll_state = self
                 .state
                 .topics_scroll_state
-                .content_length(self.state.topics.len());
+                .content_length(self.state.visible_topics.len());
 
             let scrollbar = Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight)
