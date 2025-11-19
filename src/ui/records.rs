@@ -754,10 +754,19 @@ impl Component for Records {
     }
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
+        if self.state.consumer_mode.get() == ConsumerMode::Stopped {
+            let text = Paragraph::new(super::KEY_BINDING_QUIT)
+                .style(self.theme.key_bindings_text_color)
+                .right_aligned();
+
+            frame.render_widget(text, area);
+            return;
+        }
+
         let consumer_mode_key_binding = match self.state.consumer_mode.get() {
-            ConsumerMode::Stopped => "",
             ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
             ConsumerMode::Paused => super::KEY_BINDING_RESUME,
+            _ => "",
         };
 
         let mut key_bindings = Vec::from(RECORDS_STANDARD_KEY_BINDINGS);
