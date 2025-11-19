@@ -25,7 +25,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
-    widgets::{Block, Borders, Padding, Paragraph, Tabs},
+    widgets::{Block, Padding, Paragraph, Tabs},
 };
 use schema_registry_client::rest::schema_registry_client::Client;
 use std::str::FromStr;
@@ -101,50 +101,18 @@ where
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
     /// user is viewing.
     pub fn draw(&mut self, frame: &mut Frame) {
-        if self.state.initializing {
-            self.render_initialize(frame);
-        } else {
-            let [header_area, component_area, footer_area] = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Length(3),
-                    Constraint::Min(1),
-                    Constraint::Length(3),
-                ])
-                .areas(frame.area());
-
-            self.render_header(frame, header_area);
-            self.render_component(frame, component_area);
-            self.render_footer(frame, footer_area);
-        }
-    }
-    /// Renders the UI to the terminal during application initialization.
-    fn render_initialize(&self, frame: &mut Frame) {
-        let border_color =
-            Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
-
-        let [empty_area, initializing_text_area] = Layout::default()
+        let [header_area, component_area, footer_area] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(1),
+                Constraint::Length(3),
+            ])
             .areas(frame.area());
 
-        let empty_text = Paragraph::default().block(
-            Block::default()
-                .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-                .border_style(border_color),
-        );
-
-        let initializing_text = Paragraph::new("Initializing...")
-            .style(border_color)
-            .block(
-                Block::default()
-                    .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-                    .border_style(border_color),
-            )
-            .centered();
-
-        frame.render_widget(empty_text, empty_area);
-        frame.render_widget(initializing_text, initializing_text_area);
+        self.render_header(frame, header_area);
+        self.render_component(frame, component_area);
+        self.render_footer(frame, footer_area);
     }
     /// Renders the header panel that contains the key bindings.
     fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -173,7 +141,7 @@ where
 
         let mut menu_items = Vec::new();
         for i in 0..self.components.len() {
-            let component = self.components.get(i).expect("valid index");
+            let component = self.components.get(i).expect("valid component index");
 
             if component
                 .borrow()

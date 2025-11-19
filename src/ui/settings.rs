@@ -404,7 +404,7 @@ impl Settings {
             ListItem::new(""),
             ListItem::new(Text::from_iter([
                 Line::from(Span::styled("Topic", self.theme.label_color)),
-                Line::from(config.topic.clone()),
+                Line::from(config.topic.as_ref().map_or("<none>", |t| t.as_str())),
             ])),
             ListItem::new(""),
             ListItem::new(Text::from_iter([

@@ -69,6 +69,8 @@ struct RecordsState {
     /// Stores the current [`ConsumerMode`] of the application which indicates whether records are
     /// currently being consumed from the Kafka topic.
     consumer_mode: Rc<Cell<ConsumerMode>>,
+    /// Flag indicating whether the Kafka consumer failed to start.
+    startup_failed: bool,
     /// Stores the widget that the currently has focus.
     active_widget: RecordsWidget,
     /// Currently selected [`Record`] that is being viewed.
@@ -95,6 +97,7 @@ impl RecordsState {
     fn new(consumer_mode: Rc<Cell<ConsumerMode>>, max_records: usize) -> Self {
         Self {
             consumer_mode,
+            startup_failed: false,
             active_widget: RecordsWidget::List,
             selected: None,
             records: BoundedVecDeque::new(max_records),
@@ -591,6 +594,31 @@ impl Records {
         frame.render_widget(empty_text, empty_area);
         frame.render_widget(no_record_text, no_record_text_area);
     }
+    /// Renders the given message centered both vertically and horizontally in the given area.
+    fn render_message(&self, frame: &mut Frame, area: Rect, msg: &str) {
+        let [empty_area, text_area] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(area);
+
+        let empty_text = Paragraph::default().block(
+            Block::default()
+                .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
+                .border_style(self.theme.panel_border_color),
+        );
+
+        let message_block = Block::default()
+            .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
+            .border_style(self.theme.panel_border_color);
+
+        let message_text = Paragraph::new(msg)
+            .style(self.theme.panel_border_color)
+            .block(message_block)
+            .centered();
+
+        frame.render_widget(empty_text, empty_area);
+        frame.render_widget(message_text, text_area);
+    }
 }
 
 impl Component for Records {
@@ -600,17 +628,23 @@ impl Component for Records {
     }
     /// Renders the component-specific widgets to the terminal.
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let [records_table_panel, record_details_panel] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .areas(area);
-
-        self.render_record_list(frame, records_table_panel);
-
-        if self.state.is_record_selected() {
-            self.render_record_details(frame, record_details_panel);
+        if self.state.consumer_mode.get() == ConsumerMode::Stopped {
+            self.render_message(frame, area, "Connecting...");
+        } else if self.state.startup_failed {
+            self.render_message(frame, area, "Failed to start Kafka consumer!");
         } else {
-            self.render_record_empty(frame, record_details_panel);
+            let [records_table_panel, record_details_panel] = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(area);
+
+            self.render_record_list(frame, records_table_panel);
+
+            if self.state.is_record_selected() {
+                self.render_record_details(frame, record_details_panel);
+            } else {
+                self.render_record_empty(frame, record_details_panel);
+            }
         }
     }
     /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
@@ -692,6 +726,14 @@ impl Component for Records {
     /// application.
     fn on_app_event(&mut self, event: &Event) {
         match event {
+            Event::ConsumerStarted => {
+                tracing::info!("Kafka consumer started");
+                self.state.consumer_mode.set(ConsumerMode::Processing);
+            }
+            Event::ConsumerStartFailure(e) => {
+                tracing::error!("Kafka consumer failed to start: {}", e);
+                self.state.startup_failed = true;
+            }
             Event::SelectNextWidget => self.state.select_next_widget(),
             Event::RecordReceived(record) => self.state.push_record(record.clone()),
             _ => {}
@@ -713,6 +755,7 @@ impl Component for Records {
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
         let consumer_mode_key_binding = match self.state.consumer_mode.get() {
+            ConsumerMode::Stopped => "",
             ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
             ConsumerMode::Paused => super::KEY_BINDING_RESUME,
         };
@@ -750,5 +793,14 @@ impl Component for Records {
             .right_aligned();
 
         frame.render_widget(text, area);
+    }
+    /// Hook for the [`Component`] to run any logic required when it becomes active. The
+    /// [`Component`] can also return an optional [`Event`] that will be dispatched.
+    fn on_activate(&mut self) -> Option<Event> {
+        if self.state.consumer_mode.get() == ConsumerMode::Stopped {
+            Some(Event::StartConsumer)
+        } else {
+            None
+        }
     }
 }

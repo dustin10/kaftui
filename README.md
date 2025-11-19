@@ -58,8 +58,14 @@ installing the application. If you would like to build the `rdkafka` library fro
 `cmake-build`. This option requires CMake to be installed. See the
 [rdkafka-sys docs](https://github.com/fede1024/rust-rdkafka/tree/master/rdkafka-sys#features) for more details.
 
-Next, execute the application passing the `--bootstrap-servers` and `--topic` arguments and start viewing records from
-the topic.
+To simply view the topics available on the Kafka cluster, execute the `kaftui` command passing only the
+`--bootstrap-servers` argument.
+
+```sh
+> kaftui --bootstrap-servers localhost:9092
+```
+
+To consume records from a topic, execute the application passing the `--bootstrap-servers` and `--topic` arguments.
 
 ```sh
 > kaftui --bootstrap-servers localhost:9092 --topic orders
@@ -80,10 +86,10 @@ set the `--value-format` argument to `json` to have it pretty printed on display
 
 ### Schema Registry
 
-If the key and/or value in the Kafka records has been serialized into `JSONSchema`, `Avro` or `Protobuf` format using
-the schema registry enabled serializers, i.e. the magic bytes are prepended to the record key or value data, then
-specify the corresponding `--key-format` and/or `--value-format` argument along with the schema registry connection
-details in order for the `kaftui` application to properly deserialize the records for display.
+If the key and/or value of the Kafka records in the topic has been serialized into `JSONSchema`, `Avro` or `Protobuf`
+format using the schema registry enabled serializers, i.e. the magic bytes are prepended to the record key or value
+data, then specify the corresponding `--key-format` and/or `--value-format` argument along with the schema registry
+connection details in order for the `kaftui` application to properly deserialize the records for display.
 
 #### JSONSchema
 
@@ -151,7 +157,8 @@ Protobuf message type that corresponds to the value of the records in the Kafka 
 ## CLI Arguments
 
 * `--bootstrap-servers, -b` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
-* `--topic, -t` - Name of the Kafka topic to consume records from.
+* `--topic, -t` - Name of the Kafka topic to consume records from. If no topic is specified, the application will start
+up into the `Topics` UI allowing the user to browse the topics available on the Kafka cluster.
 * `--partitions` - CSV of the partition numbers that the consumer should be assigned. This argument is used to restrict
 the set of partitions that will be consumed. If not specified, all partitions will be assigned. For example, `0,2`
 would cause only partitions `0` and `2` to be assigned to the Kafka consumer.

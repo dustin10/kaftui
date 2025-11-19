@@ -65,7 +65,9 @@ where
 
                 (self.processing_style.into(), filter_text)
             }
-            ConsumerMode::Paused => (self.paused_style.into(), String::default()),
+            ConsumerMode::Paused | ConsumerMode::Stopped => {
+                (self.paused_style.into(), String::default())
+            }
         };
 
         let paragraph = Paragraph::new(format!(

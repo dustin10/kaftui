@@ -50,8 +50,11 @@ const RECORD_FORMAT_AVRO: &str = "avro";
 const RECORD_FORMAT_PROTOBUF: &str = "protobuf";
 
 /// Enumerates the different states that the Kafka consumer can be in.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConsumerMode {
+    /// Consumer is stopped and not processing records from the topic.
+    #[default]
+    Stopped,
     /// Consumer is paused and not processing records from the topic.
     Paused,
     /// Consumer is processing records from the topic.
@@ -409,9 +412,7 @@ pub enum ConsumerEvent {
 }
 
 #[derive(Builder, Clone)]
-pub struct ConsumerConfig {
-    /// Configuration properties that will be set for the Kafka consumer.
-    props: HashMap<String, String>,
+pub struct ConsumeTopicConfig {
     /// Name of the Kafka topic to consume messages from.
     topic: String,
     /// Partitions on the topic that the consumer should be assigned.
@@ -421,6 +422,20 @@ pub struct ConsumerConfig {
     seek_to: SeekTo,
     /// Any filter to apply to the record.
     filter: Option<String>,
+}
+
+impl ConsumeTopicConfig {
+    /// Creates a new default [`ConsumeTopicConfigBuilder`] which is used to construct a
+    /// [`ConsumeTopicConfig`].
+    pub fn builder() -> ConsumeTopicConfigBuilder {
+        ConsumeTopicConfigBuilder::default()
+    }
+}
+
+#[derive(Builder, Clone)]
+pub struct ConsumerConfig {
+    /// Configuration properties that will be set for the Kafka consumer.
+    props: HashMap<String, String>,
     /// Specifies the [`KeyDeserializer`] that should be used to deserialize the key of the Kafka
     /// record.
     key_deserializer: Arc<dyn KeyDeserializer>,
@@ -453,22 +468,12 @@ impl TryFrom<ConsumerConfig> for Consumer {
 pub struct Consumer {
     /// Underlying Kafka consumer.
     consumer: Arc<StreamConsumer<ConsumerContext>>,
-    /// Name of the Kafka topic to consume messages from.
-    topic: String,
-    /// Partitions on the topic that the consumer should be assigned.
-    partitions: Vec<i32>,
     /// Specifies the [`KeyDeserializer`] that should be used to deserialize the key of the Kafka
     /// record.
     key_deserializer: Arc<dyn KeyDeserializer>,
     /// Specifies the [`ValueDeserializer`] that should be used to deserialize the value of the
     /// Kafka record.
     value_deserializer: Arc<dyn ValueDeserializer>,
-    /// Drives the partitions offsets the Kafka consumer seeks to before starting to consume
-    /// records.
-    seek_to: SeekTo,
-    /// JSONPath filter that is applied to a [`Record`]. Can be used to filter out any messages
-    /// from the Kafka topic that the end user may not be interested in.
-    filter: Option<String>,
     /// Sender for the Kafka consumer channel.
     consumer_tx: Sender<ConsumerEvent>,
 }
@@ -503,50 +508,26 @@ impl Consumer {
             .create_with_context(context)
             .context("create Kafka consumer")?;
 
-        let partitions = if config.partitions.is_empty() {
-            tracing::debug!("fetching metadata for topic {} from broker", config.topic);
-
-            let topic_metadata = consumer
-                .fetch_metadata(Some(&config.topic), Duration::from_secs(10))
-                .context("fetch topic metadata from broker")?;
-
-            topic_metadata
-                .topics()
-                .first()
-                .expect("topic metadata exists")
-                .partitions()
-                .iter()
-                .map(|mp| mp.id())
-                .collect()
-        } else {
-            tracing::debug!("partition assignments specified by user");
-            config.partitions
-        };
-
         Ok(Self {
             consumer: Arc::new(consumer),
-            topic: config.topic,
-            partitions,
             key_deserializer: config.key_deserializer,
             value_deserializer: config.value_deserializer,
-            seek_to: config.seek_to,
-            filter: config.filter,
             consumer_tx: config.consumer_tx,
         })
     }
     /// Starts the consumption of records from the specified Kafka topic.
-    pub fn start(&self) -> anyhow::Result<()> {
-        let topic = self.topic.as_ref();
+    pub fn start(&self, config: ConsumeTopicConfig) -> anyhow::Result<()> {
+        let topic = config.topic.as_ref();
 
         tracing::info!(
             "assigning partitions to Kafka consumer: {:?}",
-            self.partitions
+            config.partitions
         );
 
-        let mut assignments_list = TopicPartitionList::with_capacity(self.partitions.len());
+        let mut assignments_list = TopicPartitionList::with_capacity(config.partitions.len());
 
-        for partition in self.partitions.iter() {
-            match self.seek_to {
+        for partition in config.partitions.iter() {
+            match config.seek_to {
                 SeekTo::None => {
                     let _ = assignments_list.add_partition(topic, *partition);
                 }
@@ -573,7 +554,7 @@ impl Consumer {
             .assign(&assignments_list)
             .context("assign partitions to consumer")?;
 
-        for partition in self.partitions.iter() {
+        for partition in config.partitions.iter() {
             let partition_queue = self
                 .consumer
                 .split_partition_queue(topic.as_ref(), *partition)
@@ -584,7 +565,7 @@ impl Consumer {
                 partition_queue: Arc::new(partition_queue),
                 key_deserializer: Arc::clone(&self.key_deserializer),
                 value_deserializer: Arc::clone(&self.value_deserializer),
-                filter: self.filter.clone(),
+                filter: config.filter.clone(),
                 consumer_tx: self.consumer_tx.clone(),
             };
 

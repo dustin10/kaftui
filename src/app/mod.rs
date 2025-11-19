@@ -5,7 +5,7 @@ use crate::{
     app::{config::Config, export::Exporter},
     event::{Event, EventBus},
     kafka::{
-        Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
+        ConsumeTopicConfig, Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
         admin::{AdminClient, AdminClientConfig, Topic, TopicConfig},
         de::{KeyDeserializer, ValueDeserializer},
         schema::{Schema, SchemaClient, Subject, Version},
@@ -144,8 +144,6 @@ impl Notification {
 pub struct State {
     /// Flag indicating the application is running.
     pub running: bool,
-    /// Flag that indicates whether the application is initializing.
-    pub initializing: bool,
     /// Stores the current [`ConsumerMode`] of the application which controls whether or not
     /// records are currently being consumed from the topic.
     pub consumer_mode: Rc<Cell<ConsumerMode>>,
@@ -163,7 +161,6 @@ impl State {
     ) -> Self {
         Self {
             running: true,
-            initializing: true,
             consumer_mode,
             active_component,
             notification: None,
@@ -237,22 +234,8 @@ where
 
         consumer_props.insert(String::from("group.id"), config.group_id.clone());
 
-        let partitions = config
-            .partitions
-            .as_ref()
-            .map(|csv| csv.split(","))
-            .map(|ps| {
-                ps.map(|p| p.parse::<i32>().expect("valid partition value"))
-                    .collect()
-            })
-            .unwrap_or_default();
-
         let consumer_config = ConsumerConfig::builder()
             .props(consumer_props.clone())
-            .topic(config.topic.clone())
-            .partitions(partitions)
-            .seek_to(config.seek_to.clone())
-            .filter(config.filter.clone())
             .key_deserializer(key_deserializer)
             .value_deserializer(value_deserializer)
             .consumer_tx(consumer_tx)
@@ -264,7 +247,7 @@ where
 
         let exporter = Exporter::new(config.export_directory.clone());
 
-        let consumer_mode = Rc::new(Cell::new(ConsumerMode::Processing));
+        let consumer_mode = Rc::new(Cell::new(ConsumerMode::Stopped));
 
         let admin_client_config = AdminClientConfig::builder()
             .properties(consumer_props)
@@ -282,30 +265,38 @@ where
                 .expect("valid Topics config"),
         )));
 
-        let records_component = Rc::new(RefCell::new(Records::from(
-            RecordsConfig::builder()
-                .consumer_mode(Rc::clone(&consumer_mode))
-                .topic(config.topic.clone())
-                .filter(config.filter.clone())
-                .theme(&config.theme)
-                .scroll_factor(config.scroll_factor)
-                .max_records(config.max_records)
-                .build()
-                .expect("valid Records config"),
-        )));
+        let mut selected_component: Rc<RefCell<dyn Component>> = topics_component.clone();
 
-        let stats_component = Rc::new(RefCell::new(Stats::from(
-            StatsConfig::builder()
-                .consumer_mode(Rc::clone(&consumer_mode))
-                .topic(config.topic.clone())
-                .filter(config.filter.clone())
-                .theme(&config.theme)
-                .build()
-                .expect("valid Stats config"),
-        )));
+        let mut components: Vec<Rc<RefCell<dyn Component>>> = vec![topics_component];
 
-        let mut components: Vec<Rc<RefCell<dyn Component>>> =
-            vec![topics_component, records_component.clone(), stats_component];
+        if let Some(topic) = config.topic.clone() {
+            let records_component = Rc::new(RefCell::new(Records::from(
+                RecordsConfig::builder()
+                    .consumer_mode(Rc::clone(&consumer_mode))
+                    .topic(topic.clone())
+                    .filter(config.filter.clone())
+                    .theme(&config.theme)
+                    .scroll_factor(config.scroll_factor)
+                    .max_records(config.max_records)
+                    .build()
+                    .expect("valid Records config"),
+            )));
+
+            selected_component = records_component.clone();
+            components.push(records_component);
+
+            let stats_component = Rc::new(RefCell::new(Stats::from(
+                StatsConfig::builder()
+                    .consumer_mode(Rc::clone(&consumer_mode))
+                    .topic(topic)
+                    .filter(config.filter.clone())
+                    .theme(&config.theme)
+                    .build()
+                    .expect("valid Stats config"),
+            )));
+
+            components.push(stats_component);
+        }
 
         // if schema registry is enabled push the schemas component and create the client used to
         // interact with the schema registry
@@ -360,7 +351,7 @@ where
             menu_item_chars.push(item);
         }
 
-        let state = State::new(consumer_mode, records_component);
+        let state = State::new(consumer_mode, selected_component);
 
         Ok(Self {
             config,
@@ -388,13 +379,18 @@ where
 
         self.start_poll_terminal_async(terminal_tx);
 
-        self.start_poll_consumer_async();
-
         if let Some(rx) = logs_rx {
             self.start_poll_logs_async(rx);
         }
 
         let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(TICK_INTERVAL_SECS));
+
+        if let Some(event) = self
+            .state
+            .activate_component(Rc::clone(&self.state.active_component))
+        {
+            self.event_bus.send(event);
+        }
 
         while self.state.running {
             terminal
@@ -446,15 +442,58 @@ where
     }
     /// Starts the consumer asynchronously. The result of the consumer startup is sent back to the
     /// application through the [`EventBus`].
-    fn start_poll_consumer_async(&self) {
+    fn start_poll_consumer_async(&self) -> anyhow::Result<()> {
+        let topic = self.config.topic.clone().expect("topic configured");
+
+        let partitions: Vec<i32> = self
+            .config
+            .partitions
+            .as_ref()
+            .map(|csv| csv.split(","))
+            .map(|ps| {
+                ps.map(|p| p.parse::<i32>().expect("valid partition value"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let partitions = if partitions.is_empty() {
+            tracing::debug!("fetching metadata for topic {} from broker", topic);
+
+            let topic_metadata = self
+                .consumer
+                .fetch_topic_metadata(Some(topic.as_str()), std::time::Duration::from_secs(10))
+                .context("fetch topic metadata from broker")?;
+
+            topic_metadata
+                .first()
+                .expect("topic metadata exists")
+                .partitions
+                .iter()
+                .map(|mp| mp.id)
+                .collect()
+        } else {
+            tracing::debug!("partition assignments specified by user");
+            partitions
+        };
+
+        let consume_config = ConsumeTopicConfig::builder()
+            .topic(topic)
+            .partitions(partitions)
+            .seek_to(self.config.seek_to.clone())
+            .filter(self.config.filter.clone())
+            .build()
+            .expect("valid ConsumeTopicConfig");
+
         let start_consumer_task = StartConsumerTask {
             consumer: Arc::clone(&self.consumer),
             event_bus: Arc::clone(&self.event_bus),
         };
 
         tokio::spawn(async move {
-            start_consumer_task.run().await;
+            start_consumer_task.run(consume_config).await;
         });
+
+        Ok(())
     }
     /// Spawns a task that will receive [`Log`] messages on the specified [`Receiver`] and then
     /// publish an [`Event::LogEmitted`] application event.
@@ -467,11 +506,6 @@ where
         tokio::spawn(async move {
             poll_logs_task.run().await;
         });
-    }
-    /// Handles the consumer started event emitted by the [`EventBus`].
-    fn on_consumer_started(&mut self) {
-        tracing::info!("Kafka consumer started");
-        self.state.initializing = false;
     }
     /// Handles the tick event which fires at a regular interval. This allows the application to
     /// perform any periodic operations that are not event-driven.
@@ -523,9 +557,10 @@ where
     async fn on_app_event(&mut self, event: Event) {
         match event {
             Event::Quit => self.on_quit(),
-            Event::ConsumerStarted => self.on_consumer_started(),
-            Event::ConsumerStartFailure(e) => {
-                panic!("failed to start Kafka consumer: {}", e)
+            Event::StartConsumer => {
+                if let Err(e) = self.start_poll_consumer_async() {
+                    self.event_bus.send(Event::ConsumerStartFailure(e));
+                }
             }
             Event::SelectComponent(idx) => self.on_select_component(idx),
             Event::ExportRecord(record) => self.on_export_record(record),
@@ -839,8 +874,8 @@ struct StartConsumerTask {
 impl StartConsumerTask {
     /// Runs the task. Starts the consumer and send the appropriate [`Event`] based on the result
     /// of startup on the [`EventBus`].
-    async fn run(self) {
-        match self.consumer.start() {
+    async fn run(self, consume_config: ConsumeTopicConfig) {
+        match self.consumer.start(consume_config) {
             Ok(_) => self.event_bus.send(Event::ConsumerStarted),
             Err(e) => self.event_bus.send(Event::ConsumerStartFailure(e)),
         };

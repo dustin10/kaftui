@@ -38,7 +38,9 @@ struct Cli {
     /// records.
     #[arg(short, long)]
     bootstrap_servers: Option<String>,
-    /// Name of the Kafka topic which records will be consumed from.
+    /// Name of the Kafka topic which records will be consumed from. If no topic is specified, the
+    /// application will fallback to displaying the list of topics available on the Kafka cluster
+    /// for the user to browse.
     #[arg(short, long)]
     topic: Option<String>,
     /// CSV of the partition numbers that the consumer should be assigned. This argument is used to

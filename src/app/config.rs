@@ -45,8 +45,8 @@ impl From<Format> for ValueKind {
 pub struct Config {
     /// Kafka bootstrap servers host value that the application will connect to.
     pub bootstrap_servers: String,
-    /// Name of the Kafka topic to consume messages from.
-    pub topic: String,
+    /// Name of the Kafka topic to consume messages from, if configured.
+    pub topic: Option<String>,
     /// CSV of partitions numbers that the consumer should be assigned. If none, all of the
     /// partitions which make up the topic will be assigned.
     pub partitions: Option<String>,

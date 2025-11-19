@@ -19,6 +19,8 @@ use tokio::sync::mpsc::UnboundedSender;
 pub enum Event {
     /// Fires when the user requests to quit the application.
     Quit,
+    /// Fires when the Records component is activated and the Kafka consumer needs to be started.
+    StartConsumer,
     /// Fires when the Kafka consumer was started successfully.
     ConsumerStarted,
     /// Fires when the Kafka consumer startup failed.

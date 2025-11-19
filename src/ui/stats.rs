@@ -727,6 +727,7 @@ impl<'a> Component for Stats<'a> {
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
         let consumer_mode_key_binding = match self.state.consumer_mode.get() {
+            ConsumerMode::Stopped => "",
             ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
             ConsumerMode::Paused => super::KEY_BINDING_RESUME,
         };
