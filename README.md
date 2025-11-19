@@ -305,6 +305,8 @@ properties are available to be configured using a theme.
 * `statusTextColorPaused` - Color of the status text in the footer when the Kafka consumer is paused.
 * `keyBindingsTextColor` - Color of the key bindings text in the footer.
 * `labelColor` - Color of the widget labels, e.g. table header text.
+* `highlightedTextColor` - Color used for text when the user's attention should be drawn to it, e.g. non-default topic
+configuration values. 
 * `recordListTextColor` - Color of the rows in the record list table.
 * `recordInfoTextColor` - Color of the record properties text in the record info table.
 * `recordHeadersTextColor` - Color of the record headers text in the record headers table.
@@ -401,6 +403,7 @@ set of values that are available to configure the application from this file.
     "statusTextColorProcessing": "#50FA7B",
     "keyBindingsTextColor": "#F1FA8C",
     "labelColor": "#FF79C6",
+    "highlightedTextColor": "#BD93F9",
     "recordListTextColor": "#F8F8F2",
     "recordInfoTextColor": "#F8F8F2",
     "recordHeadersTextColor": "#F8F8F2",

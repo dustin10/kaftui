@@ -33,7 +33,7 @@ const KEY_BINDING_CLEAR_FILTER: &str = "(c) clear filter";
 const TOPICS_KEY_BINDINGS: [&str; 1] = [super::KEY_BINDING_QUIT];
 
 /// Headers for the topic configuration table along with their fill constraints.
-const TOPIC_CONFIG_HEADERS: [(&str, u16); 3] = [("Key", 5), ("Value", 4), ("Default", 1)];
+const TOPIC_CONFIG_HEADERS: [(&str, u16); 2] = [("Key", 5), ("Value", 5)];
 
 /// Headers for the topic partitions table along with their fill constraints.
 const TOPIC_PARTITIONS_HEADERS: [(&str, u16); 3] = [("ID", 3), ("Leader", 3), ("Replicas", 4)];
@@ -190,6 +190,8 @@ struct TopicsTheme {
     selected_panel_border_color: Color,
     /// Color used for the label text in tables, etc.
     label_color: Color,
+    /// Color used for the non-default topic configuration.
+    highlight_text_color: Color,
     /// Color used for the key bindings text. Defaults to white.
     key_bindings_text_color: Color,
 }
@@ -205,6 +207,9 @@ impl From<&Theme> for TopicsTheme {
 
         let label_color = Color::from_str(value.label_color.as_str()).expect("valid RGB hex");
 
+        let highlight_text_color =
+            Color::from_str(value.highlight_text_color.as_str()).expect("valid RGB hex");
+
         let key_bindings_text_color =
             Color::from_str(value.key_bindings_text_color.as_str()).expect("valid RGB hex");
 
@@ -212,6 +217,7 @@ impl From<&Theme> for TopicsTheme {
             panel_border_color,
             selected_panel_border_color,
             label_color,
+            highlight_text_color,
             key_bindings_text_color,
         }
     }
@@ -401,16 +407,15 @@ impl Topics {
             .entries()
             .iter()
             .map(|e| {
-                let default = if e.default {
-                    Span::raw("true")
+                let style = if e.default {
+                    Style::default()
                 } else {
-                    Span::styled("false", Style::from(self.theme.label_color))
+                    Style::from(self.theme.highlight_text_color)
                 };
 
                 Row::new(vec![
-                    Span::raw(&e.key),
-                    Span::raw(e.value.as_ref().map_or("", |v| v.as_str())),
-                    default,
+                    Span::raw(&e.key).style(style),
+                    Span::raw(e.value.as_ref().map_or("", |v| v.as_str())).style(style),
                 ])
             })
             .collect();

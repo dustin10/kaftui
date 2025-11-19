@@ -448,6 +448,8 @@ pub struct Theme {
     pub key_bindings_text_color: String,
     /// Color used for the label text in tables, etc. Defaults to white.
     pub label_color: String,
+    /// Color used for text that should get the user's attention. Defaults to yellow.
+    pub highlight_text_color: String,
     /// Color used for the text in the record list. Defaults to white.
     pub record_list_text_color: String,
     /// Color used for the text in the record info. Defaults to white.
@@ -511,6 +513,7 @@ impl Default for Theme {
             status_text_color_paused: String::from("#FF0000"),
             key_bindings_text_color: String::from("#FFFFFF"),
             label_color: String::from("#FFFFFF"),
+            highlight_text_color: String::from("#FFFF00"),
             record_list_text_color: String::from("#FFFFFF"),
             record_info_text_color: String::from("#FFFFFF"),
             record_value_text_color: String::from("#FFFFFF"),
@@ -560,6 +563,11 @@ impl From<Theme> for ValueKind {
         );
 
         data.insert(String::from("labelColor"), Value::from(value.label_color));
+
+        data.insert(
+            String::from("highlightTextColor"),
+            Value::from(value.highlight_text_color),
+        );
 
         data.insert(
             String::from("recordListTextColor"),
