@@ -43,7 +43,7 @@ impl ExportedRecord {
             Format::Json | Format::Avro | Format::Protobuf => match serde_json::from_str(v) {
                 Ok(json) => json,
                 Err(e) => {
-                    tracing::error!("failed to serialize record value to JSON: {}", e);
+                    tracing::error!("failed to serialize record value to JSON for export: {}", e);
                     serde_json::Value::String(v.clone())
                 }
             },
@@ -94,7 +94,7 @@ impl From<Schema> for ExportedSchema {
             schema: match serde_json::from_str(&schema.schema) {
                 Ok(json) => json,
                 Err(e) => {
-                    tracing::error!("failed to serialize schema to JSON: {}", e);
+                    tracing::error!("failed to serialize schema to JSON for export: {}", e);
                     serde_json::Value::String(schema.schema)
                 }
             },

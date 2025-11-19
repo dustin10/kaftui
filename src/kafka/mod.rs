@@ -351,7 +351,10 @@ impl ClientContext for ConsumerContext {
 
         tokio::spawn(async move {
             if let Err(e) = tx.send(ConsumerEvent::Statistics(boxed_stats)).await {
-                tracing::error!("failed to send statistics event consumer channel: {}", e);
+                tracing::error!(
+                    "failed to send statistics over event consumer channel: {}",
+                    e
+                );
             }
         });
     }
@@ -360,7 +363,7 @@ impl ClientContext for ConsumerContext {
 impl RDConsumerContext for ConsumerContext {
     /// Hook invoked right before the consumer begins rebalancing.
     fn pre_rebalance(&self, _base_consumer: &BaseConsumer<Self>, rebalance: &Rebalance<'_>) {
-        tracing::debug!("rebalance initiated: {:?}", rebalance);
+        tracing::info!("rebalance initiated: {:?}", rebalance);
     }
     /// Hook invoked after the consumer rebalancing has been completed.
     fn post_rebalance(&self, _base_consumer: &BaseConsumer<Self>, rebalance: &Rebalance) {
@@ -375,7 +378,7 @@ impl RDConsumerContext for ConsumerContext {
                     tracing::info!("revoked partition {} on {}", e.partition(), e.topic())
                 });
             }
-            Rebalance::Error(err) => tracing::error!("error during rebalance: {}", err),
+            Rebalance::Error(e) => tracing::error!("error during rebalance: {}", e),
         }
     }
     /// Hook invoked after the consumer has attempted to commit offsets.
@@ -767,7 +770,7 @@ where
                     let value = match std::str::from_utf8(h.value.expect("header value exists")) {
                         Ok(s) => String::from(s),
                         Err(e) => {
-                            tracing::warn!("invalid UTF8 header value: {}", e);
+                            tracing::warn!("invalid UTF8 record header value: {}", e);
                             String::from("")
                         }
                     };

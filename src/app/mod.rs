@@ -457,7 +457,7 @@ where
             .unwrap_or_default();
 
         let partitions = if partitions.is_empty() {
-            tracing::debug!("fetching metadata for topic {} from broker", topic);
+            tracing::info!("fetching metadata for topic {} from broker", topic);
 
             let topic_metadata = self
                 .consumer
@@ -472,7 +472,7 @@ where
                 .map(|mp| mp.id)
                 .collect()
         } else {
-            tracing::debug!("partition assignments specified by user");
+            tracing::info!("partition assignments specified by user");
             partitions
         };
 
@@ -624,7 +624,7 @@ where
     async fn load_topics(&self) {
         let topics = match self.admin_client.load_topics().await {
             Ok(topics) => {
-                tracing::debug!("loaded {} topics from Kafka cluster", topics.len());
+                tracing::info!("loaded {} topics from Kafka cluster", topics.len());
                 topics
             }
             Err(e) => {
@@ -639,7 +639,7 @@ where
     async fn load_topic_details(&self, topic: Topic) {
         let topic_config = match self.admin_client.load_topic_config(&topic.name).await {
             Ok(config) => {
-                tracing::debug!(
+                tracing::info!(
                     "loaded configuration for topic {} from Kafka cluster",
                     topic.name,
                 );
@@ -668,7 +668,7 @@ where
 
         let subjects = match result {
             Ok(subjects) => {
-                tracing::debug!(
+                tracing::info!(
                     "loaded {} subjects from the schema registry",
                     subjects.len()
                 );
@@ -697,7 +697,7 @@ where
 
         let schema = match schema_res {
             Ok(schema) => {
-                tracing::debug!(
+                tracing::info!(
                     "loaded latest schema for subject {} from the schema registry",
                     subject.as_ref()
                 );
@@ -715,7 +715,7 @@ where
 
         let versions = match versions_res {
             Ok(versions) => {
-                tracing::debug!(
+                tracing::info!(
                     "loaded {} versions for subject {} from the schema registry",
                     versions.len(),
                     subject.as_ref()
@@ -747,7 +747,7 @@ where
 
         let schema = match result {
             Ok(schema) => {
-                tracing::debug!(
+                tracing::info!(
                     "loaded schema for subject {} version {} from the schema registry",
                     subject.as_ref(),
                     version
@@ -847,7 +847,7 @@ where
     }
     /// Handles the [`Event::Quit`] event emitted by the [`EventBus`].
     fn on_quit(&mut self) {
-        tracing::debug!("quit application request received");
+        tracing::info!("received quit application request");
         self.state.running = false;
     }
     /// Handles the [`Event::SelectComponent`] event emitted by the [`EventBus`].
@@ -855,7 +855,7 @@ where
         tracing::debug!("attemping to select component {}", idx);
 
         if let Some(component) = self.components.get(idx) {
-            tracing::debug!("activating {} component", component.borrow().name());
+            tracing::info!("activating {} component", component.borrow().name());
             if let Some(event) = self.state.activate_component(Rc::clone(component)) {
                 self.event_bus.send(event);
             }

@@ -314,6 +314,8 @@ impl ProtobufSchemaDeserializer {
         key_type: Option<impl Into<String>>,
         value_type: Option<impl Into<String>>,
     ) -> anyhow::Result<Self> {
+        tracing::info!("reading protobuf files from dir: {}", protos_dir.as_ref());
+
         let context = util::read_files_recursive(protos_dir, PROTO_FILE_EXTENSION)
             .context("find proto files")
             .and_then(|protos| ProtoContext::parse(protos).context("parse protobuf files"))?;
@@ -364,7 +366,7 @@ impl ProtobufSchemaDeserializer {
                 Some(f) => f,
                 None => {
                     tracing::warn!(
-                        "unable to find field info for field number {}",
+                        "unable to find protobuf field info for field number {}",
                         field_value.number
                     );
                     continue;
@@ -385,7 +387,7 @@ impl ProtobufSchemaDeserializer {
                         Some(field) => format!("\"{}\"", field.name),
                         None => {
                             tracing::warn!(
-                                "unable to find enum field for value {}",
+                                "unable to find protobuf enum field for value {}",
                                 enum_value.value
                             );
                             format!("\"<unknown enum value - {}>\"", enum_value.value)

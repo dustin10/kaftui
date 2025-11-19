@@ -199,7 +199,7 @@ fn generate_group_id() -> String {
         Ok(name) => format!("{}{}", DEFAULT_CONSUMER_GROUP_ID_PREFIX, name),
         Err(e) => {
             tracing::warn!(
-                "falling back to timestamp because hostname could not be resolved: {:?}",
+                "falling back to timestamp group id because hostname could not be resolved: {:?}",
                 e
             );
             format!(
@@ -243,7 +243,7 @@ impl PersistedConfig {
         match std::fs::read_to_string(path) {
             Ok(s) => serde_json::from_str(&s).context("deserialize PersistedConfig from JSON"),
             Err(e) if e.kind() == ErrorKind::NotFound => {
-                tracing::info!("no persisted config file found, using defaults");
+                tracing::info!("no persisted config file found - using defaults");
                 Ok(PersistedConfig::default())
             }
             Err(e) => Err(e).context("read PersistedConfig file"),

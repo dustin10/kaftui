@@ -309,7 +309,7 @@ fn init_env() -> Option<Receiver<Log>> {
         Ok(path) => tracing::info!(".env file loaded from {}", path.display()),
         Err(e) => match e {
             dotenvy::Error::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
-                tracing::debug!("no .env file found")
+                tracing::info!("no .env file found")
             }
             _ => tracing::warn!("failed to load .env file: {}", e),
         },
