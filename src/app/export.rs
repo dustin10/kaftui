@@ -1,5 +1,6 @@
 use crate::kafka::{
     Format, Record,
+    admin::{Partition, Topic, TopicConfig, TopicConfigEntry},
     schema::{Schema, SchemaRef, Version},
 };
 
@@ -102,6 +103,29 @@ impl From<Schema> for ExportedSchema {
     }
 }
 
+/// Combined view of a Kafka [`Topic`] and its associated [`TopicConfig`] that is saved to a file
+/// in JSON format when the user requests that the selected topic be exported.
+#[derive(Clone, Debug, Serialize)]
+struct ExportedTopic {
+    /// Name of the topic.
+    name: String,
+    /// Current partition details for the topic.
+    partitions: Vec<Partition>,
+    /// Configuration entries for the topic.
+    config: Vec<TopicConfigEntry>,
+}
+
+impl ExportedTopic {
+    /// Creates a new [`ExportedTopic`] from the given [`Topic`] and [`TopicConfig`].
+    fn new(topic: Topic, config: TopicConfig) -> Self {
+        Self {
+            name: topic.name,
+            partitions: topic.partitions,
+            config: config.entries().to_vec(),
+        }
+    }
+}
+
 /// The [`Exporter`] is responsible for exporting a Kafka [`Record`]s and [`Schema`]s to the user's
 /// file system. It does this by first serializing the values to JSON and then saving them to a
 /// file in the configured directory.
@@ -165,6 +189,24 @@ impl Exporter {
         );
 
         let _ = std::fs::write(file_path.as_str(), json).context("write exported schema to file");
+
+        Ok(file_path)
+    }
+    /// Exports the given [`Topic`] and [`TopicConfig`] to the file system in JSON format.
+    pub fn export_topic(&self, topic: Topic, config: TopicConfig) -> anyhow::Result<String> {
+        let exported_topic = ExportedTopic::new(topic, config);
+
+        let json = serde_json::to_string_pretty(&exported_topic)
+            .context("serialize exported topic to JSON")?;
+
+        let file_path = format!(
+            "{}{}topic-{}.json",
+            self.base_dir,
+            std::path::MAIN_SEPARATOR,
+            exported_topic.name,
+        );
+
+        let _ = std::fs::write(file_path.as_str(), json).context("write exported topic to file");
 
         Ok(file_path)
     }

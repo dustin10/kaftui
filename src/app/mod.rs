@@ -6,7 +6,7 @@ use crate::{
     event::{Event, EventBus},
     kafka::{
         Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
-        admin::{AdminClient, AdminClientConfig, Topic},
+        admin::{AdminClient, AdminClientConfig, Topic, TopicConfig},
         de::{KeyDeserializer, ValueDeserializer},
         schema::{Schema, SchemaClient, Subject, Version},
     },
@@ -545,6 +545,7 @@ where
             Event::ExportSchema(schema) => self.on_export_schema(schema),
             Event::LoadTopics => self.load_topics().await,
             Event::LoadTopicConfig(topic) => self.load_topic_details(topic).await,
+            Event::ExportTopic(topic, config) => self.on_export_topic(topic, config),
             _ => {
                 self.components
                     .iter()
@@ -732,7 +733,7 @@ where
         self.event_bus.send(Event::SchemaVersionLoaded(schema));
     }
     /// Handles the [`Event::ExportSchema`] event emitted by the [`EventBus`].
-    fn on_export_schema(&mut self, schema: Schema) {
+    fn on_export_schema(&self, schema: Schema) {
         tracing::debug!("exporting selected schema");
 
         let notification = match self.exporter.export_schema(schema) {
@@ -743,6 +744,24 @@ where
             Err(e) => {
                 tracing::error!("failed to export schema: {}", e);
                 Notification::failure("Schema Export Failed")
+            }
+        };
+
+        self.event_bus
+            .send(Event::DisplayNotification(notification));
+    }
+    /// Handles the [`Event::ExportTopic`] event emitted by the [`EventBus`].
+    fn on_export_topic(&self, topic: Topic, config: TopicConfig) {
+        tracing::debug!("exporting selected topic");
+
+        let notification = match self.exporter.export_topic(topic, config) {
+            Ok(path) => {
+                tracing::info!("topic exported to {}", path);
+                Notification::success("Topic Exported Successfully")
+            }
+            Err(e) => {
+                tracing::error!("failed to export topic: {}", e);
+                Notification::failure("Topic Export Failed")
             }
         };
 

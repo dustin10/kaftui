@@ -1,9 +1,9 @@
 use crate::{
     app::Notification,
     kafka::{
+        Record,
         admin::{Topic, TopicConfig},
         schema::{Schema, Subject, Version},
-        Record,
     },
     trace::Log,
 };
@@ -66,6 +66,8 @@ pub enum Event {
     LoadTopicConfig(Topic),
     /// Fires when a topic configuration has been loaded from the Kafka cluster.
     TopicConfigLoaded(Option<TopicConfig>),
+    /// Fires when the user wants to export a [`Topic`] and it's configuration to a file.
+    ExportTopic(Topic, TopicConfig),
     /// Marker event used to indicate no operation.
     Void,
 }

@@ -30,13 +30,7 @@ const KEY_BINDING_CLEAR_FILTER: &str = "(c) clear filter";
 
 /// Key bindings that are always displayed to the user in the footer when viewing the topics
 /// screen.
-const TOPICS_KEY_BINDINGS: [&str; 5] = [
-    super::KEY_BINDING_QUIT,
-    super::KEY_BINDING_TOP,
-    super::KEY_BINDING_NEXT,
-    super::KEY_BINDING_PREV,
-    super::KEY_BINDING_BOTTOM,
-];
+const TOPICS_KEY_BINDINGS: [&str; 1] = [super::KEY_BINDING_QUIT];
 
 /// Headers for the topic configuration table along with their fill constraints.
 const TOPIC_CONFIG_HEADERS: [(&str, u16); 3] = [("Key", 5), ("Value", 4), ("Default", 1)];
@@ -407,10 +401,16 @@ impl Topics {
             .entries()
             .iter()
             .map(|e| {
+                let default = if e.default {
+                    Span::raw("true")
+                } else {
+                    Span::styled("false", Style::from(self.theme.label_color))
+                };
+
                 Row::new(vec![
-                    e.key.clone(),
-                    e.value.clone().unwrap_or_else(|| String::from("")),
-                    e.is_default.to_string(),
+                    Span::raw(&e.key),
+                    Span::raw(e.value.as_ref().map_or("", |v| v.as_str())),
+                    default,
                 ])
             })
             .collect();
@@ -548,6 +548,20 @@ impl Component for Topics {
                         self.state.on_clear_filter();
                         Some(Event::Void)
                     }
+                    'e' => {
+                        if let Some(selected_topic) = self.state.selected_topic.as_ref()
+                            && let Some(selected_topic_config) =
+                                self.state.selected_topic_config.as_ref()
+                        {
+                            Some(Event::ExportTopic(
+                                selected_topic.clone(),
+                                selected_topic_config.clone(),
+                            ))
+                        } else {
+                            tracing::warn!("no topic or config available to export");
+                            None
+                        }
+                    }
                     'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
                         .state
                         .select_first_topic()
@@ -611,6 +625,17 @@ impl Component for Topics {
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
         let mut key_bindings = Vec::from(TOPICS_KEY_BINDINGS);
+
+        if self.state.selected_topic.is_some() && self.state.selected_topic_config.is_some() {
+            key_bindings.push(super::KEY_BINDING_EXPORT);
+        }
+
+        key_bindings.extend_from_slice(&[
+            super::KEY_BINDING_TOP,
+            super::KEY_BINDING_NEXT,
+            super::KEY_BINDING_PREV,
+            super::KEY_BINDING_BOTTOM,
+        ]);
 
         match (self.state.active_widget, self.state.topics_filter.as_ref()) {
             (TopicsWidget::Topics, None) => {

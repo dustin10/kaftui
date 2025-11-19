@@ -8,11 +8,12 @@ use rdkafka::{
     config::{FromClientConfigAndContext, RDKafkaLogLevel},
     metadata::{MetadataPartition, MetadataTopic},
 };
+use serde::Serialize;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 /// Represents a partition of a Kafka topic including the IDs of the current leader and replica
 /// brokers.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Partition {
     /// ID of the partition.
     pub id: i32,
@@ -89,14 +90,14 @@ impl IntoIterator for TopicConfig {
 }
 
 /// Represents a single configuration entry for a Kafka topic.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct TopicConfigEntry {
     /// Key of the configuration entry.
     pub key: String,
     /// Values of the configuration entry.
     pub value: Option<String>,
     /// Indicates if the configuration entry is a default value.
-    pub is_default: bool,
+    pub default: bool,
 }
 
 impl From<ConfigEntry> for TopicConfigEntry {
@@ -105,7 +106,7 @@ impl From<ConfigEntry> for TopicConfigEntry {
         Self {
             key: value.name,
             value: value.value,
-            is_default: value.is_default,
+            default: value.is_default,
         }
     }
 }
