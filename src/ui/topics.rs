@@ -637,10 +637,6 @@ impl Component for Topics {
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
         let mut key_bindings = Vec::from(TOPICS_KEY_BINDINGS);
 
-        if self.state.selected_topic.is_some() && self.state.selected_topic_config.is_some() {
-            key_bindings.push(super::KEY_BINDING_EXPORT);
-        }
-
         key_bindings.extend_from_slice(&[
             super::KEY_BINDING_TOP,
             super::KEY_BINDING_NEXT,
@@ -659,6 +655,10 @@ impl Component for Topics {
             (TopicsWidget::FilterInput, _) => {
                 key_bindings.push(KEY_BINDING_APPLY_FILTER);
             }
+        }
+
+        if self.state.selected_topic.is_some() && self.state.selected_topic_config.is_some() {
+            key_bindings.push(super::KEY_BINDING_EXPORT);
         }
 
         let text = Paragraph::new(key_bindings.join(" | "))

@@ -941,11 +941,7 @@ impl Component for Schemas {
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
         let mut key_bindings = Vec::from(SCHEMAS_KEY_BINDINGS);
-
-        if self.state.selected_schema.is_some() {
-            key_bindings.push(super::KEY_BINDING_EXPORT);
-        }
-
+ 
         match self.state.active_widget {
             SchemasWidget::Subjects | SchemasWidget::Versions | SchemasWidget::References => {
                 key_bindings.push(super::KEY_BINDING_TOP);
@@ -958,6 +954,10 @@ impl Component for Schemas {
                 key_bindings.push(super::KEY_BINDING_SCROLL_DOWN);
                 key_bindings.push(super::KEY_BINDING_SCROLL_UP);
             }
+        }
+
+        if self.state.selected_schema.is_some() {
+            key_bindings.push(super::KEY_BINDING_EXPORT);
         }
 
         let text = Paragraph::new(key_bindings.join(" | "))
