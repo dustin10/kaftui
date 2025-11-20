@@ -450,6 +450,8 @@ impl<'a> From<SchemasConfig<'a>> for Schemas {
     }
 }
 
+// TODO: implement filtering of subjects similar to the topics component
+
 /// The application [`Component`] that is responsible for displaying data from the Schema Registry
 /// if one is configured.
 pub struct Schemas {

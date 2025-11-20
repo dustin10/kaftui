@@ -1,5 +1,3 @@
-use crate::kafka::Consumer;
-
 use anyhow::Context;
 use derive_builder::Builder;
 use rdkafka::{
@@ -9,7 +7,7 @@ use rdkafka::{
     metadata::{MetadataPartition, MetadataTopic},
 };
 use serde::Serialize;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 /// Represents a partition of a Kafka topic including the IDs of the current leader and replica
 /// brokers.
@@ -144,8 +142,6 @@ pub struct AdminClientConfig {
     /// Optional operation timeout for admin operations.
     #[builder(setter(into, strip_option), default)]
     operation_timeout: Option<Duration>,
-    /// Shared reference to the Kafka consumer used to fetch topic metadata.
-    consumer: Arc<Consumer>,
 }
 
 impl AdminClientConfig {
@@ -164,10 +160,6 @@ pub struct AdminClient {
     client: RDAdminClient<AdminClientContext>,
     /// Admin options used for rdkafka client operations.
     admin_options: AdminOptions,
-    /// Request timeout duration for admin operations.
-    request_timeout: Duration,
-    /// Shared reference to the Kafka consumer used to list topics.
-    consumer: Arc<Consumer>,
 }
 
 impl AdminClient {
@@ -186,17 +178,7 @@ impl AdminClient {
         Ok(Self {
             client,
             admin_options,
-            request_timeout: config
-                .request_timeout
-                .unwrap_or_else(|| Duration::from_secs(30)),
-            consumer: config.consumer,
         })
-    }
-    /// Loads all known topics from the Kafka cluster.
-    pub async fn load_topics(&self) -> anyhow::Result<Vec<Topic>> {
-        // TODO: maybe this should not be here as it is really just a pass-through?
-        self.consumer
-            .fetch_topic_metadata(None, self.request_timeout)
     }
     /// Loads the configuration details for the specified topic from the Kafka cluster.
     pub async fn load_topic_config(

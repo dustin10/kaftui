@@ -251,7 +251,6 @@ where
 
         let admin_client_config = AdminClientConfig::builder()
             .properties(consumer_props)
-            .consumer(Arc::clone(&consumer))
             .build()
             .expect("valid AdminClientConfig");
 
@@ -579,7 +578,7 @@ where
             }
             Event::ExportSchema(schema) => self.on_export_schema(schema),
             Event::LoadTopics => self.load_topics().await,
-            Event::LoadTopicConfig(topic) => self.load_topic_details(topic).await,
+            Event::LoadTopicConfig(topic) => self.load_topic_config(topic).await,
             Event::ExportTopic(topic, config) => self.on_export_topic(topic, config),
             _ => {
                 self.components
@@ -622,7 +621,10 @@ where
     }
     /// Loads the existing topics from the the Kafka cluster.
     async fn load_topics(&self) {
-        let topics = match self.admin_client.load_topics().await {
+        let topics = match self
+            .consumer
+            .fetch_topic_metadata(None, std::time::Duration::from_secs(30))
+        {
             Ok(topics) => {
                 tracing::info!("loaded {} topics from Kafka cluster", topics.len());
                 topics
@@ -636,7 +638,7 @@ where
         self.event_bus.send(Event::TopicsLoaded(topics));
     }
     /// Loads the configuration details for the specified [`Topic`] from the Kafka cluster.
-    async fn load_topic_details(&self, topic: Topic) {
+    async fn load_topic_config(&self, topic: Topic) {
         let topic_config = match self.admin_client.load_topic_config(&topic.name).await {
             Ok(config) => {
                 tracing::info!(
