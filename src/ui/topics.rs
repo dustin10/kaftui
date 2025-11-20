@@ -125,7 +125,10 @@ impl TopicsState {
         self.topics_list_state.select_first();
         self.topics_scroll_state.first();
 
-        let topic_idx = self.visible_indices.first().expect("visible indices is not empty");
+        let topic_idx = self
+            .visible_indices
+            .first()
+            .expect("visible indices is not empty");
         self.selected_topic = self.topics.get(*topic_idx).cloned();
 
         self.selected_topic.as_ref()
@@ -177,8 +180,10 @@ impl TopicsState {
         self.topics_list_state.select_last();
         self.topics_scroll_state.last();
 
-
-        let topic_idx = self.visible_indices.last().expect("visible indices is not empty");
+        let topic_idx = self
+            .visible_indices
+            .last()
+            .expect("visible indices is not empty");
         self.selected_topic = self.topics.get(*topic_idx).cloned();
 
         self.selected_topic.as_ref()

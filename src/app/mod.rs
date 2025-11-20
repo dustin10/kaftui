@@ -2,7 +2,10 @@ pub mod config;
 pub mod export;
 
 use crate::{
-    app::{config::Config, export::Exporter},
+    app::{
+        config::{Config, PersistedConfig},
+        export::Exporter,
+    },
     event::{Event, EventBus},
     kafka::{
         ConsumeTopicConfig, Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
@@ -210,6 +213,7 @@ where
 {
     /// Creates a new [`App`] with the specified dependencies.
     pub fn new(
+        persisted_config: PersistedConfig,
         config: Config,
         key_deserializer: Arc<dyn KeyDeserializer>,
         value_deserializer: Arc<dyn ValueDeserializer>,
@@ -319,6 +323,7 @@ where
 
         let settings_component = Settings::try_from(
             SettingsConfig::builder()
+                .persisted_config(persisted_config)
                 .config(Rc::clone(&config))
                 .theme(&config.theme)
                 .build()

@@ -63,6 +63,7 @@ impl From<usize> for SettingsMenuItem {
 /// Configuration used to create a new [`Settings`] component.
 #[derive(Builder, Debug)]
 pub struct SettingsConfig<'a> {
+    persisted_config: PersistedConfig,
     /// The current application [`Config`] that will be displayed to the user.
     config: Rc<Config>,
     /// Reference to the application [`Theme`].
@@ -229,11 +230,7 @@ struct SettingsState {
 
 impl SettingsState {
     /// Creates a new default [`SettingsState`].
-    fn new() -> anyhow::Result<Self> {
-        // TODO: only load persisted config once
-        let persisted_config = PersistedConfig::load_from_home_dir()
-            .context("load PersistedConfig from home directory")?;
-
+    fn new(persisted_config: PersistedConfig) -> anyhow::Result<Self> {
         Ok(Self {
             active_widget: SettingsWidget::default(),
             menu_list_state: ListState::default(),
@@ -313,7 +310,9 @@ impl Settings {
     fn new(config: SettingsConfig<'_>) -> anyhow::Result<Self> {
         let theme = config.theme.into();
 
-        let mut state = SettingsState::new().context("SettingsState created")?;
+        let mut state =
+            SettingsState::new(config.persisted_config).context("SettingsState created")?;
+
         state.menu_list_state.select_first();
 
         Ok(Self {

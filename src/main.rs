@@ -6,7 +6,10 @@ mod ui;
 mod util;
 
 use crate::{
-    app::{App, config::Config},
+    app::{
+        App,
+        config::{Config, PersistedConfig},
+    },
     kafka::{
         Format, SeekTo,
         de::{
@@ -243,9 +246,13 @@ async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
     let profile_name = args.profile.clone();
 
-    let config = Config::new(args, profile_name).context("create application config")?;
+    let persisted_config =
+        PersistedConfig::load_from_home_dir().context("load PersistedConfig from home dir")?;
 
-    run_app(config, logs_rx).await
+    let config = Config::new(args, persisted_config.clone(), profile_name)
+        .context("create application config")?;
+
+    run_app(persisted_config, config, logs_rx).await
 }
 
 /// Environment variable that can be used to enable capturing logs to a file for debugging.
@@ -335,7 +342,11 @@ fn logs_dir() -> String {
 }
 
 /// Runs the application.
-async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Result<()> {
+async fn run_app(
+    persisted_config: PersistedConfig,
+    config: Config,
+    logs_rx: Option<Receiver<Log>>,
+) -> anyhow::Result<()> {
     let schema_registry_client = create_schema_registry_client(&config);
 
     let (key_deserializer, value_deserializer) =
@@ -343,6 +354,7 @@ async fn run_app(config: Config, logs_rx: Option<Receiver<Log>>) -> anyhow::Resu
             .context("create key and value deserializers")?;
 
     let app = App::new(
+        persisted_config,
         config,
         key_deserializer,
         value_deserializer,

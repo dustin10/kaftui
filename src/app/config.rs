@@ -110,14 +110,15 @@ impl Config {
     /// 3. Profile values, if one is specified
     /// 4. Applicable configuration values from $HOME/.kaftui.json file
     /// 5. Default values
-    pub fn new<P, S>(cli_args: S, profile_name: Option<P>) -> anyhow::Result<Self>
+    pub fn new<S, P>(
+        cli_args: S,
+        persisted_config: PersistedConfig,
+        profile_name: Option<P>,
+    ) -> anyhow::Result<Self>
     where
-        P: AsRef<str>,
         S: Source + Send + Sync + 'static,
+        P: AsRef<str>,
     {
-        let persisted_config = PersistedConfig::load_from_home_dir()
-            .context("load PersistedConfig from home directory")?;
-
         let profile = profile_name.and_then(|name| {
             persisted_config.profiles.as_ref().and_then(|ps| {
                 ps.iter()
