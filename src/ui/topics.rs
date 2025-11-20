@@ -66,8 +66,9 @@ struct TopicsState {
     active_widget: TopicsWidget,
     /// List of all topics retrieved from the Kafka cluster.
     topics: Vec<Topic>,
-    /// List of only the topics currently visible to the user based on the filter value.
-    visible_topics: Vec<Topic>,
+    /// Indices into the topics list of only the topics currently visible to the user based on the
+    /// filter value.
+    visible_indices: Vec<usize>,
     /// Currently selected topic.
     selected_topic: Option<Topic>,
     /// Configuration details for the currently selected topic.
@@ -87,14 +88,13 @@ impl TopicsState {
     fn update_visible_topics(&mut self) {
         let filter = self.topics_filter.as_ref().map_or("", |f| f.as_str());
 
-        // TODO: this feels wasteful when there is a large set of topics. try to avoid this clone
-        // here by maybe using indices instead or some other method.
-        self.visible_topics = self
+        self.visible_indices = self
             .topics
-            .clone()
-            .into_iter()
-            .filter(|t| t.name.starts_with(filter))
-            .collect();
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.name.starts_with(filter))
+            .map(|(i, _)| i)
+            .collect::<Vec<usize>>();
     }
     /// Deselects the currently selected topic.
     fn deselect_topic(&mut self) {
@@ -118,25 +118,26 @@ impl TopicsState {
     }
     /// Selects the first topic in the list.
     fn select_first_topic(&mut self) -> Option<&Topic> {
-        if self.visible_topics.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
         self.topics_list_state.select_first();
         self.topics_scroll_state.first();
 
-        self.selected_topic = self.visible_topics.first().cloned();
+        let topic_idx = self.visible_indices.first().expect("visible indices is not empty");
+        self.selected_topic = self.topics.get(*topic_idx).cloned();
 
         self.selected_topic.as_ref()
     }
     /// Selects the next topic in the list.
     fn select_next_topic(&mut self) -> Option<&Topic> {
-        if self.visible_topics.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
         if let Some(curr_idx) = self.topics_list_state.selected()
-            && curr_idx == self.visible_topics.len() - 1
+            && curr_idx == self.visible_indices.len() - 1
         {
             return None;
         }
@@ -146,13 +147,14 @@ impl TopicsState {
 
         let idx = self.topics_list_state.selected().expect("topic selected");
 
-        self.selected_topic = self.visible_topics.get(idx).cloned();
+        let topic_idx = self.visible_indices.get(idx).expect("visible index exists");
+        self.selected_topic = self.topics.get(*topic_idx).cloned();
 
         self.selected_topic.as_ref()
     }
     /// Selects the previous topic in the list.
     fn select_prev_topic(&mut self) -> Option<&Topic> {
-        if self.visible_topics.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
@@ -161,20 +163,23 @@ impl TopicsState {
 
         let idx = self.topics_list_state.selected().expect("topic selected");
 
-        self.selected_topic = self.visible_topics.get(idx).cloned();
+        let topic_idx = self.visible_indices.get(idx).expect("visible index exists");
+        self.selected_topic = self.topics.get(*topic_idx).cloned();
 
         self.selected_topic.as_ref()
     }
     /// Selects the last topic in the list.
     fn select_last_topic(&mut self) -> Option<&Topic> {
-        if self.visible_topics.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
         self.topics_list_state.select_last();
         self.topics_scroll_state.last();
 
-        self.selected_topic = self.visible_topics.last().cloned();
+
+        let topic_idx = self.visible_indices.last().expect("visible indices is not empty");
+        self.selected_topic = self.topics.get(*topic_idx).cloned();
 
         self.selected_topic.as_ref()
     }
@@ -313,7 +318,7 @@ impl Topics {
         if self.state.network_status == NetworkStatus::LoadingTopics {
             self.render_message(frame, area, "Loading topics...");
             return;
-        } else if self.state.visible_topics.is_empty() {
+        } else if self.state.visible_indices.is_empty() {
             self.render_message(frame, area, "No topics found");
             return;
         }
@@ -331,8 +336,9 @@ impl Topics {
 
         let list_items: Vec<ListItem> = self
             .state
-            .visible_topics
+            .visible_indices
             .iter()
+            .map(|i| self.state.topics.get(*i).expect("valid topic index"))
             .map(|t| ListItem::new::<&str>(t.name.as_ref()))
             .collect();
 
@@ -348,7 +354,7 @@ impl Topics {
             self.state.topics_scroll_state = self
                 .state
                 .topics_scroll_state
-                .content_length(self.state.visible_topics.len());
+                .content_length(self.state.visible_indices.len());
 
             let scrollbar = Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight)
@@ -619,7 +625,7 @@ impl Component for Topics {
             Span::raw(self.state.topics.len().to_string()),
             Span::raw(" | "),
             Span::styled("Visible: ", Style::from(self.theme.label_color).bold()),
-            Span::raw(self.state.visible_topics.len().to_string()),
+            Span::raw(self.state.visible_indices.len().to_string()),
             Span::raw(format!(" (Filter: {})", filter_value)),
         ]);
 
