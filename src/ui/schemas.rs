@@ -23,6 +23,15 @@ use std::str::FromStr;
 /// screen.
 const SCHEMAS_KEY_BINDINGS: [&str; 2] = [super::KEY_BINDING_QUIT, super::KEY_BINDING_CHANGE_FOCUS];
 
+/// Text displayed to the user in the footer for the filter key binding.
+const KEY_BINDING_FILTER: &str = "(/) filter";
+
+/// Text displayed to the user in the footer for the stop filtering key binding.
+const KEY_BINDING_APPLY_FILTER: &str = "(enter) apply filter";
+
+/// Text displayed to the user in the footer for the clear filter key binding.
+const KEY_BINDING_CLEAR_FILTER: &str = "(c) clear filter";
+
 /// Enumerates the possible network states of the [`Topics`] component.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 enum NetworkStatus {
@@ -41,6 +50,8 @@ enum SchemasWidget {
     /// The subjects list widget.
     #[default]
     Subjects,
+    /// The subjects filter input widget.
+    FilterInput,
     /// The schema definition widget.
     Schema,
     /// The schema versions list widget.
@@ -56,6 +67,9 @@ struct SchemasState {
     active_widget: SchemasWidget,
     /// Current subjects retrieved from the schema registry.
     subjects: Vec<Subject>,
+    /// Indices into the subjects list of only the subjects currently visible to the user based on the
+    /// filter value.
+    visible_indices: Vec<usize>,
     /// Currently selected subject.
     selected_subject: Option<Subject>,
     /// Currently selected schema details.
@@ -78,6 +92,8 @@ struct SchemasState {
     references_scroll_state: ScrollbarState,
     /// Current network status of the component.
     network_status: NetworkStatus,
+    /// Current filter applied to the subjects list.
+    subjects_filter: Option<String>,
 }
 
 impl SchemasState {
@@ -85,11 +101,44 @@ impl SchemasState {
     fn new() -> Self {
         Self::default()
     }
+    /// Updates the list of visible subjects based on the current filter value.
+    fn update_visible_subjects(&mut self) {
+        let filter = self.subjects_filter.as_ref().map_or("", |f| f.as_str());
+
+        self.visible_indices = self
+            .subjects
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.as_ref().starts_with(filter))
+            .map(|(i, _)| i)
+            .collect::<Vec<usize>>();
+    }
+    /// Deselects the currently selected subject.
+    fn deselect_subject(&mut self) {
+        self.subjects_list_state.select(None);
+        self.selected_subject = None;
+    }
+    /// Invoked when the user starts filtering subjects.
+    fn on_start_filter(&mut self) {
+        self.active_widget = SchemasWidget::FilterInput;
+        self.deselect_subject();
+    }
+    /// Invoked when the user applies the subject filter.
+    fn on_apply_filter(&mut self) {
+        self.active_widget = SchemasWidget::Subjects;
+    }
+    /// Invoked when the user clears the subject filter.
+    fn on_clear_filter(&mut self) {
+        self.subjects_filter = None;
+        self.deselect_subject();
+        self.update_visible_subjects();
+    }
     /// Cycles the focus to the next available widget based on the currently selected widget.
     fn select_next_widget(&mut self) {
         if let Some(schema) = self.selected_schema.as_ref() {
             self.active_widget = match self.active_widget {
                 SchemasWidget::Subjects => SchemasWidget::Schema,
+                SchemasWidget::FilterInput => SchemasWidget::Subjects,
                 SchemasWidget::Schema => SchemasWidget::Versions,
                 SchemasWidget::Versions => {
                     if schema.references.is_some() {
@@ -104,7 +153,7 @@ impl SchemasState {
     }
     /// Selects the first subject in the list.
     fn select_first_subject(&mut self) -> Option<&Subject> {
-        if self.subjects.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
@@ -119,18 +168,22 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        self.selected_subject = self.subjects.first().cloned();
+        let subject_idx = self
+            .visible_indices
+            .first()
+            .expect("visible indices is not empty");
+        self.selected_subject = self.subjects.get(*subject_idx).cloned();
 
         self.selected_subject.as_ref()
     }
     /// Selects the next subject in the list.
     fn select_next_subject(&mut self) -> Option<&Subject> {
-        if self.subjects.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
         if let Some(curr_idx) = self.subjects_list_state.selected()
-            && curr_idx == self.subjects.len() - 1
+            && curr_idx == self.visible_indices.len() - 1
         {
             return None;
         }
@@ -146,18 +199,16 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        let idx = self
-            .subjects_list_state
-            .selected()
-            .expect("subject selected");
+        let idx = self.subjects_list_state.selected().expect("subject selected");
 
-        self.selected_subject = self.subjects.get(idx).cloned();
+        let subject_idx = self.visible_indices.get(idx).expect("visible index exists");
+        self.selected_subject = self.subjects.get(*subject_idx).cloned();
 
         self.selected_subject.as_ref()
     }
     /// Selects the previous subject in the list.
     fn select_prev_subject(&mut self) -> Option<&Subject> {
-        if self.subjects.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
@@ -173,18 +224,16 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        let idx = self
-            .subjects_list_state
-            .selected()
-            .expect("subject selected");
+        let idx = self.subjects_list_state.selected().expect("subject selected");
 
-        self.selected_subject = self.subjects.get(idx).cloned();
+        let subject_idx = self.visible_indices.get(idx).expect("visible index exists");
+        self.selected_subject = self.subjects.get(*subject_idx).cloned();
 
         self.selected_subject.as_ref()
     }
     /// Selects the last subject in the list.
     fn select_last_subject(&mut self) -> Option<&Subject> {
-        if self.subjects.is_empty() {
+        if self.visible_indices.is_empty() {
             return None;
         }
 
@@ -199,7 +248,11 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        self.selected_subject = self.subjects.last().cloned();
+        let subject_idx = self
+            .visible_indices
+            .last()
+            .expect("visible indices is not empty");
+        self.selected_subject = self.subjects.get(*subject_idx).cloned();
 
         self.selected_subject.as_ref()
     }
@@ -450,8 +503,6 @@ impl<'a> From<SchemasConfig<'a>> for Schemas {
     }
 }
 
-// TODO: implement filtering of subjects similar to the topics component
-
 /// The application [`Component`] that is responsible for displaying data from the Schema Registry
 /// if one is configured.
 pub struct Schemas {
@@ -476,11 +527,29 @@ impl Schemas {
     fn on_subjects_loaded(&mut self, subjects: Vec<Subject>) {
         self.state.network_status = NetworkStatus::Idle;
         self.state.subjects = subjects;
+        self.state.update_visible_subjects();
+    }
+    /// Renders the filter input box for filtering subjects.
+    fn render_filter_input(&mut self, frame: &mut Frame, area: Rect) {
+        let filter_block = Block::bordered()
+            .title(" Filter ")
+            .border_type(BorderType::Thick)
+            .border_style(self.theme.selected_panel_border_color)
+            .padding(Padding::new(1, 1, 0, 0));
+
+        let filter = self.state.subjects_filter.as_ref().map_or("", |f| f.as_str());
+
+        let filter_text = Paragraph::new(filter).block(filter_block);
+
+        frame.render_widget(filter_text, area);
     }
     /// Renders the list of subjects.
     fn render_subjects(&mut self, frame: &mut Frame, area: Rect) {
         if self.state.network_status == NetworkStatus::LoadingSubjects {
             self.render_message(frame, area, "Loading subjects...", None);
+            return;
+        } else if self.state.visible_indices.is_empty() {
+            self.render_message(frame, area, "No subjects found", None);
             return;
         }
 
@@ -497,8 +566,9 @@ impl Schemas {
 
         let list_items: Vec<ListItem> = self
             .state
-            .subjects
+            .visible_indices
             .iter()
+            .map(|i| self.state.subjects.get(*i).expect("valid subject index"))
             .map(|s| ListItem::new(s.as_ref()))
             .collect();
 
@@ -514,7 +584,7 @@ impl Schemas {
             self.state.subjects_scroll_state = self
                 .state
                 .subjects_scroll_state
-                .content_length(self.state.subjects.len());
+                .content_length(self.state.visible_indices.len());
 
             let scrollbar = Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight)
@@ -777,7 +847,20 @@ impl Component for Schemas {
                 .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
                 .areas(area);
 
-            self.render_subjects(frame, left_panel);
+            let subjects_panel = if self.state.active_widget == SchemasWidget::FilterInput {
+                let [filter_panel, subjects_panel] = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Max(3), Constraint::Min(1)])
+                    .areas(left_panel);
+
+                self.render_filter_input(frame, filter_panel);
+
+                subjects_panel
+            } else {
+                left_panel
+            };
+
+            self.render_subjects(frame, subjects_panel);
             self.render_message(frame, right_panel, "No subject selected", None);
         } else {
             let [left_panel, middle_panel, right_panel] = Layout::default()
@@ -789,7 +872,20 @@ impl Component for Schemas {
                 ])
                 .areas(area);
 
-            self.render_subjects(frame, left_panel);
+            let subjects_panel = if self.state.active_widget == SchemasWidget::FilterInput {
+                let [filter_panel, subjects_panel] = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Max(3), Constraint::Min(1)])
+                    .areas(left_panel);
+
+                self.render_filter_input(frame, filter_panel);
+
+                subjects_panel
+            } else {
+                left_panel
+            };
+
+            self.render_subjects(frame, subjects_panel);
 
             let [right_top_panel, right_middle_panel, right_bottom_panel] = Layout::default()
                 .direction(Direction::Vertical)
@@ -814,15 +910,42 @@ impl Component for Schemas {
         buffered: Option<&BufferedKeyPress>,
     ) -> Option<Event> {
         match event.code {
-            KeyCode::Char(c) => match c {
-                'e' => self
-                    .state
-                    .selected_schema
-                    .as_ref()
-                    .map(|s| Event::ExportSchema(s.clone())),
-                _ => match self.state.active_widget {
+            KeyCode::Enter => {
+                self.state.on_apply_filter();
+                Some(Event::Void)
+            }
+            KeyCode::Backspace | KeyCode::Delete => {
+                if self.state.active_widget == SchemasWidget::FilterInput
+                    && let Some(filter) = self.state.subjects_filter.as_mut()
+                {
+                    filter.pop();
+                    self.state.update_visible_subjects();
+                }
+
+                if let Some(filter) = self.state.subjects_filter.as_ref()
+                    && filter.is_empty()
+                {
+                    self.state.subjects_filter = None;
+                }
+
+                Some(Event::Void)
+            }
+            KeyCode::Char(c) => match self.state.active_widget {
                     SchemasWidget::Subjects => {
                         let mapped_event = match c {
+                            'e' => self
+                                .state
+                                .selected_schema
+                                .as_ref()
+                                .map(|s| Event::ExportSchema(s.clone())),
+                            '/' => {
+                                self.state.on_start_filter();
+                                Some(Event::Void)
+                            }
+                            'c' if self.state.subjects_filter.is_some() => {
+                                self.state.on_clear_filter();
+                                Some(Event::Void)
+                            }
                             'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
                                 .state
                                 .select_first_subject()
@@ -842,11 +965,22 @@ impl Component for Schemas {
                             _ => None,
                         };
 
-                        if mapped_event.is_some() {
+                        if let Some(Event::LoadLatestSchema(_)) = mapped_event {
                             self.state.network_status = NetworkStatus::LoadingSchema;
                         }
 
                         mapped_event
+                    }
+                    SchemasWidget::FilterInput => {
+                        if let Some(filter) = self.state.subjects_filter.as_mut() {
+                            filter.push(c);
+                        } else {
+                            self.state.subjects_filter = Some(c.to_string());
+                        }
+
+                        self.state.update_visible_subjects();
+
+                        Some(Event::Void)
                     }
                     SchemasWidget::Schema => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
@@ -910,7 +1044,6 @@ impl Component for Schemas {
                         _ => None,
                     },
                 },
-            },
             _ => None,
         }
     }
@@ -929,9 +1062,19 @@ impl Component for Schemas {
     }
     /// Allows the [`Component`] to render the status line text into the footer.
     fn render_status_line(&self, frame: &mut Frame, area: Rect) {
+        let filter_value = self
+            .state
+            .subjects_filter
+            .as_ref()
+            .map_or("<none>", |f| f.as_str());
+
         let line = Line::from_iter([
-            Span::styled("Subjects: ", Style::from(self.theme.label_color).bold()),
+            Span::styled("Total: ", Style::from(self.theme.label_color).bold()),
             Span::raw(self.state.subjects.len().to_string()),
+            Span::raw(" | "),
+            Span::styled("Visible: ", Style::from(self.theme.label_color).bold()),
+            Span::raw(self.state.visible_indices.len().to_string()),
+            Span::raw(format!(" (Filter: {})", filter_value)),
         ]);
 
         let text = Paragraph::new(line).left_aligned();
@@ -954,6 +1097,21 @@ impl Component for Schemas {
                 key_bindings.push(super::KEY_BINDING_SCROLL_DOWN);
                 key_bindings.push(super::KEY_BINDING_SCROLL_UP);
             }
+            SchemasWidget::FilterInput => {}
+        }
+
+        match (self.state.active_widget, self.state.subjects_filter.as_ref()) {
+            (SchemasWidget::Subjects, None) => {
+                key_bindings.push(KEY_BINDING_FILTER);
+            }
+            (SchemasWidget::Subjects, Some(_)) => {
+                key_bindings.push(KEY_BINDING_FILTER);
+                key_bindings.push(KEY_BINDING_CLEAR_FILTER);
+            }
+            (SchemasWidget::FilterInput, _) => {
+                key_bindings.push(KEY_BINDING_APPLY_FILTER);
+            }
+            _ => {}
         }
 
         if self.state.selected_schema.is_some() {

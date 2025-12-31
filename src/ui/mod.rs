@@ -22,10 +22,10 @@ use crate::{
 
 use crossterm::event::KeyEvent;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     widgets::{Block, Padding, Paragraph, Tabs},
+    Frame,
 };
 use schema_registry_client::rest::schema_registry_client::Client;
 use std::str::FromStr;
