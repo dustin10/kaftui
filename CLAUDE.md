@@ -1,55 +1,52 @@
-# CLAUDE.md — kaftui
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-KafTUI is a Rust TUI application for interacting with Apache Kafka. Built with `ratatui` for the UI and `rdkafka` for Kafka connectivity. Supports Schema Registry integration (Avro, Protobuf, JSONSchema), JSONPath filtering, profiles, and custom themes.
+kaftui is a Rust TUI application for interacting with Apache Kafka. It uses ratatui for rendering, tokio for async, crossterm for terminal events, and rdkafka (dynamically linked with SASL/SSL) for Kafka connectivity. It supports JSON Schema, Avro, and Protobuf deserialization via Schema Registry integration.
 
-## Build & Test
+## Build & Development Commands
 
 ```bash
-cargo build           # Debug build
-cargo build --Release # Release build
-cargo fmt             # Format code
-cargo clippy          # Lint
-cargo test            # Test
+cargo build                  # Debug build
+cargo build --release        # Release build
+cargo clippy                 # Lint
+cargo test                   # Run tests
+cargo run -- --bootstrap-servers localhost:9092  # Run with args
 ```
 
-Rust edition 2024, MSRV 1.89.
+Requires Rust 1.89+ and system librdkafka (rdkafka uses dynamic-linking feature).
 
-## Project Structure
+Enable debug logging: `KAFTUI_LOGS_ENABLED=true KAFTUI_LOGS_DIR=./logs`
+
+## Architecture
+
+**Async event-driven architecture** — the main loop uses `tokio::select!` to multiplex terminal events, Kafka consumer events, application events (EventBus), log events, and a tick timer. Events are spawned as independent tasks rather than blocking.
+
+### Key Modules
+
+- **`main.rs`** — CLI arg parsing (clap), config loading, deserializer setup, launches `App::run()`
+- **`app/mod.rs`** — Central `App` struct orchestrating the event loop, component management, consumer lifecycle, and key binding routing
+- **`app/config.rs`** — `Config` merges CLI args + persisted config (`$HOME/.kaftui.json`) + profile defaults. `PersistedConfig` handles profiles, themes, and settings
+- **`app/export.rs`** — Record/schema/topic export to disk
+- **`event.rs`** — `EventBus` (unbounded channel) and `Event` enum (30+ variants for all app actions)
+- **`kafka/mod.rs`** — Kafka `Consumer` wrapping rdkafka `StreamConsumer`, `Record` struct, `Format` enum, `ConsumerMode`, `SeekTo`
+- **`kafka/admin.rs`** — Topic browsing and metadata retrieval
+- **`kafka/de.rs`** — Deserializers: String, JsonString, JsonSchema, AvroSchema, ProtobufSchema
+- **`kafka/schema.rs`** — Schema Registry client wrapper
+- **`ui/mod.rs`** — `Component` trait: `name()`, `render()`, `map_key_event()`, `update()`
+- **`ui/records.rs`, `topics.rs`, `schemas.rs`, `settings.rs`, `stats.rs`, `logs.rs`** — Screen components implementing the Component trait
+- **`trace.rs`** — Custom tracing `CaptureLayer` that buffers logs for in-app display + file output
+
+### Data Flow
 
 ```
-src/
-├── main.rs          # Entry point, CLI (clap), event loop
-├── event.rs         # Event definitions and EventBus (tokio channels)
-├── trace.rs         # Tracing/logging layer
-├── util.rs          # Env var and file utilities
-├── app/
-│   ├── mod.rs       # application state, notification system
-│   ├── config.rs    # Config parsing, profiles, persisted config (~/.kaftui.json)
-│   └── export.rs    # Record and schema export to disk
-├── kafka/
-│   ├── mod.rs       # Consumer, Record, format definitions
-│   ├── de.rs        # Deserializer traits
-│   ├── schema.rs    # Schema Registry client
-│   └── admin.rs     # Admin client (topic discovery, config)
-└── ui/
-    ├── mod.rs       # Component trait, main render dispatch
-    ├── records.rs   # Records screen
-    ├── topics.rs    # Topics browser screen
-    ├── stats.rs     # Consumption statistics screen
-    ├── schemas.rs   # Schema Registry browser screen
-    ├── settings.rs  # Settings display screen
-    ├── logs.rs      # Log viewer screen
-    └── widget.rs    # Shared widget implementations
+CLI Args → Config (merged with persisted profile) → App::new()
+Kafka Consumer → Records Channel → EventBus → App::handle_event() → Component Updates → UI Render
+Schema Registry (optional) feeds deserializers for Avro/JSON Schema/Protobuf payloads
 ```
 
-## Architecture & Conventions
+### UI Component Pattern
 
-- **Async runtime**: tokio. Background tasks use `tokio::spawn()` — never block the main loop with `.await` on long operations.
-- **Error handling**: `anyhow::Result<T>`, `anyhow::bail!()`, `.context()` for wrapping. Log errors with `tracing::error!()`.
-- **UI pattern**: All screens implement the `Component` trait (render, key handling, event processing).
-- **Deserialization**: Trait-based (`KeyDeserializer`/`ValueDeserializer`) for pluggable format support.
-- **Config**: Hierarchical merging — defaults → profile → CLI args. Persisted config at `~/.kaftui.json`.
-- **Naming**: Standard Rust conventions — snake_case functions, PascalCase types, SCREAMING_SNAKE_CASE constants.
-
+All screens implement the `Component` trait. The `App` routes keyboard events to the active component's `map_key_event()`, which returns an `Event`. The app then calls `update()` on relevant components. Rendering happens each loop iteration via `render()`.
