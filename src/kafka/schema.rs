@@ -4,7 +4,7 @@ use schema_registry_client::rest::{
     schema_registry_client::Client,
 };
 use serde::Serialize;
-use std::{borrow::Cow, fmt::Display};
+use std::{borrow::Cow, fmt::Display, sync::Arc};
 
 /// String presented to the user when a schema-releated value is missing or not known.
 const UNKNOWN_SCHEMA_KIND: &str = "<unknown>";
@@ -180,22 +180,22 @@ impl Display for Version {
 
 /// Interacts with the schema registry over HTTP using a pre-configured [`SchemaRegistryClient`].
 #[derive(Clone, Debug)]
-pub struct SchemaClient<'c, C>
+pub struct SchemaClient<C>
 where
     C: Client,
 {
-    /// A reference to the shared schema registry [`Client`] used to interact with the schema
+    /// A shared reference to the schema registry [`Client`] used to interact with the schema
     /// registry.
-    client: &'c C,
+    client: Arc<C>,
 }
 
-impl<'c, C> SchemaClient<'c, C>
+impl<C> SchemaClient<C>
 where
     C: Client + Send + Sync,
 {
     /// Creates a new [`HttpSchemaClient`] which uses the provided [`Client`] to interact with the
     /// schema registry over HTTP.
-    pub fn new(client: &'c C) -> Self {
+    pub fn new(client: Arc<C>) -> Self {
         Self { client }
     }
     /// Loads all of the non-deleted subjects from the schema registry.

@@ -177,7 +177,7 @@ impl State {
 }
 
 /// Drives the execution of the application and coordinates the various subsystems.
-pub struct App<'c, C>
+pub struct App<C>
 where
     C: Client + Send + Sync,
 {
@@ -202,14 +202,14 @@ where
     /// Responsible for exporting Kafka records to the file system.
     exporter: Exporter,
     /// Client used to interact with the schema registry, if configured.
-    schema_client: Option<SchemaClient<'c, C>>,
+    schema_client: Option<Arc<SchemaClient<C>>>,
     /// Admin client used to query the Kafka cluster for topic configurations.
-    admin_client: AdminClient,
+    admin_client: Arc<AdminClient>,
 }
 
-impl<'c, C> App<'c, C>
+impl<C> App<C>
 where
-    C: Client + Send + Sync,
+    C: Client + Send + Sync + 'static,
 {
     /// Creates a new [`App`] with the specified dependencies.
     pub fn new(
@@ -217,7 +217,7 @@ where
         config: Config,
         key_deserializer: Arc<dyn KeyDeserializer>,
         value_deserializer: Arc<dyn ValueDeserializer>,
-        schema_registry_client: Option<&'c C>,
+        schema_registry_client: Option<Arc<C>>,
     ) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -259,7 +259,7 @@ where
             .expect("valid AdminClientConfig");
 
         let admin_client =
-            AdminClient::new(admin_client_config).context("create Kafka admin client")?;
+            Arc::new(AdminClient::new(admin_client_config).context("create Kafka admin client")?);
 
         let topics_component = Rc::new(RefCell::new(Topics::from(
             TopicsConfig::builder()
@@ -314,7 +314,7 @@ where
 
             components.push(schemas_component);
 
-            Some(SchemaClient::new(client))
+            Some(Arc::new(SchemaClient::new(client)))
         } else {
             None
         };
@@ -409,14 +409,14 @@ where
                 biased;
                 Some(terminal_event) = terminal_rx.recv() => {
                     if let TerminalEvent::Key(key_event) = terminal_event {
-                        self.on_key_event(key_event).await;
+                        self.on_key_event(key_event);
                     }
                 }
                 app_events_count =
                     self.event_rx.recv_many(&mut app_events_buffer, APP_EVENTS_BUFFER_SIZE) => {
                     if app_events_count > 0 {
                         for app_event in app_events_buffer.into_iter() {
-                            self.on_app_event(app_event).await;
+                            self.on_app_event(app_event);
                         }
                     }
                 },
@@ -424,7 +424,7 @@ where
                     self.consumer_rx.recv_many(&mut consumer_events_buffer, CONSUMER_EVENTS_BUFFER_SIZE) => {
                     if consumer_events_count > 0 {
                         for consumer_event in consumer_events_buffer.into_iter() {
-                            self.on_consumer_event(consumer_event).await;
+                            self.on_consumer_event(consumer_event);
                         }
                     }
                 }
@@ -522,7 +522,7 @@ where
     }
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
-    async fn on_key_event(&mut self, key_event: KeyEvent) {
+    fn on_key_event(&mut self, key_event: KeyEvent) {
         let app_event = match key_event.code {
             KeyCode::Esc => Some(Event::Quit),
             KeyCode::Tab => Some(Event::SelectNextWidget),
@@ -551,14 +551,14 @@ where
 
         if let Some(e) = app_event {
             self.buffered_key_press = None;
-            self.on_app_event(e).await;
+            self.on_app_event(e);
         } else if let KeyCode::Char(c) = key_event.code {
             self.buffered_key_press = Some(BufferedKeyPress::new(c));
         }
     }
     /// Handles application [`Event`]s either received over the [`EventBus`] or mapped directly by
     /// the application when events are received on other channels.
-    async fn on_app_event(&mut self, event: Event) {
+    fn on_app_event(&mut self, event: Event) {
         match event {
             Event::Quit => self.on_quit(),
             Event::StartConsumer => {
@@ -576,14 +576,14 @@ where
                 .active_component
                 .borrow_mut()
                 .on_app_event(&event),
-            Event::LoadSubjects => self.load_subjects().await,
-            Event::LoadLatestSchema(subject) => self.load_latest_schema(&subject).await,
+            Event::LoadSubjects => self.spawn_load_subjects(),
+            Event::LoadLatestSchema(subject) => self.spawn_load_latest_schema(subject),
             Event::LoadSchemaVersion(subject, version) => {
-                self.load_schema_version(&subject, version).await
+                self.spawn_load_schema_version(subject, version)
             }
             Event::ExportSchema(schema) => self.on_export_schema(schema),
-            Event::LoadTopics => self.load_topics().await,
-            Event::LoadTopicConfig(topic) => self.load_topic_config(topic).await,
+            Event::LoadTopics => self.spawn_load_topics(),
+            Event::LoadTopicConfig(topic) => self.spawn_load_topic_config(topic),
             Event::ExportTopic(topic, config) => self.on_export_topic(topic, config),
             _ => {
                 self.components
@@ -593,14 +593,14 @@ where
         }
     }
     /// Handles [`ConsumerEvent`]s received on the Kafka consumer channel.
-    async fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
+    fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
         let app_event = match consumer_event {
             ConsumerEvent::Received(record) => Event::RecordReceived(record),
             ConsumerEvent::Filtered(record) => Event::RecordFiltered(record),
             ConsumerEvent::Statistics(stats) => Event::StatisticsReceived(stats),
         };
 
-        self.on_app_event(app_event).await;
+        self.on_app_event(app_event);
     }
     /// Handles the [`Event::ExportRecord`] event emitted by the [`EventBus`].
     fn on_export_record(&mut self, record: Record) {
@@ -624,155 +624,79 @@ where
         self.event_bus
             .send(Event::DisplayNotification(notification));
     }
-    /// Loads the existing topics from the the Kafka cluster.
-    async fn load_topics(&self) {
-        let topics = match self
-            .consumer
-            .fetch_topic_metadata(None, std::time::Duration::from_secs(30))
-        {
-            Ok(topics) => {
-                tracing::info!("loaded {} topics from Kafka cluster", topics.len());
-                topics
-            }
-            Err(e) => {
-                tracing::error!("error loading topics from Kafka cluster: {}", e);
-                Vec::default()
-            }
+    /// Spawns a background task to load topics from the Kafka cluster.
+    fn spawn_load_topics(&self) {
+        let task = LoadTopicsTask {
+            consumer: Arc::clone(&self.consumer),
+            event_bus: Arc::clone(&self.event_bus),
         };
 
-        self.event_bus.send(Event::TopicsLoaded(topics));
+        tokio::task::spawn_blocking(move || {
+            task.run();
+        });
     }
-    /// Loads the configuration details for the specified [`Topic`] from the Kafka cluster.
-    async fn load_topic_config(&self, topic: Topic) {
-        let topic_config = match self.admin_client.load_topic_config(&topic.name).await {
-            Ok(config) => {
-                tracing::info!(
-                    "loaded configuration for topic {} from Kafka cluster",
-                    topic.name,
-                );
-                config
-            }
-            Err(e) => {
-                tracing::error!(
-                    "error loading configuration for topic {} from Kafka cluster: {}",
-                    topic.name,
-                    e
-                );
-                None
-            }
+    /// Spawns a background task to load the configuration for a topic from the Kafka cluster.
+    fn spawn_load_topic_config(&self, topic: Topic) {
+        let task = LoadTopicConfigTask {
+            admin_client: Arc::clone(&self.admin_client),
+            event_bus: Arc::clone(&self.event_bus),
+            topic,
         };
 
-        self.event_bus.send(Event::TopicConfigLoaded(topic_config));
+        tokio::spawn(async move {
+            task.run().await;
+        });
     }
-    /// Loads the non-deleted subjects from the schema registry.
-    async fn load_subjects(&self) {
+    /// Spawns a background task to load subjects from the schema registry.
+    fn spawn_load_subjects(&self) {
         let schema_client = self
             .schema_client
             .as_ref()
             .expect("schema client configured");
 
-        let result = schema_client.get_subjects().await;
-
-        let subjects = match result {
-            Ok(subjects) => {
-                tracing::info!(
-                    "loaded {} subjects from the schema registry",
-                    subjects.len()
-                );
-                subjects
-            }
-            Err(e) => {
-                tracing::error!("error loading subjects from schema registry: {}", e);
-                Vec::default()
-            }
+        let task = LoadSubjectsTask {
+            schema_client: Arc::clone(schema_client),
+            event_bus: Arc::clone(&self.event_bus),
         };
 
-        self.event_bus.send(Event::SubjectsLoaded(subjects));
+        tokio::spawn(async move {
+            task.run().await;
+        });
     }
-    /// Loads the latest schema version for the subject as well as all available versions from the
-    /// schema registry.
-    async fn load_latest_schema(&self, subject: &Subject) {
+    /// Spawns a background task to load the latest schema and all versions for a subject.
+    fn spawn_load_latest_schema(&self, subject: Subject) {
         let schema_client = self
             .schema_client
             .as_ref()
             .expect("schema client configured");
 
-        let schema_fut = schema_client.get_schema(subject, None);
-        let versions_fut = schema_client.get_schema_versions(subject);
-
-        let (schema_res, versions_res) = futures::join!(schema_fut, versions_fut);
-
-        let schema = match schema_res {
-            Ok(schema) => {
-                tracing::info!(
-                    "loaded latest schema for subject {} from the schema registry",
-                    subject.as_ref()
-                );
-                Some(schema)
-            }
-            Err(e) => {
-                tracing::error!(
-                    "error loading latest schema for subject {} from schema registry: {}",
-                    subject.as_ref(),
-                    e
-                );
-                None
-            }
+        let task = LoadLatestSchemaTask {
+            schema_client: Arc::clone(schema_client),
+            event_bus: Arc::clone(&self.event_bus),
+            subject,
         };
 
-        let versions = match versions_res {
-            Ok(versions) => {
-                tracing::info!(
-                    "loaded {} versions for subject {} from the schema registry",
-                    versions.len(),
-                    subject.as_ref()
-                );
-                versions
-            }
-            Err(e) => {
-                tracing::error!(
-                    "error loading versions for subject {} from schema registry: {}",
-                    subject.as_ref(),
-                    e
-                );
-                Vec::default()
-            }
-        };
-
-        self.event_bus
-            .send(Event::LatestSchemaLoaded(schema, versions));
+        tokio::spawn(async move {
+            task.run().await;
+        });
     }
-    /// Loads the schema details for the specified version of the given subject from the schema
-    /// registry. If no version is specified, the latest version is fetched.
-    async fn load_schema_version(&self, subject: &Subject, version: Version) {
+    /// Spawns a background task to load a specific schema version for a subject.
+    fn spawn_load_schema_version(&self, subject: Subject, version: Version) {
         let schema_client = self
             .schema_client
             .as_ref()
             .expect("schema client configured");
 
-        let result = schema_client.get_schema(subject, Some(version)).await;
-
-        let schema = match result {
-            Ok(schema) => {
-                tracing::info!(
-                    "loaded schema for subject {} version {} from the schema registry",
-                    subject.as_ref(),
-                    version
-                );
-                Some(schema)
-            }
-            Err(e) => {
-                tracing::error!(
-                    "error loading schema for subject {} version {} from schema registry: {}",
-                    subject.as_ref(),
-                    version,
-                    e
-                );
-                None
-            }
+        let task = LoadSchemaVersionTask {
+            schema_client: Arc::clone(schema_client),
+            event_bus: Arc::clone(&self.event_bus),
+            subject,
+            version,
         };
 
-        self.event_bus.send(Event::SchemaVersionLoaded(schema));
+        tokio::spawn(async move {
+            task.run().await;
+        });
     }
     /// Handles the [`Event::ExportSchema`] event emitted by the [`EventBus`].
     fn on_export_schema(&self, schema: Schema) {
@@ -964,5 +888,200 @@ impl PollLogsTask {
                 }
             }
         }
+    }
+}
+
+/// Background task that loads topic metadata from the Kafka cluster.
+struct LoadTopicsTask {
+    consumer: Arc<Consumer>,
+    event_bus: Arc<EventBus>,
+}
+
+impl LoadTopicsTask {
+    fn run(self) {
+        let topics = match self
+            .consumer
+            .fetch_topic_metadata(None, std::time::Duration::from_secs(30))
+        {
+            Ok(topics) => {
+                tracing::info!("loaded {} topics from Kafka cluster", topics.len());
+                topics
+            }
+            Err(e) => {
+                tracing::error!("error loading topics from Kafka cluster: {}", e);
+                Vec::default()
+            }
+        };
+
+        self.event_bus.send(Event::TopicsLoaded(topics));
+    }
+}
+
+/// Background task that loads the configuration for a specific topic from the Kafka cluster.
+struct LoadTopicConfigTask {
+    admin_client: Arc<AdminClient>,
+    event_bus: Arc<EventBus>,
+    topic: Topic,
+}
+
+impl LoadTopicConfigTask {
+    async fn run(self) {
+        let topic_config = match self.admin_client.load_topic_config(&self.topic.name).await {
+            Ok(config) => {
+                tracing::info!(
+                    "loaded configuration for topic {} from Kafka cluster",
+                    self.topic.name,
+                );
+                config
+            }
+            Err(e) => {
+                tracing::error!(
+                    "error loading configuration for topic {} from Kafka cluster: {}",
+                    self.topic.name,
+                    e
+                );
+                None
+            }
+        };
+
+        self.event_bus.send(Event::TopicConfigLoaded(topic_config));
+    }
+}
+
+/// Background task that loads subjects from the schema registry.
+struct LoadSubjectsTask<C>
+where
+    C: Client,
+{
+    schema_client: Arc<SchemaClient<C>>,
+    event_bus: Arc<EventBus>,
+}
+
+impl<C> LoadSubjectsTask<C>
+where
+    C: Client + Send + Sync,
+{
+    async fn run(self) {
+        let subjects = match self.schema_client.get_subjects().await {
+            Ok(subjects) => {
+                tracing::info!(
+                    "loaded {} subjects from the schema registry",
+                    subjects.len()
+                );
+                subjects
+            }
+            Err(e) => {
+                tracing::error!("error loading subjects from schema registry: {}", e);
+                Vec::default()
+            }
+        };
+
+        self.event_bus.send(Event::SubjectsLoaded(subjects));
+    }
+}
+
+/// Background task that loads the latest schema and all versions for a subject.
+struct LoadLatestSchemaTask<C>
+where
+    C: Client,
+{
+    schema_client: Arc<SchemaClient<C>>,
+    event_bus: Arc<EventBus>,
+    subject: Subject,
+}
+
+impl<C> LoadLatestSchemaTask<C>
+where
+    C: Client + Send + Sync,
+{
+    async fn run(self) {
+        let schema_fut = self.schema_client.get_schema(&self.subject, None);
+        let versions_fut = self.schema_client.get_schema_versions(&self.subject);
+
+        let (schema_res, versions_res) = futures::join!(schema_fut, versions_fut);
+
+        let schema = match schema_res {
+            Ok(schema) => {
+                tracing::info!(
+                    "loaded latest schema for subject {} from the schema registry",
+                    self.subject.as_ref()
+                );
+                Some(schema)
+            }
+            Err(e) => {
+                tracing::error!(
+                    "error loading latest schema for subject {} from schema registry: {}",
+                    self.subject.as_ref(),
+                    e
+                );
+                None
+            }
+        };
+
+        let versions = match versions_res {
+            Ok(versions) => {
+                tracing::info!(
+                    "loaded {} versions for subject {} from the schema registry",
+                    versions.len(),
+                    self.subject.as_ref()
+                );
+                versions
+            }
+            Err(e) => {
+                tracing::error!(
+                    "error loading versions for subject {} from schema registry: {}",
+                    self.subject.as_ref(),
+                    e
+                );
+                Vec::default()
+            }
+        };
+
+        self.event_bus
+            .send(Event::LatestSchemaLoaded(schema, versions));
+    }
+}
+
+/// Background task that loads a specific schema version for a subject.
+struct LoadSchemaVersionTask<C>
+where
+    C: Client,
+{
+    schema_client: Arc<SchemaClient<C>>,
+    event_bus: Arc<EventBus>,
+    subject: Subject,
+    version: Version,
+}
+
+impl<C> LoadSchemaVersionTask<C>
+where
+    C: Client + Send + Sync,
+{
+    async fn run(self) {
+        let schema = match self
+            .schema_client
+            .get_schema(&self.subject, Some(self.version))
+            .await
+        {
+            Ok(schema) => {
+                tracing::info!(
+                    "loaded schema for subject {} version {} from the schema registry",
+                    self.subject.as_ref(),
+                    self.version
+                );
+                Some(schema)
+            }
+            Err(e) => {
+                tracing::error!(
+                    "error loading schema for subject {} version {} from schema registry: {}",
+                    self.subject.as_ref(),
+                    self.version,
+                    e
+                );
+                None
+            }
+        };
+
+        self.event_bus.send(Event::SchemaVersionLoaded(schema));
     }
 }

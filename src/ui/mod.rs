@@ -94,9 +94,9 @@ pub trait Component {
     }
 }
 
-impl<'c, C> App<'c, C>
+impl<C> App<C>
 where
-    C: Client + Send + Sync,
+    C: Client + Send + Sync + 'static,
 {
     /// Draws the UI for the application to the given [`Frame`] based on the current screen the
     /// user is viewing.

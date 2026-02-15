@@ -353,12 +353,14 @@ async fn run_app(
         create_deserializers(&config, schema_registry_client)
             .context("create key and value deserializers")?;
 
+    let schema_registry_arc = schema_registry_client.map(|c| Arc::new(c.clone()));
+
     let app = App::new(
         persisted_config,
         config,
         key_deserializer,
         value_deserializer,
-        schema_registry_client,
+        schema_registry_arc,
     )
     .context("initialize application")?;
 
