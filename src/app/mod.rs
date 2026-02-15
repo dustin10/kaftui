@@ -11,7 +11,7 @@ use crate::{
         ConsumeTopicConfig, Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
         admin::{AdminClient, AdminClientConfig, Topic, TopicConfig},
         de::{KeyDeserializer, ValueDeserializer},
-        schema::{Schema, SchemaClient, Subject, Version},
+        schema::{Schema, SchemaClient, Subject, Version, DEFAULT_CACHE_TTL},
     },
     trace::Log,
     ui::{
@@ -314,7 +314,7 @@ where
 
             components.push(schemas_component);
 
-            Some(Arc::new(SchemaClient::new(client)))
+            Some(Arc::new(SchemaClient::new(client, DEFAULT_CACHE_TTL)))
         } else {
             None
         };

@@ -4,7 +4,9 @@ use schema_registry_client::rest::{
     schema_registry_client::Client,
 };
 use serde::Serialize;
-use std::{borrow::Cow, fmt::Display, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, fmt::Display, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
+use tokio::time::Instant;
 
 /// String presented to the user when a schema-releated value is missing or not known.
 const UNKNOWN_SCHEMA_KIND: &str = "<unknown>";
@@ -14,6 +16,9 @@ const AVRO_SCHEMA_KIND: &str = "AVRO";
 
 /// String that maps to the type value for a JSON schema returned from the schema registry.
 const JSON_SCHEMA_KIND: &str = "JSON";
+
+/// Default time-to-live for cached schema registry responses - 5 minutes.
+pub const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// Represents a reference to another schema contained in a schema retrieved from the schema
 /// registry.
@@ -176,10 +181,53 @@ impl Display for Version {
     }
 }
 
-// TODO: add a cache layer with TTL?
+/// A cached value paired with the time it was inserted, used to determine cache expiration.
+struct CacheEntry<T> {
+    // Value of the cache entry.
+    value: T,
+    // Timestamp at which that the entry was cached.
+    inserted_at: Instant,
+}
+
+impl<T> CacheEntry<T> {
+    /// Creates a new cache entry with the given value and the current time as the insertion
+    /// timestamp.
+    fn new(value: T) -> Self {
+        Self {
+            value,
+            inserted_at: Instant::now(),
+        }
+    }
+    /// Returns true if the entry has been cached for longer than the specified time-to-live
+    /// duration.
+    fn is_expired(&self, ttl: Duration) -> bool {
+        self.inserted_at.elapsed() >= ttl
+    }
+}
+
+/// Caches data fetched from API calls made to the schema registry to fetch subject and schema
+/// details.
+struct SchemaCache {
+    // Caches the resolved [`Schema`] for a given [`Subject`] and [`Version`] if applicable.
+    schemas: HashMap<(Subject, Option<Version>), CacheEntry<Schema>>,
+    // Caches the set of [`Version`]s for a given [`Subject`].
+    versions: HashMap<Subject, CacheEntry<Vec<Version>>>,
+}
+
+impl SchemaCache {
+    /// Creates an empty [`SchemaCache`].
+    fn new() -> Self {
+        Self {
+            schemas: HashMap::new(),
+            versions: HashMap::new(),
+        }
+    }
+}
 
 /// Interacts with the schema registry over HTTP using a pre-configured [`SchemaRegistryClient`].
-#[derive(Clone, Debug)]
+/// Caches responses with a configurable time-to-live (TTL) to reduce redundant network calls as,
+/// in general, data in the schema registry tends to not be updated at a high frequency.
+#[derive(Clone)]
 pub struct SchemaClient<C>
 where
     C: Client,
@@ -187,24 +235,35 @@ where
     /// A shared reference to the schema registry [`Client`] used to interact with the schema
     /// registry.
     client: Arc<C>,
+    /// A shared, async cache of data fetched from the schema registry.
+    cache: Arc<RwLock<SchemaCache>>,
+    /// Duration of time for which cached entries are considered valid.
+    ttl: Duration,
 }
 
 impl<C> SchemaClient<C>
 where
     C: Client + Send + Sync,
 {
-    /// Creates a new [`HttpSchemaClient`] which uses the provided [`Client`] to interact with the
-    /// schema registry over HTTP.
-    pub fn new(client: Arc<C>) -> Self {
-        Self { client }
+    /// Creates a new [`SchemaClient`] which uses the provided [`Client`] to interact with the
+    /// schema registry over HTTP. Responses are cached for the specified time-to-live duration.
+    pub fn new(client: Arc<C>, ttl: Duration) -> Self {
+        Self {
+            client,
+            cache: Arc::new(RwLock::new(SchemaCache::new())),
+            ttl,
+        }
     }
     /// Loads all of the non-deleted subjects from the schema registry.
     pub async fn get_subjects(&self) -> anyhow::Result<Vec<Subject>> {
-        self.client
+        let subjects = self
+            .client
             .get_all_subjects(false)
             .await
             .context("load subjects from registry")
-            .map(|ss| ss.into_iter().map(Into::into).collect::<Vec<Subject>>())
+            .map(|ss| ss.into_iter().map(Into::into).collect::<Vec<Subject>>())?;
+
+        Ok(subjects)
     }
     /// Loads the schema for the specified version of the given subject from the schema registry.
     /// If no version is specified, then the latest version is retrieved.
@@ -213,7 +272,18 @@ where
         subject: &Subject,
         version: Option<Version>,
     ) -> anyhow::Result<Schema> {
-        match version {
+        let cache_key = (subject.clone(), version);
+
+        let cache = self.cache.read().await;
+        if let Some(entry) = cache.schemas.get(&cache_key)
+            && !entry.is_expired(self.ttl)
+        {
+            return Ok(entry.value.clone());
+        }
+
+        std::mem::drop(cache);
+
+        let schema: Schema = match version {
             Some(version) => self
                 .client
                 .get_version(subject.as_ref(), version.into(), false, None)
@@ -233,14 +303,36 @@ where
                     subject.as_ref()
                 ))
                 .map(Into::into),
-        }
+        }?;
+
+        let mut cache = self.cache.write().await;
+        cache.schemas.insert(cache_key, CacheEntry::new(schema.clone()));
+        std::mem::drop(cache);
+
+        Ok(schema)
     }
     /// Loads all available versions for the specified subject from the schema registry.
     pub async fn get_schema_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
-        self.client
+        let cache = self.cache.read().await;
+        if let Some(entry) = cache.versions.get(subject)
+            && !entry.is_expired(self.ttl)
+        {
+            return Ok(entry.value.clone());
+        }
+
+        std::mem::drop(cache);
+
+        let versions = self
+            .client
             .get_all_versions(subject.as_ref())
             .await
             .context("load schema versions from registry")
-            .map(|vs| vs.into_iter().map(Into::into).collect::<Vec<Version>>())
+            .map(|vs| vs.into_iter().map(Into::into).collect::<Vec<Version>>())?;
+
+        let mut cache = self.cache.write().await;
+        cache.versions.insert(subject.clone(), CacheEntry::new(versions.clone()));
+        std::mem::drop(cache);
+
+        Ok(versions)
     }
 }
