@@ -45,7 +45,7 @@ schemas and the various versions of the schemas can be viewed and compared.
 
 ## Quick Start
 
-First, install the `kafktui` application using `cargo`. The minimum required version of Rust is `1.89.0`.
+First, install the `kaftui` application using `cargo`. The minimum required version of Rust is `1.89.0`.
 
 ```sh
 > cargo install --git https://github.com/dustin10/kaftui.git
@@ -150,7 +150,7 @@ Protobuf message type that corresponds to the value of the records in the Kafka 
     --value-format protobuf \
     --schema-registry-url http://localhost:8081 \
     --protobuf-dir ./protos \
-    --value-protobuf-type com.example.OrderKey \
+    --key-protobuf-type com.example.OrderKey \
     --value-protobuf-type com.example.Order
 ```
 
@@ -164,15 +164,15 @@ the set of partitions that will be consumed. If not specified, all partitions wi
 would cause only partitions `0` and `2` to be assigned to the Kafka consumer.
 * `--schema-registry-url` - URL of the Schema Registry that should be used to deserialize and validate records from the
 Kafka topic.
-* `--schema-registry-bearer-token` - Bearer authentication token used to connect to the the Schema Registry.
-* `--schema-registry-user` - Basic authentication user used to connect to the the Schema Registry.
-* `--schema-registry-pass` - Basic authentication password used to connect to the the Schema Registry.
+* `--schema-registry-bearer-token` - Bearer authentication token used to connect to the Schema Registry.
+* `--schema-registry-user` - Basic authentication user used to connect to the Schema Registry.
+* `--schema-registry-pass` - Basic authentication password used to connect to the Schema Registry.
 * `--key-format, -k` - Specifies the format of the key contained in the Kafka topic. By default the value is assumed to
 be in no special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or
 `protobuf`. If `avro` or `protobuf` is specified, then the `--schema-registry-url` argument is currently required.
 * `--value-format, -v` - Specifies the format of the value contained in the Kafka topic. By default the value is assumed to
 be in no special format and no special handling will be applied to it when displayed. Valid values: `json`, `avro` or
-`protobuf`. If `avro` or `protobuf` is specified, then th`e `--schema-registry-url` argument is currently required.
+`protobuf`. If `avro` or `protobuf` is specified, then the `--schema-registry-url` argument is currently required.
 * `--protobuf-dir` - Path to a directory that contains the `.proto` protobuf descriptor files that should be used to
 deserialize protobuf encoded Kafka records. This argument is required when the `--value-format` argument is set to
 `protobuf`.
@@ -262,7 +262,7 @@ argument instead. See the [CLI Arguments](#CLI-Arguments) section for more detai
 
 A profile is a grouping of configuration values for the `kaftui` application. A user can setup as many profiles as
 required to describe the default values that should be used when executing the application. Once a profile is configured,
-then the `--profile` argument can be used specified it be loaded at runtime.
+then the `--profile` argument can be used to specify that it should be loaded at runtime.
 
 The following properties are supported in profiles.
 
@@ -270,10 +270,10 @@ The following properties are supported in profiles.
 * `bootstrapServers` - Host value used to set the bootstrap servers configuration for the Kafka consumer.
 * `topic` - Name of the Kafka topic to consume records from.
 * `partitions` - CSV of partition numbers of the topic that should be assigned to the Kafka consumer.
-* `schemaRegistryUrl` - URL of the Schema Registry that should be used to deserialzie and validate records.
-* `schemaRegistryBearerToken` - Bearer authentication token used to connect to the the Schema Registry.
-* `schemaRegistryUser` - Basic authentication user used to connect to the the Schema Registry.
-* `schemaRegistryPass` - Basic authentication password used to connect to the the Schema Registry.
+* `schemaRegistryUrl` - URL of the Schema Registry that should be used to deserialize and validate records.
+* `schemaRegistryBearerToken` - Bearer authentication token used to connect to the Schema Registry.
+* `schemaRegistryUser` - Basic authentication user used to connect to the Schema Registry.
+* `schemaRegistryPass` - Basic authentication password used to connect to the Schema Registry.
 * `valueFormat` - Format the value of the records contained in the Kafka topic are encoded in.
 * `protobufDir` - Path to a directory that contains the `.proto` files that should be used to deserialize protobuf
 encoded Kafka records.
@@ -282,7 +282,7 @@ topic.
 * `groupId` - Id of the group that the application will use when consuming messages from the Kafka topic.
 * `filter` - JSONPath filter that is applied to a record.
 * `consumerProperties` - Map of additional configuration for the Kafka consumer other than the bootstrap servers and
-group id. Typically used for configuration authentication, etc.
+group id. Typically used for configuring authentication, etc.
 
 See the [Persisted Configuration](#Persisted-Configuration) section below for how to configure profiles as well as a
 few examples.
@@ -318,7 +318,7 @@ configuration values.
 * `notificationTextColorWarn` - Color of the notification message text for an action that produces a warning.
 * `notificationTextColorFailure` - Color of the error notification message text for a failed action.
 * `statsTextColor` - Color used for the text in the stats UI.
-* `statsBarColor` - Pimary color used for bars in a bar graph in the stats UI.
+* `statsBarColor` - Primary color used for bars in a bar graph in the stats UI.
 * `statsBarSecondaryColor` - Secondary color used for bars in a bar graph in the stats UI.
 * `statsThroughputColor` - Color used for the throughput chart in the stats UI.
 
@@ -338,7 +338,7 @@ The screenshot below is an example of a `kaftui` theme configuration that is ins
 ## Persisted Configuration
 
 To persist configuration across executions of the `kaftui` application, a JSON configuration file can be saved at
-`$HOME/.kaftui.json` which contains the relevant configuration values. The JSON below contains is a full example of the
+`$HOME/.kaftui.json` which contains the relevant configuration values. The JSON below contains a full example of the
 set of values that are available to configure the application from this file.
 
 ```json
@@ -376,7 +376,7 @@ set of values that are available to configure the application from this file.
       "sasl.mechanisms": "PLAIN",
       "sasl.username": "<username>",
       "sasl.password": "<password>"
-    },
+    }
   }, {
     "name": "cloud-user-proto",
     "bootstrapServers": "kafka-brokers.acme.com:9092",
@@ -394,7 +394,7 @@ set of values that are available to configure the application from this file.
       "sasl.mechanisms": "PLAIN",
       "sasl.username": "<username>",
       "sasl.password": "<password>"
-    },
+    }
   }],
   "theme": {
     "panelBorderColor": "#6272A4",
