@@ -387,7 +387,9 @@ where
             self.start_poll_logs_async(rx);
         }
 
+        // if a tick is missed then just skip it rather than trying to catch up
         let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(TICK_INTERVAL_SECS));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         if let Some(event) = self
             .state
@@ -407,9 +409,14 @@ where
 
             tokio::select! {
                 biased;
-                Some(terminal_event) = terminal_rx.recv() => {
-                    if let TerminalEvent::Key(key_event) = terminal_event {
-                        self.on_key_event(key_event);
+                terminal_event = terminal_rx.recv() => {
+                    match terminal_event {
+                        Some(TerminalEvent::Key(key_event)) => self.on_key_event(key_event),
+                        Some(_) => {}
+                        None => {
+                            tracing::warn!("terminal events channel unexpectedly closed");
+                            self.state.running = false;
+                        }
                     }
                 }
                 app_events_count =
@@ -418,6 +425,9 @@ where
                         for app_event in app_events_buffer.into_iter() {
                             self.on_app_event(app_event);
                         }
+                    } else {
+                        tracing::warn!("application events channel unexpectedly closed");
+                        self.state.running = false;
                     }
                 },
                 consumer_events_count =
@@ -426,6 +436,9 @@ where
                         for consumer_event in consumer_events_buffer.into_iter() {
                             self.on_consumer_event(consumer_event);
                         }
+                    } else {
+                        tracing::warn!("consumer events channel unexpectedly closed");
+                        self.state.running = false;
                     }
                 }
                 _ = tick.tick() => self.on_tick(),
@@ -891,13 +904,18 @@ impl PollLogsTask {
     }
 }
 
-/// Background task that loads topic metadata from the Kafka cluster.
+/// Asynchronous task that loads topic metadata from the Kafka cluster and emits the results as an
+/// application event.
 struct LoadTopicsTask {
+    // Kafka [`Consumer`] used to fetch topic metadata from the cluster.
     consumer: Arc<Consumer>,
+    // [`EventBus`] on which the results of the topic metadata fetch will be published.
     event_bus: Arc<EventBus>,
 }
 
 impl LoadTopicsTask {
+    // Runs the task. Fetches topic metadata from the Kafka cluster and emits an
+    // [`Event::TopicsLoaded`] event on the [`EventBus`] with the results.
     fn run(self) {
         let topics = match self
             .consumer
@@ -917,14 +935,21 @@ impl LoadTopicsTask {
     }
 }
 
-/// Background task that loads the configuration for a specific topic from the Kafka cluster.
+/// Asynchronous task that loads the configuration for a specific topic from the Kafka cluster and
+/// publishes the results as an application event.
 struct LoadTopicConfigTask {
+    // [`AdminClient`] used to fetch the topic configuration from the cluster.
     admin_client: Arc<AdminClient>,
+    // [`EventBus`] on which the results of the topic configuration fetch will be published.
     event_bus: Arc<EventBus>,
+    // [`Topic`] for which the configuration should be loaded.
     topic: Topic,
 }
 
 impl LoadTopicConfigTask {
+    // Runs the task. Fetches the topic configuration for the specified topic from the Kafka
+    // cluster and emits an [`Event::TopicConfigLoaded`] event on the [`EventBus`] with the
+    // results.
     async fn run(self) {
         let topic_config = match self.admin_client.load_topic_config(&self.topic.name).await {
             Ok(config) => {
@@ -948,12 +973,15 @@ impl LoadTopicConfigTask {
     }
 }
 
-/// Background task that loads subjects from the schema registry.
+/// Asynchronous task that loads subjects from the schema registry and publishes the results as an
+/// application event.
 struct LoadSubjectsTask<C>
 where
     C: Client,
 {
+    // [`SchemaClient`] used to fetch subjects from the schema registry.
     schema_client: Arc<SchemaClient<C>>,
+    // [`EventBus`] on which the results of the subjects fetch will be published.
     event_bus: Arc<EventBus>,
 }
 
@@ -961,6 +989,8 @@ impl<C> LoadSubjectsTask<C>
 where
     C: Client + Send + Sync,
 {
+    // Runs the task. Fetches subjects from the schema registry and emits an
+    // [`Event::SubjectsLoaded`] event on the [`EventBus`] with the results.
     async fn run(self) {
         let subjects = match self.schema_client.get_subjects().await {
             Ok(subjects) => {
@@ -980,13 +1010,18 @@ where
     }
 }
 
-/// Background task that loads the latest schema and all versions for a subject.
+/// Asynchronous task that loads the latest schema and all versions for a subject from the schema
+/// registry and publishes the results as an application event.
 struct LoadLatestSchemaTask<C>
 where
     C: Client,
 {
+    // [`SchemaClient`] used to fetch the latest schema and versions for a subject from the schema
+    // registry.
     schema_client: Arc<SchemaClient<C>>,
+    // [`EventBus`] on which the results of the latest schema and versions fetch will be published.
     event_bus: Arc<EventBus>,
+    // [`Subject`] for which the latest schema and versions should be loaded.
     subject: Subject,
 }
 
@@ -994,6 +1029,9 @@ impl<C> LoadLatestSchemaTask<C>
 where
     C: Client + Send + Sync,
 {
+    // Runs the task. Fetches the latest schema and all versions for the specified subject from the
+    // schema registry and emits an [`Event::LatestSchemaLoaded`] event on the [`EventBus`] with
+    // the results.
     async fn run(self) {
         let schema_fut = self.schema_client.get_schema(&self.subject, None);
         let versions_fut = self.schema_client.get_schema_versions(&self.subject);
@@ -1042,14 +1080,20 @@ where
     }
 }
 
-/// Background task that loads a specific schema version for a subject.
+/// Asynchronous task that loads a specific schema version for a subject from the schema registry
+/// and publishes the result as an application event.
 struct LoadSchemaVersionTask<C>
 where
     C: Client,
 {
+    // [`SchemaClient`] used to fetch the specific schema version for a subject from the schema
+    // registry.
     schema_client: Arc<SchemaClient<C>>,
+    // [`EventBus`] on which the result of the specific schema version fetch will be published.
     event_bus: Arc<EventBus>,
+    // [`Subject`] for which the specific schema version should be loaded.
     subject: Subject,
+    // [`Version`] of the schema to load for the specified subject.
     version: Version,
 }
 
@@ -1057,6 +1101,9 @@ impl<C> LoadSchemaVersionTask<C>
 where
     C: Client + Send + Sync,
 {
+    // Runs the task. Fetches the specific schema version for the specified subject from the
+    // schema registry and emits an [`Event::SchemaVersionLoaded`] event on the [`EventBus`] with
+    // the result.
     async fn run(self) {
         let schema = match self
             .schema_client
