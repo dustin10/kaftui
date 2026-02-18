@@ -183,9 +183,9 @@ impl Display for Version {
 
 /// A cached value paired with the time it was inserted, used to determine cache expiration.
 struct CacheEntry<T> {
-    // Value of the cache entry.
+    /// Value of the cache entry.
     value: T,
-    // Timestamp at which that the entry was cached.
+    /// Timestamp at which that the entry was cached.
     inserted_at: Instant,
 }
 
@@ -208,9 +208,9 @@ impl<T> CacheEntry<T> {
 /// Caches data fetched from API calls made to the schema registry to fetch subject and schema
 /// details.
 struct SchemaCache {
-    // Caches the resolved [`Schema`] for a given [`Subject`] and [`Version`] if applicable.
+    /// Caches the resolved [`Schema`] for a given [`Subject`] and [`Version`] if applicable.
     schemas: HashMap<(Subject, Option<Version>), CacheEntry<Schema>>,
-    // Caches the set of [`Version`]s for a given [`Subject`].
+    /// Caches the set of [`Version`]s for a given [`Subject`].
     versions: HashMap<Subject, CacheEntry<Vec<Version>>>,
 }
 
@@ -274,14 +274,18 @@ where
     ) -> anyhow::Result<Schema> {
         let cache_key = (subject.clone(), version);
 
-        let cache = self.cache.read().await;
-        if let Some(entry) = cache.schemas.get(&cache_key)
-            && !entry.is_expired(self.ttl)
-        {
-            return Ok(entry.value.clone());
-        }
+        let cached = {
+            let cache = self.cache.read().await;
+            cache
+                .schemas
+                .get(&cache_key)
+                .filter(|e| !e.is_expired(self.ttl))
+                .map(|e| e.value.clone())
+        };
 
-        std::mem::drop(cache);
+        if let Some(schema) = cached {
+            return Ok(schema);
+        }
 
         let schema: Schema = match version {
             Some(version) => self
@@ -305,22 +309,35 @@ where
                 .map(Into::into),
         }?;
 
-        let mut cache = self.cache.write().await;
-        cache.schemas.insert(cache_key, CacheEntry::new(schema.clone()));
-        std::mem::drop(cache);
+        {
+            let mut cache = self.cache.write().await;
+            if cache
+                .schemas
+                .get(&cache_key)
+                .is_none_or(|e| e.is_expired(self.ttl))
+            {
+                cache
+                    .schemas
+                    .insert(cache_key, CacheEntry::new(schema.clone()));
+            }
+        }
 
         Ok(schema)
     }
     /// Loads all available versions for the specified subject from the schema registry.
     pub async fn get_schema_versions(&self, subject: &Subject) -> anyhow::Result<Vec<Version>> {
-        let cache = self.cache.read().await;
-        if let Some(entry) = cache.versions.get(subject)
-            && !entry.is_expired(self.ttl)
-        {
-            return Ok(entry.value.clone());
-        }
+        let cached = {
+            let cache = self.cache.read().await;
+            cache
+                .versions
+                .get(subject)
+                .filter(|e| !e.is_expired(self.ttl))
+                .map(|e| e.value.clone())
+        };
 
-        std::mem::drop(cache);
+        if let Some(versions) = cached {
+            return Ok(versions);
+        }
 
         let versions = self
             .client
@@ -329,9 +346,18 @@ where
             .context("load schema versions from registry")
             .map(|vs| vs.into_iter().map(Into::into).collect::<Vec<Version>>())?;
 
-        let mut cache = self.cache.write().await;
-        cache.versions.insert(subject.clone(), CacheEntry::new(versions.clone()));
-        std::mem::drop(cache);
+        {
+            let mut cache = self.cache.write().await;
+            if cache
+                .versions
+                .get(subject)
+                .is_none_or(|e| e.is_expired(self.ttl))
+            {
+                cache
+                    .versions
+                    .insert(subject.clone(), CacheEntry::new(versions.clone()));
+            }
+        }
 
         Ok(versions)
     }

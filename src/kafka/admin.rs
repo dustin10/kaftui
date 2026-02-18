@@ -7,7 +7,8 @@ use rdkafka::{
     metadata::{MetadataPartition, MetadataTopic},
 };
 use serde::Serialize;
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::{sync::RwLock, time::Instant};
 
 /// Represents a partition of a Kafka topic including the IDs of the current leader and replica
 /// brokers.
@@ -131,6 +132,46 @@ impl ClientContext for AdminClientContext {
     }
 }
 
+/// A cached value paired with the time it was inserted, used to determine cache expiration.
+struct CacheEntry<T> {
+    /// Value of the cache entry.
+    value: T,
+    /// Timestamp at which that the entry was cached.
+    inserted_at: Instant,
+}
+
+impl<T> CacheEntry<T> {
+    /// Creates a new cache entry with the given value and the current time as the insertion
+    /// timestamp.
+    fn new(value: T) -> Self {
+        Self {
+            value,
+            inserted_at: Instant::now(),
+        }
+    }
+    /// Returns true if the entry has been cached for longer than the specified time-to-live
+    /// duration.
+    fn is_expired(&self, ttl: Duration) -> bool {
+        self.inserted_at.elapsed() >= ttl
+    }
+}
+
+/// Caches topic configuration data fetched from the Kafka cluster to reduce redundant network
+/// calls.
+struct TopicCache {
+    /// Caches the [`TopicConfig`] for a given topic name.
+    topic_configs: HashMap<String, CacheEntry<TopicConfig>>,
+}
+
+impl TopicCache {
+    /// Creates an empty [`TopicCache`].
+    fn new() -> Self {
+        Self {
+            topic_configs: HashMap::new(),
+        }
+    }
+}
+
 /// Defines the configuration used to create a new instance of [`AdminClient`].
 #[derive(Builder, Clone)]
 pub struct AdminClientConfig {
@@ -142,6 +183,9 @@ pub struct AdminClientConfig {
     /// Optional operation timeout for admin operations.
     #[builder(setter(into, strip_option), default)]
     operation_timeout: Option<Duration>,
+    /// Optional cache TTL for admin client responses. Defaults to 5 minutes.
+    #[builder(setter(into, strip_option), default)]
+    cache_ttl: Option<Duration>,
 }
 
 impl AdminClientConfig {
@@ -152,14 +196,20 @@ impl AdminClientConfig {
     }
 }
 
-// TODO: add a cache layer with TTL?
+/// Default cache TTL of 5 minutes.
+const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(300);
 
-/// The Kafka admin client used to perform administrative operations on the Kafka cluster.
+/// The Kafka admin client used to perform administrative operations on the Kafka cluster. Caches
+/// responses with a configurable time-to-live (TTL) to reduce redundant network calls.
 pub struct AdminClient {
     /// Underlying rdkafka admin client.
     client: RDAdminClient<AdminClientContext>,
     /// Admin options used for rdkafka client operations.
     admin_options: AdminOptions,
+    /// A shared, async cache of data fetched from the Kafka cluster.
+    cache: Arc<RwLock<TopicCache>>,
+    /// Duration of time for which cached entries are considered valid.
+    ttl: Duration,
 }
 
 impl AdminClient {
@@ -175,17 +225,37 @@ impl AdminClient {
             .request_timeout(config.request_timeout)
             .operation_timeout(config.operation_timeout);
 
+        let ttl = config.cache_ttl.unwrap_or(DEFAULT_CACHE_TTL);
+
         Ok(Self {
             client,
             admin_options,
+            cache: Arc::new(RwLock::new(TopicCache::new())),
+            ttl,
         })
     }
-    /// Loads the configuration details for the specified topic from the Kafka cluster.
+    /// Loads the configuration details for the specified topic from the Kafka cluster. Results are
+    /// cached with a configurable TTL to avoid redundant network calls.
     pub async fn load_topic_config(
         &self,
         topic: impl AsRef<str>,
     ) -> anyhow::Result<Option<TopicConfig>> {
-        let resource = ResourceSpecifier::Topic(topic.as_ref());
+        let topic = topic.as_ref();
+
+        let cached = {
+            let cache = self.cache.read().await;
+            cache
+                .topic_configs
+                .get(topic)
+                .filter(|e| !e.is_expired(self.ttl))
+                .map(|e| e.value.clone())
+        };
+
+        if let Some(topic_config) = cached {
+            return Ok(Some(topic_config));
+        }
+
+        let resource = ResourceSpecifier::Topic(topic);
 
         let result = self
             .client
@@ -205,7 +275,22 @@ impl AdminClient {
                     .map(TopicConfigEntry::from)
                     .collect::<Vec<TopicConfigEntry>>();
 
-                Ok(Some(TopicConfig(entries)))
+                let topic_config = TopicConfig(entries);
+
+                {
+                    let mut cache = self.cache.write().await;
+                    if cache
+                        .topic_configs
+                        .get(topic)
+                        .is_none_or(|e| e.is_expired(self.ttl))
+                    {
+                        cache
+                            .topic_configs
+                            .insert(topic.to_string(), CacheEntry::new(topic_config.clone()));
+                    }
+                }
+
+                Ok(Some(topic_config))
             }
         }
     }
