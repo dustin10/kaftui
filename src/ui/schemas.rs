@@ -212,6 +212,8 @@ impl SchemasState {
             return None;
         }
 
+        self.subjects_list_state.selected()?;
+
         self.subjects_list_state.select_previous();
         self.subjects_scroll_state.prev();
 

@@ -161,6 +161,8 @@ impl TopicsState {
             return None;
         }
 
+        self.topics_list_state.selected()?;
+
         self.topics_list_state.select_previous();
         self.topics_scroll_state.prev();
 
