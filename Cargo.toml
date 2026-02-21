@@ -8,17 +8,17 @@ edition = "2024"
 rust-version = "1.89"
 
 [dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 apache-avro = "0.21.0"
 async-trait = "0.1.89"
 bounded-vec-deque = "0.1.1"
 chrono = { version = "0.4.43", features = ["serde"] }
-clap = { version = "4.5.58", features = ["derive"] }
+clap = { version = "4.5.60", features = ["derive"] }
 config = { version = "0.15.19", features = ["json"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 derive_builder = "0.20.2"
 dotenvy = "0.15.7"
-futures = "0.3.31"
+futures = "0.3.32"
 gethostname = "1.1.0"
 java-properties = "2.0.0"
 protofish = "0.5.3"
