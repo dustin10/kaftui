@@ -23,7 +23,7 @@ use crate::{
 use crossterm::event::KeyEvent;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     widgets::{Block, Padding, Paragraph, Tabs},
     Frame,
 };
