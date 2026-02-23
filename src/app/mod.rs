@@ -219,6 +219,8 @@ where
         value_deserializer: Arc<dyn ValueDeserializer>,
         schema_registry_client: Option<Arc<C>>,
     ) -> anyhow::Result<Self> {
+        config.theme.validate().context("invalid theme color in configuration")?;
+
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let event_bus = Arc::new(EventBus::new(event_tx));

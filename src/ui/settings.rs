@@ -4,7 +4,6 @@ use crate::{
     ui::{BufferedKeyPress, Component, Event},
 };
 
-use anyhow::Context;
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
@@ -230,14 +229,14 @@ struct SettingsState {
 
 impl SettingsState {
     /// Creates a new default [`SettingsState`].
-    fn new(persisted_config: PersistedConfig) -> anyhow::Result<Self> {
-        Ok(Self {
+    fn new(persisted_config: PersistedConfig) -> Self {
+        Self {
             active_widget: SettingsWidget::default(),
             menu_list_state: ListState::default(),
             persisted_config,
             profiles_list_state: ListState::default(),
             profiles_scroll_state: ScrollbarState::default(),
-        })
+        }
     }
 }
 
@@ -310,8 +309,7 @@ impl Settings {
     fn new(config: SettingsConfig<'_>) -> anyhow::Result<Self> {
         let theme = config.theme.into();
 
-        let mut state =
-            SettingsState::new(config.persisted_config).context("SettingsState created")?;
+        let mut state = SettingsState::new(config.persisted_config);
 
         state.menu_list_state.select_first();
 
@@ -774,7 +772,7 @@ impl Settings {
 
         frame.render_stateful_widget(
             scrollbar,
-            area.inner(Margin {
+            sidebar_panel.inner(Margin {
                 horizontal: 1,
                 vertical: 1,
             }),

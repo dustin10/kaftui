@@ -88,11 +88,13 @@ impl TopicsState {
     fn update_visible_topics(&mut self) {
         let filter = self.topics_filter.as_ref().map_or("", |f| f.as_str());
 
+        let filter_lower = filter.to_lowercase();
+
         self.visible_indices = self
             .topics
             .iter()
             .enumerate()
-            .filter(|(_, t)| t.name.starts_with(filter))
+            .filter(|(_, t)| t.name.to_lowercase().contains(&filter_lower))
             .map(|(i, _)| i)
             .collect::<Vec<usize>>();
     }

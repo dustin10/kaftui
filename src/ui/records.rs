@@ -139,7 +139,7 @@ impl RecordsState {
             return;
         }
 
-        if let Some(curr_idx) = self.list_state.selected()
+        if let Some(curr_idx) = self.headers_state.selected()
             && curr_idx == headers.len() - 1
         {
             return;
@@ -167,13 +167,13 @@ impl RecordsState {
     }
     /// Moves the record headers scroll state to the bottom.
     fn scroll_headers_bottom(&mut self) {
-        let bottom = self
-            .selected
-            .as_ref()
-            .expect("record selected")
-            .headers
-            .len()
-            - 1;
+        let headers = &self.selected.as_ref().expect("record selected").headers;
+
+        if headers.is_empty() {
+            return;
+        }
+
+        let bottom = headers.len() - 1;
 
         self.headers_state.select(Some(bottom));
         self.headers_scroll_state = self.headers_scroll_state.position(bottom);
@@ -262,15 +262,11 @@ impl RecordsState {
     }
     /// Cycles the focus to the next available widget based on the currently selected widget.
     fn select_next_widget(&mut self) {
-        let next_widget = match self.active_widget {
-            RecordsWidget::List if self.selected.is_some() => Some(RecordsWidget::Headers),
-            RecordsWidget::Headers => Some(RecordsWidget::Value),
-            _ => Some(RecordsWidget::List),
+        self.active_widget = match self.active_widget {
+            RecordsWidget::List if self.selected.is_some() => RecordsWidget::Headers,
+            RecordsWidget::Headers => RecordsWidget::Value,
+            _ => RecordsWidget::List,
         };
-
-        if let Some(widget) = next_widget {
-            self.active_widget = widget;
-        }
     }
 }
 
@@ -571,28 +567,7 @@ impl Records {
     /// Renders the panel containing the details of a [`Record`] when there is currently none
     /// selected.
     fn render_record_empty(&self, frame: &mut Frame, area: Rect) {
-        let [empty_area, no_record_text_area] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .areas(area);
-
-        let empty_text = Paragraph::default().block(
-            Block::default()
-                .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-                .border_style(self.theme.panel_border_color),
-        );
-
-        let no_record_text = Paragraph::new("No Record Selected")
-            .style(self.theme.panel_border_color)
-            .block(
-                Block::default()
-                    .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-                    .border_style(self.theme.panel_border_color),
-            )
-            .centered();
-
-        frame.render_widget(empty_text, empty_area);
-        frame.render_widget(no_record_text, no_record_text_area);
+        self.render_message(frame, area, "No Record Selected");
     }
     /// Renders the given message centered both vertically and horizontally in the given area.
     fn render_message(&self, frame: &mut Frame, area: Rect, msg: &str) {

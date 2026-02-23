@@ -532,6 +532,46 @@ impl Default for Theme {
     }
 }
 
+impl Theme {
+    /// Validates that all color strings in the theme are valid RGB hex values parseable by
+    /// ratatui. Returns an error describing the first invalid color found.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        use ratatui::style::Color;
+        use std::str::FromStr;
+
+        let colors: &[(&str, &str)] = &[
+            ("panelBorderColor", &self.panel_border_color),
+            ("selectedPanelBorderColor", &self.selected_panel_border_color),
+            ("statusTextColorProcessing", &self.status_text_color_processing),
+            ("statusTextColorPaused", &self.status_text_color_paused),
+            ("keyBindingsTextColor", &self.key_bindings_text_color),
+            ("labelColor", &self.label_color),
+            ("highlightTextColor", &self.highlight_text_color),
+            ("recordListTextColor", &self.record_list_text_color),
+            ("recordInfoTextColor", &self.record_info_text_color),
+            ("recordValueTextColor", &self.record_value_text_color),
+            ("recordHeadersTextColor", &self.record_headers_text_color),
+            ("menuItemTextColor", &self.menu_item_text_color),
+            ("selectedMenuItemTextColor", &self.selected_menu_item_text_color),
+            ("notificationTextColorSuccess", &self.notification_text_color_success),
+            ("notificationTextColorWarn", &self.notification_text_color_warn),
+            ("notificationTextColorFailure", &self.notification_text_color_failure),
+            ("statsTextColor", &self.stats_text_color),
+            ("statsBarColor", &self.stats_bar_color),
+            ("statsBarSecondaryColor", &self.stats_bar_secondary_color),
+            ("statsThroughputColor", &self.stats_throughput_color),
+        ];
+
+        for (name, value) in colors {
+            Color::from_str(value).map_err(|_| {
+                anyhow::anyhow!("invalid theme color for '{}': '{}' is not a valid RGB hex string (expected format: #RRGGBB)", name, value)
+            })?;
+        }
+
+        Ok(())
+    }
+}
+
 impl From<Theme> for ValueKind {
     /// Consumes and converts a [`Theme`] to a [`ValueKind`] so that it can be used as a
     /// [`Source`].

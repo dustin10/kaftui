@@ -84,6 +84,10 @@ impl LogsState {
     }
     /// Moves the logs list scroll state to the bottom.
     fn scroll_list_bottom(&mut self) {
+        if self.logs.is_empty() {
+            return;
+        }
+
         let bottom = self.logs.len() - 1;
 
         self.list_state.select(Some(bottom));

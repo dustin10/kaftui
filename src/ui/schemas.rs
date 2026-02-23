@@ -97,19 +97,17 @@ struct SchemasState {
 }
 
 impl SchemasState {
-    /// Creates a new default [`SchemasState`].
-    fn new() -> Self {
-        Self::default()
-    }
     /// Updates the list of visible subjects based on the current filter value.
     fn update_visible_subjects(&mut self) {
         let filter = self.subjects_filter.as_ref().map_or("", |f| f.as_str());
+
+        let filter_lower = filter.to_lowercase();
 
         self.visible_indices = self
             .subjects
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.as_ref().starts_with(filter))
+            .filter(|(_, s)| s.as_ref().to_lowercase().contains(&filter_lower))
             .map(|(i, _)| i)
             .collect::<Vec<usize>>();
     }
@@ -260,10 +258,7 @@ impl SchemasState {
     }
     /// Selects the first subject schema version in the list.
     fn select_first_schema_version(&mut self) -> Option<(&Subject, Version)> {
-        let current_idx = self
-            .versions_list_state
-            .selected()
-            .expect("version selected");
+        let current_idx = self.versions_list_state.selected()?;
 
         if current_idx == 0 {
             return None;
@@ -284,12 +279,9 @@ impl SchemasState {
     }
     /// Selects the next subject schema version in the list.
     fn select_next_schema_version(&mut self) -> Option<(&Subject, Version)> {
-        let idx = self
-            .versions_list_state
-            .selected()
-            .expect("version selected");
+        let idx = self.versions_list_state.selected()?;
 
-        if idx == self.available_versions.len() - 1 {
+        if self.available_versions.is_empty() || idx == self.available_versions.len() - 1 {
             return None;
         }
 
@@ -319,10 +311,7 @@ impl SchemasState {
     }
     /// Selects the previous subject schema version in the list.
     fn select_prev_schema_version(&mut self) -> Option<(&Subject, Version)> {
-        let idx = self
-            .versions_list_state
-            .selected()
-            .expect("version selected");
+        let idx = self.versions_list_state.selected()?;
 
         if idx == 0 {
             return None;
@@ -354,12 +343,9 @@ impl SchemasState {
     }
     /// Selects the last subject schema version in the list.
     fn select_last_schema_version(&mut self) -> Option<(&Subject, Version)> {
-        let current_idx = self
-            .versions_list_state
-            .selected()
-            .expect("version always selected");
+        let current_idx = self.versions_list_state.selected()?;
 
-        if current_idx == self.available_versions.len() - 1 {
+        if self.available_versions.is_empty() || current_idx == self.available_versions.len() - 1 {
             return None;
         }
 
@@ -520,7 +506,7 @@ impl Schemas {
     /// Creates a new [`Schemas`] component using the specified [`SchemasConfig`].
     fn new(config: SchemasConfig<'_>) -> Self {
         Self {
-            state: SchemasState::new(),
+            state: SchemasState::default(),
             scroll_factor: config.scroll_factor,
             theme: config.theme.into(),
         }
@@ -529,6 +515,7 @@ impl Schemas {
     fn on_subjects_loaded(&mut self, subjects: Vec<Subject>) {
         self.state.network_status = NetworkStatus::Idle;
         self.state.subjects = subjects;
+        self.state.subjects.sort();
         self.state.update_visible_subjects();
     }
     /// Renders the filter input box for filtering subjects.
@@ -621,11 +608,9 @@ impl Schemas {
                 .border_style(self.theme.selected_panel_border_color);
         }
 
-        let schema = self
-            .state
-            .selected_schema
-            .as_ref()
-            .expect("schema is selected");
+        let Some(schema) = self.state.selected_schema.as_ref() else {
+            return;
+        };
 
         let schema_paragraph = Paragraph::new(schema.schema.clone())
             .block(schema_block)

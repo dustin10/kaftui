@@ -469,7 +469,9 @@ impl<'a> Stats<'a> {
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
-        let topic = stats.topics.values().next().expect("valid topic stats");
+        let Some(topic) = stats.topics.values().next() else {
+            return;
+        };
 
         let ordered = BTreeMap::from_iter(topic.partitions.iter());
 
@@ -518,7 +520,7 @@ impl<'a> Stats<'a> {
             }
         }
 
-        to_remove.into_iter().for_each(|i| {
+        to_remove.into_iter().rev().for_each(|i| {
             let _ = self.state.timestamps.remove(i);
         });
 
@@ -666,7 +668,7 @@ fn calculate_bar_width(area: &Rect, num_bars: u16, bar_gap: u16) -> u16 {
 
     let total_gap = (num_bars + 1) * bar_gap;
 
-    (area.width - total_gap) / num_bars
+    (area.width.saturating_sub(total_gap) / num_bars).max(1)
 }
 
 impl<'a> Component for Stats<'a> {
@@ -726,14 +728,13 @@ impl<'a> Component for Stats<'a> {
     }
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
-        let consumer_mode_key_binding = match self.state.consumer_mode.get() {
-            ConsumerMode::Stopped => "",
-            ConsumerMode::Processing => super::KEY_BINDING_PAUSE,
-            ConsumerMode::Paused => super::KEY_BINDING_RESUME,
-        };
-
         let mut key_bindings = Vec::from(STATS_STANDARD_KEY_BINDINGS);
-        key_bindings.push(consumer_mode_key_binding);
+
+        match self.state.consumer_mode.get() {
+            ConsumerMode::Stopped => {}
+            ConsumerMode::Processing => key_bindings.push(super::KEY_BINDING_PAUSE),
+            ConsumerMode::Paused => key_bindings.push(super::KEY_BINDING_RESUME),
+        };
 
         let text = Paragraph::new(key_bindings.join(" | "))
             .style(self.theme.key_bindings_text_color)
