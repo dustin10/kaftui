@@ -194,7 +194,7 @@ where
     /// Channel receiver that is used to receive application events.
     event_rx: UnboundedReceiver<Event>,
     /// Channel receiver that is used to receive records from the Kafka consumer.
-    consumer_rx: Receiver<ConsumerEvent>,
+    consumer_rx: Option<Receiver<ConsumerEvent>>,
     /// Emits events to be handled by the application.
     event_bus: Arc<EventBus>,
     /// Consumer used to read records from a Kafka topic.
@@ -363,7 +363,7 @@ where
             config,
             state,
             event_rx,
-            consumer_rx,
+            consumer_rx: Some(consumer_rx),
             event_bus,
             consumer,
             exporter,
@@ -432,15 +432,18 @@ where
                         self.state.running = false;
                     }
                 },
-                consumer_events_count =
-                    self.consumer_rx.recv_many(&mut consumer_events_buffer, CONSUMER_EVENTS_BUFFER_SIZE) => {
+                consumer_events_count = async {
+                    match self.consumer_rx {
+                        Some(ref mut rx) => rx.recv_many(&mut consumer_events_buffer, CONSUMER_EVENTS_BUFFER_SIZE).await,
+                        None => std::future::pending().await
+                    }
+                } => {
                     if consumer_events_count > 0 {
                         for consumer_event in consumer_events_buffer.into_iter() {
                             self.on_consumer_event(consumer_event);
                         }
                     } else {
-                        tracing::warn!("consumer events channel unexpectedly closed");
-                        self.state.running = false;
+                        self.on_consumer_channel_closed();
                     }
                 }
                 _ = tick.tick() => self.on_tick(),
@@ -606,6 +609,18 @@ where
                     .for_each(|c| c.borrow_mut().on_app_event(&event));
             }
         }
+    }
+    /// Handles the closing of the Kafka consumer channel.
+    fn on_consumer_channel_closed(&mut self) {
+        tracing::warn!("Kafka consumer channel closed");
+
+        self.consumer_rx = None;
+
+        self.state.consumer_mode.set(ConsumerMode::Stopped);
+
+        self.event_bus.send(Event::DisplayNotification(
+            Notification::failure("Kafka Consumer Disconnected"),
+        ));
     }
     /// Handles [`ConsumerEvent`]s received on the Kafka consumer channel.
     fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {

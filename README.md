@@ -43,11 +43,6 @@ schemas and the various versions of the schemas can be viewed and compared.
 
 ![kaftui application schema registry ui running with the default theme](assets/kaftui-default-schema-registry.png)
 
-> The `kaftui` application is mostly coded by hand. While AI tools do provide some assistance, they
-> are mainly used for code reviews, bug hunting and generating documentation. Occasionally, AI
-> tools are used to generate small snippets of code for non-core features or to assist with
-> refactoring operations.
-
 ## Quick Start
 
 First, install the `kaftui` application using `cargo`. The minimum required version of Rust is `1.89.0`.
