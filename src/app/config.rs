@@ -541,8 +541,14 @@ impl Theme {
 
         let colors: &[(&str, &str)] = &[
             ("panelBorderColor", &self.panel_border_color),
-            ("selectedPanelBorderColor", &self.selected_panel_border_color),
-            ("statusTextColorProcessing", &self.status_text_color_processing),
+            (
+                "selectedPanelBorderColor",
+                &self.selected_panel_border_color,
+            ),
+            (
+                "statusTextColorProcessing",
+                &self.status_text_color_processing,
+            ),
             ("statusTextColorPaused", &self.status_text_color_paused),
             ("keyBindingsTextColor", &self.key_bindings_text_color),
             ("labelColor", &self.label_color),
@@ -552,10 +558,22 @@ impl Theme {
             ("recordValueTextColor", &self.record_value_text_color),
             ("recordHeadersTextColor", &self.record_headers_text_color),
             ("menuItemTextColor", &self.menu_item_text_color),
-            ("selectedMenuItemTextColor", &self.selected_menu_item_text_color),
-            ("notificationTextColorSuccess", &self.notification_text_color_success),
-            ("notificationTextColorWarn", &self.notification_text_color_warn),
-            ("notificationTextColorFailure", &self.notification_text_color_failure),
+            (
+                "selectedMenuItemTextColor",
+                &self.selected_menu_item_text_color,
+            ),
+            (
+                "notificationTextColorSuccess",
+                &self.notification_text_color_success,
+            ),
+            (
+                "notificationTextColorWarn",
+                &self.notification_text_color_warn,
+            ),
+            (
+                "notificationTextColorFailure",
+                &self.notification_text_color_failure,
+            ),
             ("statsTextColor", &self.stats_text_color),
             ("statsBarColor", &self.stats_bar_color),
             ("statsBarSecondaryColor", &self.stats_bar_secondary_color),

@@ -197,7 +197,10 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        let idx = self.subjects_list_state.selected().expect("subject selected");
+        let idx = self
+            .subjects_list_state
+            .selected()
+            .expect("subject selected");
 
         let subject_idx = self.visible_indices.get(idx).expect("visible index exists");
         self.selected_subject = self.subjects.get(*subject_idx).cloned();
@@ -224,7 +227,10 @@ impl SchemasState {
 
         self.schema_definition_scroll = (0, 0);
 
-        let idx = self.subjects_list_state.selected().expect("subject selected");
+        let idx = self
+            .subjects_list_state
+            .selected()
+            .expect("subject selected");
 
         let subject_idx = self.visible_indices.get(idx).expect("visible index exists");
         self.selected_subject = self.subjects.get(*subject_idx).cloned();
@@ -526,7 +532,11 @@ impl Schemas {
             .border_style(self.theme.selected_panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
 
-        let filter = self.state.subjects_filter.as_ref().map_or("", |f| f.as_str());
+        let filter = self
+            .state
+            .subjects_filter
+            .as_ref()
+            .map_or("", |f| f.as_str());
 
         let filter_text = Paragraph::new(filter).block(filter_block);
 
@@ -918,122 +928,132 @@ impl Component for Schemas {
                 MappedKeyEvent::Consumed
             }
             KeyCode::Char(c) => match self.state.active_widget {
-                    SchemasWidget::Subjects => {
-                        let mapped_event = match c {
-                            'e' => match self.state.selected_schema.as_ref() {
-                                Some(s) => MappedKeyEvent::Dispatch(Event::ExportSchema(s.clone())),
-                                None => MappedKeyEvent::Unhandled,
-                            },
-                            '/' => {
-                                self.state.on_start_filter();
-                                MappedKeyEvent::Consumed
-                            }
-                            'c' if self.state.subjects_filter.is_some() => {
-                                self.state.on_clear_filter();
-                                MappedKeyEvent::Consumed
-                            }
-                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                                match self.state.select_first_subject() {
-                                    Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
-                                    None => MappedKeyEvent::Unhandled,
+                SchemasWidget::Subjects => {
+                    let mapped_event = match c {
+                        'e' => match self.state.selected_schema.as_ref() {
+                            Some(s) => MappedKeyEvent::Dispatch(Event::ExportSchema(s.clone())),
+                            None => MappedKeyEvent::Unhandled,
+                        },
+                        '/' => {
+                            self.state.on_start_filter();
+                            MappedKeyEvent::Consumed
+                        }
+                        'c' if self.state.subjects_filter.is_some() => {
+                            self.state.on_clear_filter();
+                            MappedKeyEvent::Consumed
+                        }
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                            match self.state.select_first_subject() {
+                                Some(s) => {
+                                    MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone()))
                                 }
+                                None => MappedKeyEvent::Unhandled,
                             }
-                            'j' => match self.state.select_next_subject() {
-                                Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
-                                None => MappedKeyEvent::Unhandled,
-                            },
-                            'k' => match self.state.select_prev_subject() {
-                                Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
-                                None => MappedKeyEvent::Unhandled,
-                            },
-                            'G' => match self.state.select_last_subject() {
-                                Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
-                                None => MappedKeyEvent::Unhandled,
-                            },
-                            _ => MappedKeyEvent::Unhandled,
-                        };
-
-                        if let MappedKeyEvent::Dispatch(Event::LoadLatestSchema(_)) = mapped_event {
-                            self.state.network_status = NetworkStatus::LoadingSchema;
                         }
+                        'j' => match self.state.select_next_subject() {
+                            Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
+                            None => MappedKeyEvent::Unhandled,
+                        },
+                        'k' => match self.state.select_prev_subject() {
+                            Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
+                            None => MappedKeyEvent::Unhandled,
+                        },
+                        'G' => match self.state.select_last_subject() {
+                            Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
+                            None => MappedKeyEvent::Unhandled,
+                        },
+                        _ => MappedKeyEvent::Unhandled,
+                    };
 
-                        mapped_event
+                    if let MappedKeyEvent::Dispatch(Event::LoadLatestSchema(_)) = mapped_event {
+                        self.state.network_status = NetworkStatus::LoadingSchema;
                     }
-                    SchemasWidget::FilterInput => {
-                        if let Some(filter) = self.state.subjects_filter.as_mut() {
-                            filter.push(c);
-                        } else {
-                            self.state.subjects_filter = Some(c.to_string());
-                        }
 
-                        self.state.update_visible_subjects();
+                    mapped_event
+                }
+                SchemasWidget::FilterInput => {
+                    if let Some(filter) = self.state.subjects_filter.as_mut() {
+                        filter.push(c);
+                    } else {
+                        self.state.subjects_filter = Some(c.to_string());
+                    }
 
+                    self.state.update_visible_subjects();
+
+                    MappedKeyEvent::Consumed
+                }
+                SchemasWidget::Schema => match c {
+                    'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                        self.state.scroll_schema_definition_top();
                         MappedKeyEvent::Consumed
                     }
-                    SchemasWidget::Schema => match c {
-                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            self.state.scroll_schema_definition_top();
-                            MappedKeyEvent::Consumed
-                        }
-                        'j' => {
-                            self.state.scroll_schema_definition_down(self.scroll_factor);
-                            MappedKeyEvent::Consumed
-                        }
-                        'k' => {
-                            self.state.scroll_schema_definition_up(self.scroll_factor);
-                            MappedKeyEvent::Consumed
-                        }
-                        _ => MappedKeyEvent::Unhandled,
-                    },
-                    SchemasWidget::Versions => {
-                        let mapped_event = match c {
-                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                                match self.state.select_first_schema_version() {
-                                    Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
-                                    None => MappedKeyEvent::Unhandled,
-                                }
-                            }
-                            'j' => match self.state.select_next_schema_version() {
-                                Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
-                                None => MappedKeyEvent::Unhandled,
-                            },
-                            'k' => match self.state.select_prev_schema_version() {
-                                Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
-                                None => MappedKeyEvent::Unhandled,
-                            },
-                            'G' => match self.state.select_last_schema_version() {
-                                Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
-                                None => MappedKeyEvent::Unhandled,
-                            },
-                            _ => MappedKeyEvent::Unhandled,
-                        };
-
-                        if matches!(mapped_event, MappedKeyEvent::Dispatch(_)) {
-                            self.state.network_status = NetworkStatus::LoadingSchema;
-                        }
-
-                        mapped_event
+                    'j' => {
+                        self.state.scroll_schema_definition_down(self.scroll_factor);
+                        MappedKeyEvent::Consumed
                     }
-                    SchemasWidget::References => match c {
-                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
-                            self.state.scroll_references_top();
-                            MappedKeyEvent::Consumed
-                        }
-                        'j' => {
-                            self.state.scroll_references_down();
-                            MappedKeyEvent::Consumed
-                        }
-                        'k' => {
-                            self.state.scroll_references_up();
-                            MappedKeyEvent::Consumed
-                        }
-                        'G' => {
-                            self.state.scroll_references_bottom();
-                            MappedKeyEvent::Consumed
-                        }
-                        _ => MappedKeyEvent::Unhandled,
-                    },
+                    'k' => {
+                        self.state.scroll_schema_definition_up(self.scroll_factor);
+                        MappedKeyEvent::Consumed
+                    }
+                    _ => MappedKeyEvent::Unhandled,
                 },
+                SchemasWidget::Versions => {
+                    let mapped_event = match c {
+                        'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                            match self.state.select_first_schema_version() {
+                                Some((s, v)) => {
+                                    MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v))
+                                }
+                                None => MappedKeyEvent::Unhandled,
+                            }
+                        }
+                        'j' => match self.state.select_next_schema_version() {
+                            Some((s, v)) => {
+                                MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v))
+                            }
+                            None => MappedKeyEvent::Unhandled,
+                        },
+                        'k' => match self.state.select_prev_schema_version() {
+                            Some((s, v)) => {
+                                MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v))
+                            }
+                            None => MappedKeyEvent::Unhandled,
+                        },
+                        'G' => match self.state.select_last_schema_version() {
+                            Some((s, v)) => {
+                                MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v))
+                            }
+                            None => MappedKeyEvent::Unhandled,
+                        },
+                        _ => MappedKeyEvent::Unhandled,
+                    };
+
+                    if matches!(mapped_event, MappedKeyEvent::Dispatch(_)) {
+                        self.state.network_status = NetworkStatus::LoadingSchema;
+                    }
+
+                    mapped_event
+                }
+                SchemasWidget::References => match c {
+                    'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                        self.state.scroll_references_top();
+                        MappedKeyEvent::Consumed
+                    }
+                    'j' => {
+                        self.state.scroll_references_down();
+                        MappedKeyEvent::Consumed
+                    }
+                    'k' => {
+                        self.state.scroll_references_up();
+                        MappedKeyEvent::Consumed
+                    }
+                    'G' => {
+                        self.state.scroll_references_bottom();
+                        MappedKeyEvent::Consumed
+                    }
+                    _ => MappedKeyEvent::Unhandled,
+                },
+            },
             _ => MappedKeyEvent::Unhandled,
         }
     }
@@ -1090,7 +1110,10 @@ impl Component for Schemas {
             SchemasWidget::FilterInput => {}
         }
 
-        match (self.state.active_widget, self.state.subjects_filter.as_ref()) {
+        match (
+            self.state.active_widget,
+            self.state.subjects_filter.as_ref(),
+        ) {
             (SchemasWidget::Subjects, None) => {
                 key_bindings.push(KEY_BINDING_FILTER);
             }

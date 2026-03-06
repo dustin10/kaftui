@@ -11,13 +11,14 @@ use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    layout::{Constraint, Direction, Layout, Margin, Rect},
+    style::{Color, Modifier, Style, Stylize},
     symbols::Marker,
     text::{Line, Span, ToSpan},
     widgets::{
-        Axis, Bar, BarChart, BarGroup, Block, Borders, Chart, Dataset, GraphType, Padding,
-        Paragraph, Row, Table,
+        Axis, Bar, BarChart, BarGroup, Block, BorderType, Borders, Chart, Dataset, GraphType,
+        Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+        TableState,
     },
 };
 use rdkafka::{Statistics, statistics::Partition};
@@ -79,6 +80,13 @@ impl<'a> ToRow<'a> for &Partition {
     }
 }
 
+/// Enumeration of the widgets in the [`Records`] component that can have focus.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+enum StatsWidget {
+    #[default]
+    Partitions,
+}
+
 /// Manages state related to application statistics and the UI that renders them to the user.
 #[derive(Debug)]
 struct StatsState {
@@ -100,6 +108,12 @@ struct StatsState {
     /// [`Statistics`] emitted periodically from the librdkafka library which are displayed to the
     /// user.
     statistics: Option<Statistics>,
+    /// Stores the widget that the currently has focus.
+    active_widget: StatsWidget,
+    /// State for the partition stats table selection.
+    partition_table_state: TableState,
+    /// State for the partition stats table scrollbar.
+    partition_scroll_state: ScrollbarState,
 }
 
 impl StatsState {
@@ -112,6 +126,9 @@ impl StatsState {
             partition_totals: BTreeMap::default(),
             timestamps: BoundedVecDeque::new(MAX_THROUGHPUT_CAPTURE),
             statistics: None,
+            active_widget: StatsWidget::default(),
+            partition_table_state: TableState::default(),
+            partition_scroll_state: ScrollbarState::default(),
         }
     }
     /// Computes the total number of records consumed. The total is sum of the number of records
@@ -148,6 +165,66 @@ impl StatsState {
     fn push_timestamp(&mut self) {
         self.timestamps.push_front(Local::now().timestamp_millis());
     }
+    /// Returns the number of partitions in the current statistics (only those with id >= 0).
+    fn partition_count(&self) -> usize {
+        self.statistics
+            .as_ref()
+            .and_then(|s| s.topics.values().next())
+            .map(|t| t.partitions.values().filter(|p| p.partition >= 0).count())
+            .unwrap_or(0)
+    }
+    /// Scrolls the partition stats table down by one row.
+    fn scroll_partition_down(&mut self) {
+        let count = self.partition_count();
+        if count == 0 {
+            return;
+        }
+
+        if let Some(curr_idx) = self.partition_table_state.selected()
+            && curr_idx == count - 1
+        {
+            return;
+        }
+
+        self.partition_table_state.select_next();
+
+        let idx = self
+            .partition_table_state
+            .selected()
+            .expect("partition selected");
+        self.partition_scroll_state = self.partition_scroll_state.position(idx);
+    }
+    /// Scrolls the partition stats table up by one row.
+    fn scroll_partition_up(&mut self) {
+        let count = self.partition_count();
+        if count == 0 {
+            return;
+        }
+
+        self.partition_table_state.select_previous();
+
+        let idx = self
+            .partition_table_state
+            .selected()
+            .expect("partition selected");
+        self.partition_scroll_state = self.partition_scroll_state.position(idx);
+    }
+    /// Scrolls the partition stats table to the first row.
+    fn scroll_partition_top(&mut self) {
+        self.partition_table_state.select_first();
+        self.partition_scroll_state = self.partition_scroll_state.position(0);
+    }
+    /// Scrolls the partition stats table to the last row.
+    fn scroll_partition_bottom(&mut self) {
+        let count = self.partition_count();
+        if count == 0 {
+            return;
+        }
+
+        let bottom = count - 1;
+        self.partition_table_state.select(Some(bottom));
+        self.partition_scroll_state = self.partition_scroll_state.position(bottom);
+    }
 }
 
 /// Contains the [`Color`]s from the application [`Theme`] required to render the [`Stats`]
@@ -156,6 +233,8 @@ impl StatsState {
 struct StatsTheme {
     /// Color used for the borders of the main info panels.
     panel_border_color: Color,
+    /// Color used for the borders of the selected info panel.
+    selected_panel_border_color: Color,
     /// Color used for the label text in tables, etc.
     label_color: Color,
     /// Color used for normal text.
@@ -185,6 +264,9 @@ impl From<&Theme> for StatsTheme {
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
 
+        let selected_panel_border_color =
+            Color::from_str(value.selected_panel_border_color.as_str()).expect("valid RGB hex");
+
         let label_color = Color::from_str(value.label_color.as_str()).expect("valid RGB hex");
 
         let text_color = Color::from_str(value.stats_text_color.as_str()).expect("valid RGB hex");
@@ -208,6 +290,7 @@ impl From<&Theme> for StatsTheme {
 
         Self {
             panel_border_color,
+            selected_panel_border_color,
             label_color,
             text_color,
             bar_color,
@@ -359,9 +442,9 @@ impl<'a> Stats<'a> {
             .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
             .areas(bottom_panel);
 
-        if let Some(stats) = self.state.statistics.as_ref() {
-            self.render_consumer_stats(stats, frame, bottom_left_panel);
-            self.render_partition_stats(stats, frame, bottom_right_panel);
+        if let Some(stats) = self.state.statistics.clone() {
+            self.render_consumer_stats(&stats, frame, bottom_left_panel);
+            self.render_partition_stats(&stats, frame, bottom_right_panel);
         } else {
             self.render_waiting_panel(frame, bottom_left_panel);
             self.render_waiting_panel(frame, bottom_right_panel);
@@ -463,8 +546,8 @@ impl<'a> Stats<'a> {
     }
     /// Renders the panel that displays the statistics relevant to the topic partitions that are
     /// emitted by the librdkafka library.
-    fn render_partition_stats(&self, stats: &Statistics, frame: &mut Frame, area: Rect) {
-        let partition_stats_block = Block::bordered()
+    fn render_partition_stats(&mut self, stats: &Statistics, frame: &mut Frame, area: Rect) {
+        let mut partition_stats_block = Block::bordered()
             .title(" Partitions ")
             .border_style(self.theme.panel_border_color)
             .padding(Padding::new(1, 1, 0, 0));
@@ -473,23 +556,55 @@ impl<'a> Stats<'a> {
             return;
         };
 
+        if self.state.active_widget == StatsWidget::Partitions {
+            partition_stats_block = partition_stats_block
+                .border_type(BorderType::Thick)
+                .border_style(self.theme.selected_panel_border_color);
+        }
+
         let ordered = BTreeMap::from_iter(topic.partitions.iter());
 
-        let partition_stats_row: Vec<Row> = ordered
+        let partition_stats_rows: Vec<Row> = ordered
             .values()
             .filter(|p| p.partition >= 0)
             .map(ToRow::to_row)
             .collect();
 
+        let partition_count = partition_stats_rows.len();
+
         let header = Row::new(self.partition_labels.clone());
 
-        let partition_stats_table = Table::new(partition_stats_row, &self.partition_constraints)
+        let partition_stats_table = Table::new(partition_stats_rows, &self.partition_constraints)
             .column_spacing(1)
             .header(header)
             .style(self.theme.bar_color)
+            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
             .block(partition_stats_block);
 
-        frame.render_widget(partition_stats_table, area);
+        frame.render_stateful_widget(
+            partition_stats_table,
+            area,
+            &mut self.state.partition_table_state,
+        );
+
+        self.state.partition_scroll_state = self
+            .state
+            .partition_scroll_state
+            .content_length(partition_count);
+
+        let scrollbar = Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
+
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(Margin {
+                horizontal: 1,
+                vertical: 1,
+            }),
+            &mut self.state.partition_scroll_state,
+        );
     }
     /// Renders the chart that displays the total throughput of records being consumed from the
     /// Kafka topic per second.
@@ -692,12 +807,28 @@ impl<'a> Component for Stats<'a> {
     fn map_key_event(
         &mut self,
         event: KeyEvent,
-        _buffered: Option<&BufferedKeyPress>,
+        buffered: Option<&BufferedKeyPress>,
     ) -> MappedKeyEvent {
         match event.code {
             KeyCode::Char(c) => match c {
                 'p' => MappedKeyEvent::Dispatch(Event::PauseProcessing),
                 'r' => MappedKeyEvent::Dispatch(Event::ResumeProcessing),
+                'j' => {
+                    self.state.scroll_partition_down();
+                    MappedKeyEvent::Consumed
+                }
+                'k' => {
+                    self.state.scroll_partition_up();
+                    MappedKeyEvent::Consumed
+                }
+                'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                    self.state.scroll_partition_top();
+                    MappedKeyEvent::Consumed
+                }
+                'G' => {
+                    self.state.scroll_partition_bottom();
+                    MappedKeyEvent::Consumed
+                }
                 _ => MappedKeyEvent::Unhandled,
             },
             _ => MappedKeyEvent::Unhandled,
@@ -729,6 +860,13 @@ impl<'a> Component for Stats<'a> {
     /// Allows the [`Component`] to render the key bindings text into the footer.
     fn render_key_bindings(&self, frame: &mut Frame, area: Rect) {
         let mut key_bindings = Vec::from(STATS_STANDARD_KEY_BINDINGS);
+
+        if self.state.statistics.is_some() {
+            key_bindings.push(super::KEY_BINDING_TOP);
+            key_bindings.push(super::KEY_BINDING_NEXT);
+            key_bindings.push(super::KEY_BINDING_PREV);
+            key_bindings.push(super::KEY_BINDING_BOTTOM);
+        }
 
         match self.state.consumer_mode.get() {
             ConsumerMode::Stopped => {}

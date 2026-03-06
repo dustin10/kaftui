@@ -11,12 +11,12 @@ use crate::{
         ConsumeTopicConfig, Consumer, ConsumerConfig, ConsumerEvent, ConsumerMode, Record,
         admin::{AdminClient, AdminClientConfig, Topic, TopicConfig},
         de::{KeyDeserializer, ValueDeserializer},
-        schema::{Schema, SchemaClient, Subject, Version, DEFAULT_CACHE_TTL},
+        schema::{DEFAULT_CACHE_TTL, Schema, SchemaClient, Subject, Version},
     },
     trace::Log,
     ui::{
-        Component, MappedKeyEvent, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig,
-        Settings, SettingsConfig, Stats, StatsConfig, Topics, TopicsConfig,
+        Component, Logs, LogsConfig, MappedKeyEvent, Records, RecordsConfig, Schemas,
+        SchemasConfig, Settings, SettingsConfig, Stats, StatsConfig, Topics, TopicsConfig,
     },
 };
 
@@ -219,7 +219,10 @@ where
         value_deserializer: Arc<dyn ValueDeserializer>,
         schema_registry_client: Option<Arc<C>>,
     ) -> anyhow::Result<Self> {
-        config.theme.validate().context("invalid theme color in configuration")?;
+        config
+            .theme
+            .validate()
+            .context("invalid theme color in configuration")?;
 
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -551,7 +554,8 @@ where
                     .borrow_mut()
                     .map_key_event(key_event, self.buffered_key_press.as_ref());
 
-                if matches!(mapped, MappedKeyEvent::Unhandled) && self.menu_item_chars.contains(&c) {
+                if matches!(mapped, MappedKeyEvent::Unhandled) && self.menu_item_chars.contains(&c)
+                {
                     let digit = c.to_digit(10).expect("valid digit") - 1;
                     let selected = digit as usize;
 
@@ -626,9 +630,10 @@ where
 
         self.state.consumer_mode.set(ConsumerMode::Stopped);
 
-        self.event_bus.send(Event::DisplayNotification(
-            Notification::failure("Kafka Consumer Disconnected"),
-        ));
+        self.event_bus
+            .send(Event::DisplayNotification(Notification::failure(
+                "Kafka Consumer Disconnected",
+            )));
     }
     /// Handles [`ConsumerEvent`]s received on the Kafka consumer channel.
     fn on_consumer_event(&mut self, consumer_event: ConsumerEvent) {
