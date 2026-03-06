@@ -2,7 +2,7 @@ use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::Event,
     kafka::admin::{Topic, TopicConfig},
-    ui::Component,
+    ui::{Component, MappedKeyEvent},
 };
 
 use crossterm::event::{KeyCode, KeyEvent};
@@ -536,11 +536,11 @@ impl Component for Topics {
         &mut self,
         event: KeyEvent,
         buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
+    ) -> MappedKeyEvent {
         let mapped_event = match event.code {
             KeyCode::Enter => {
                 self.state.on_apply_filter();
-                Some(Event::Void)
+                MappedKeyEvent::Consumed
             }
             KeyCode::Backspace | KeyCode::Delete => {
                 if self.state.active_widget == TopicsWidget::FilterInput
@@ -556,49 +556,51 @@ impl Component for Topics {
                     self.state.topics_filter = None;
                 }
 
-                Some(Event::Void)
+                MappedKeyEvent::Consumed
             }
             KeyCode::Char(c) => match self.state.active_widget {
                 TopicsWidget::Topics => match c {
                     '/' => {
                         self.state.on_start_filter();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'c' if self.state.topics_filter.is_some() => {
                         self.state.on_clear_filter();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'e' => {
                         if let Some(selected_topic) = self.state.selected_topic.as_ref()
                             && let Some(selected_topic_config) =
                                 self.state.selected_topic_config.as_ref()
                         {
-                            Some(Event::ExportTopic(
+                            MappedKeyEvent::Dispatch(Event::ExportTopic(
                                 selected_topic.clone(),
                                 selected_topic_config.clone(),
                             ))
                         } else {
                             tracing::warn!("no topic or config available to export");
-                            None
+                            MappedKeyEvent::Unhandled
                         }
                     }
-                    'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
-                        .state
-                        .select_first_topic()
-                        .map(|t| Event::LoadTopicConfig(t.clone())),
-                    'j' => self
-                        .state
-                        .select_next_topic()
-                        .map(|t| Event::LoadTopicConfig(t.clone())),
-                    'k' => self
-                        .state
-                        .select_prev_topic()
-                        .map(|t| Event::LoadTopicConfig(t.clone())),
-                    'G' => self
-                        .state
-                        .select_last_topic()
-                        .map(|t| Event::LoadTopicConfig(t.clone())),
-                    _ => None,
+                    'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                        match self.state.select_first_topic() {
+                            Some(t) => MappedKeyEvent::Dispatch(Event::LoadTopicConfig(t.clone())),
+                            None => MappedKeyEvent::Unhandled,
+                        }
+                    }
+                    'j' => match self.state.select_next_topic() {
+                        Some(t) => MappedKeyEvent::Dispatch(Event::LoadTopicConfig(t.clone())),
+                        None => MappedKeyEvent::Unhandled,
+                    },
+                    'k' => match self.state.select_prev_topic() {
+                        Some(t) => MappedKeyEvent::Dispatch(Event::LoadTopicConfig(t.clone())),
+                        None => MappedKeyEvent::Unhandled,
+                    },
+                    'G' => match self.state.select_last_topic() {
+                        Some(t) => MappedKeyEvent::Dispatch(Event::LoadTopicConfig(t.clone())),
+                        None => MappedKeyEvent::Unhandled,
+                    },
+                    _ => MappedKeyEvent::Unhandled,
                 },
                 TopicsWidget::FilterInput => {
                     if let Some(filter) = self.state.topics_filter.as_mut() {
@@ -609,13 +611,13 @@ impl Component for Topics {
 
                     self.state.update_visible_topics();
 
-                    Some(Event::Void)
+                    MappedKeyEvent::Consumed
                 }
             },
-            _ => None,
+            _ => MappedKeyEvent::Unhandled,
         };
 
-        if let Some(Event::LoadTopicConfig(_)) = mapped_event {
+        if let MappedKeyEvent::Dispatch(Event::LoadTopicConfig(_)) = mapped_event {
             self.state.network_status = NetworkStatus::LoadingTopicConfig;
         }
 

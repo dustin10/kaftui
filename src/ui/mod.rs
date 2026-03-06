@@ -20,6 +20,18 @@ use crate::{
     event::Event,
 };
 
+/// Enumeration of the possible outcomes of mapping a key event in a [`Component`].
+pub enum MappedKeyEvent {
+    /// Key event was not handled by the component.
+    Unhandled,
+    /// Key event was handled wholly inside the [`Component`] and no app event needs to be
+    /// dispatched.
+    Consumed,
+    /// Key event was handled by the [`Component`] and the provided application [`Event`] should be
+    /// dispatched for processing.
+    Dispatch(Event),
+}
+
 use crossterm::event::KeyEvent;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -71,14 +83,14 @@ pub trait Component {
     fn name(&self) -> &'static str;
     /// Renders the component-specific widgets to the terminal.
     fn render(&mut self, frame: &mut Frame, area: Rect);
-    /// Allows the [`Component`] to map a [`KeyEvent`] to an [`Event`] which will be published
-    /// for processing.
+    /// Allows the [`Component`] to map a [`KeyEvent`] to a [`MappedKeyEvent`] which controls
+    /// whether an event is dispatched or the key is consumed locally.
     fn map_key_event(
         &mut self,
         _event: KeyEvent,
         _buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
-        None
+    ) -> MappedKeyEvent {
+        MappedKeyEvent::Unhandled
     }
     /// Allows the component to handle any [`Event`] that was not handled by the main
     /// application.

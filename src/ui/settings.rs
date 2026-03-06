@@ -1,7 +1,7 @@
 use crate::{
     app::config::{Config, PersistedConfig, Profile, Theme},
     kafka::SeekTo,
-    ui::{BufferedKeyPress, Component, Event},
+    ui::{BufferedKeyPress, Component, Event, MappedKeyEvent},
 };
 
 use crossterm::event::{KeyCode, KeyEvent};
@@ -1019,49 +1019,49 @@ impl Component for Settings {
         &mut self,
         event: KeyEvent,
         buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
+    ) -> MappedKeyEvent {
         match event.code {
             KeyCode::Char(c) => match self.state.active_widget {
                 SettingsWidget::Menu => match c {
                     'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                         self.state.select_menu_item_top();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'j' => {
                         self.state.select_menu_item_next();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'k' => {
                         self.state.select_menu_item_prev();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'G' => {
                         self.state.select_menu_item_bottom();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
-                    _ => None,
+                    _ => MappedKeyEvent::Unhandled,
                 },
                 SettingsWidget::Profiles => match c {
                     'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                         self.state.select_profile_item_top();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'j' => {
                         self.state.select_profile_item_next();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'k' => {
                         self.state.select_profile_item_prev();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     'G' => {
                         self.state.select_profile_item_bottom();
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
-                    _ => None,
+                    _ => MappedKeyEvent::Unhandled,
                 },
             },
-            _ => None,
+            _ => MappedKeyEvent::Unhandled,
         }
     }
     /// Renders the component-specific widgets to the terminal.

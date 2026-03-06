@@ -2,7 +2,7 @@ use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::Event,
     trace::Log,
-    ui::Component,
+    ui::{Component, MappedKeyEvent},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
@@ -246,28 +246,28 @@ impl Component for Logs {
         &mut self,
         event: KeyEvent,
         buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
+    ) -> MappedKeyEvent {
         match event.code {
             KeyCode::Char(c) => match c {
                 'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                     self.state.scroll_list_top();
-                    Some(Event::Void)
+                    MappedKeyEvent::Consumed
                 }
                 'j' => {
                     self.state.scroll_list_down();
-                    Some(Event::Void)
+                    MappedKeyEvent::Consumed
                 }
                 'k' => {
                     self.state.scroll_list_up();
-                    Some(Event::Void)
+                    MappedKeyEvent::Consumed
                 }
                 'G' => {
                     self.state.scroll_list_bottom();
-                    Some(Event::Void)
+                    MappedKeyEvent::Consumed
                 }
-                _ => None,
+                _ => MappedKeyEvent::Unhandled,
             },
-            _ => None,
+            _ => MappedKeyEvent::Unhandled,
         }
     }
     /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main

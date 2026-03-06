@@ -15,8 +15,8 @@ use crate::{
     },
     trace::Log,
     ui::{
-        Component, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig, Settings,
-        SettingsConfig, Stats, StatsConfig, Topics, TopicsConfig,
+        Component, MappedKeyEvent, Logs, LogsConfig, Records, RecordsConfig, Schemas, SchemasConfig,
+        Settings, SettingsConfig, Stats, StatsConfig, Topics, TopicsConfig,
     },
 };
 
@@ -541,23 +541,23 @@ where
     /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
     /// application level action and then defers to the active [`Component`].
     fn on_key_event(&mut self, key_event: KeyEvent) {
-        let app_event = match key_event.code {
-            KeyCode::Esc => Some(Event::Quit),
-            KeyCode::Tab => Some(Event::SelectNextWidget),
+        let mapped_event = match key_event.code {
+            KeyCode::Esc => MappedKeyEvent::Dispatch(Event::Quit),
+            KeyCode::Tab => MappedKeyEvent::Dispatch(Event::SelectNextWidget),
             KeyCode::Char(c) => {
-                let mapped_event = self
+                let mapped = self
                     .state
                     .active_component
                     .borrow_mut()
                     .map_key_event(key_event, self.buffered_key_press.as_ref());
 
-                if mapped_event.is_none() && self.menu_item_chars.contains(&c) {
+                if matches!(mapped, MappedKeyEvent::Unhandled) && self.menu_item_chars.contains(&c) {
                     let digit = c.to_digit(10).expect("valid digit") - 1;
                     let selected = digit as usize;
 
-                    Some(Event::SelectComponent(selected))
+                    MappedKeyEvent::Dispatch(Event::SelectComponent(selected))
                 } else {
-                    mapped_event
+                    mapped
                 }
             }
             _ => self
@@ -567,11 +567,19 @@ where
                 .map_key_event(key_event, self.buffered_key_press.as_ref()),
         };
 
-        if let Some(e) = app_event {
-            self.buffered_key_press = None;
-            self.on_app_event(e);
-        } else if let KeyCode::Char(c) = key_event.code {
-            self.buffered_key_press = Some(BufferedKeyPress::new(c));
+        match mapped_event {
+            MappedKeyEvent::Dispatch(e) => {
+                self.buffered_key_press = None;
+                self.on_app_event(e);
+            }
+            MappedKeyEvent::Consumed => {
+                self.buffered_key_press = None;
+            }
+            MappedKeyEvent::Unhandled => {
+                if let KeyCode::Char(c) = key_event.code {
+                    self.buffered_key_press = Some(BufferedKeyPress::new(c));
+                }
+            }
         }
     }
     /// Handles application [`Event`]s either received over the [`EventBus`] or mapped directly by

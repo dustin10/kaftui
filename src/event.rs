@@ -11,9 +11,6 @@ use crate::{
 use rdkafka::Statistics;
 use tokio::sync::mpsc::UnboundedSender;
 
-// TODO: try to come up with a better design for the way key events are handled between the UI
-// componeents and the main application so that Event::Void is not needed.
-
 /// Enumeration of events which can be produced by the application.
 #[derive(Debug)]
 pub enum Event {
@@ -70,8 +67,6 @@ pub enum Event {
     TopicConfigLoaded(Option<TopicConfig>),
     /// Fires when the user wants to export a [`Topic`] and it's configuration to a file.
     ExportTopic(Topic, TopicConfig),
-    /// Marker event used to indicate no operation.
-    Void,
 }
 
 /// The bus over which [`Event`]s are published.

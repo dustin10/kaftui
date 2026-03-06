@@ -2,7 +2,7 @@ use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::Event,
     kafka::{ConsumerMode, Record},
-    ui::{Component, widget::ConsumerStatusLine},
+    ui::{Component, MappedKeyEvent, widget::ConsumerStatusLine},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
@@ -693,14 +693,14 @@ impl<'a> Component for Stats<'a> {
         &mut self,
         event: KeyEvent,
         _buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
+    ) -> MappedKeyEvent {
         match event.code {
             KeyCode::Char(c) => match c {
-                'p' => Some(Event::PauseProcessing),
-                'r' => Some(Event::ResumeProcessing),
-                _ => None,
+                'p' => MappedKeyEvent::Dispatch(Event::PauseProcessing),
+                'r' => MappedKeyEvent::Dispatch(Event::ResumeProcessing),
+                _ => MappedKeyEvent::Unhandled,
             },
-            _ => None,
+            _ => MappedKeyEvent::Unhandled,
         }
     }
     /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main

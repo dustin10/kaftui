@@ -2,7 +2,7 @@ use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::Event,
     kafka::schema::{Schema, Subject, Version},
-    ui::Component,
+    ui::{Component, MappedKeyEvent},
 };
 
 use crossterm::event::{KeyCode, KeyEvent};
@@ -895,11 +895,11 @@ impl Component for Schemas {
         &mut self,
         event: KeyEvent,
         buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
+    ) -> MappedKeyEvent {
         match event.code {
             KeyCode::Enter => {
                 self.state.on_apply_filter();
-                Some(Event::Void)
+                MappedKeyEvent::Consumed
             }
             KeyCode::Backspace | KeyCode::Delete => {
                 if self.state.active_widget == SchemasWidget::FilterInput
@@ -915,44 +915,45 @@ impl Component for Schemas {
                     self.state.subjects_filter = None;
                 }
 
-                Some(Event::Void)
+                MappedKeyEvent::Consumed
             }
             KeyCode::Char(c) => match self.state.active_widget {
                     SchemasWidget::Subjects => {
                         let mapped_event = match c {
-                            'e' => self
-                                .state
-                                .selected_schema
-                                .as_ref()
-                                .map(|s| Event::ExportSchema(s.clone())),
+                            'e' => match self.state.selected_schema.as_ref() {
+                                Some(s) => MappedKeyEvent::Dispatch(Event::ExportSchema(s.clone())),
+                                None => MappedKeyEvent::Unhandled,
+                            },
                             '/' => {
                                 self.state.on_start_filter();
-                                Some(Event::Void)
+                                MappedKeyEvent::Consumed
                             }
                             'c' if self.state.subjects_filter.is_some() => {
                                 self.state.on_clear_filter();
-                                Some(Event::Void)
+                                MappedKeyEvent::Consumed
                             }
-                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
-                                .state
-                                .select_first_subject()
-                                .map(|s| Event::LoadLatestSchema(s.clone())),
-                            'j' => self
-                                .state
-                                .select_next_subject()
-                                .map(|s| Event::LoadLatestSchema(s.clone())),
-                            'k' => self
-                                .state
-                                .select_prev_subject()
-                                .map(|s| Event::LoadLatestSchema(s.clone())),
-                            'G' => self
-                                .state
-                                .select_last_subject()
-                                .map(|s| Event::LoadLatestSchema(s.clone())),
-                            _ => None,
+                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                                match self.state.select_first_subject() {
+                                    Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
+                                    None => MappedKeyEvent::Unhandled,
+                                }
+                            }
+                            'j' => match self.state.select_next_subject() {
+                                Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
+                                None => MappedKeyEvent::Unhandled,
+                            },
+                            'k' => match self.state.select_prev_subject() {
+                                Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
+                                None => MappedKeyEvent::Unhandled,
+                            },
+                            'G' => match self.state.select_last_subject() {
+                                Some(s) => MappedKeyEvent::Dispatch(Event::LoadLatestSchema(s.clone())),
+                                None => MappedKeyEvent::Unhandled,
+                            },
+                            _ => MappedKeyEvent::Unhandled,
                         };
 
-                        if let Some(Event::LoadLatestSchema(_)) = mapped_event {
+                        if let MappedKeyEvent::Dispatch(Event::LoadLatestSchema(_)) = mapped_event {
                             self.state.network_status = NetworkStatus::LoadingSchema;
                         }
 
@@ -967,45 +968,47 @@ impl Component for Schemas {
 
                         self.state.update_visible_subjects();
 
-                        Some(Event::Void)
+                        MappedKeyEvent::Consumed
                     }
                     SchemasWidget::Schema => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_schema_definition_top();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'j' => {
                             self.state.scroll_schema_definition_down(self.scroll_factor);
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'k' => {
                             self.state.scroll_schema_definition_up(self.scroll_factor);
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
-                        _ => None,
+                        _ => MappedKeyEvent::Unhandled,
                     },
                     SchemasWidget::Versions => {
                         let mapped_event = match c {
-                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => self
-                                .state
-                                .select_first_schema_version()
-                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                            'j' => self
-                                .state
-                                .select_next_schema_version()
-                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                            'k' => self
-                                .state
-                                .select_prev_schema_version()
-                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                            'G' => self
-                                .state
-                                .select_last_schema_version()
-                                .map(|(s, v)| Event::LoadSchemaVersion(s.clone(), v)),
-                            _ => None,
+                            'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
+                                match self.state.select_first_schema_version() {
+                                    Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
+                                    None => MappedKeyEvent::Unhandled,
+                                }
+                            }
+                            'j' => match self.state.select_next_schema_version() {
+                                Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
+                                None => MappedKeyEvent::Unhandled,
+                            },
+                            'k' => match self.state.select_prev_schema_version() {
+                                Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
+                                None => MappedKeyEvent::Unhandled,
+                            },
+                            'G' => match self.state.select_last_schema_version() {
+                                Some((s, v)) => MappedKeyEvent::Dispatch(Event::LoadSchemaVersion(s.clone(), v)),
+                                None => MappedKeyEvent::Unhandled,
+                            },
+                            _ => MappedKeyEvent::Unhandled,
                         };
 
-                        if mapped_event.is_some() {
+                        if matches!(mapped_event, MappedKeyEvent::Dispatch(_)) {
                             self.state.network_status = NetworkStatus::LoadingSchema;
                         }
 
@@ -1014,24 +1017,24 @@ impl Component for Schemas {
                     SchemasWidget::References => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_references_top();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'j' => {
                             self.state.scroll_references_down();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'k' => {
                             self.state.scroll_references_up();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'G' => {
                             self.state.scroll_references_bottom();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
-                        _ => None,
+                        _ => MappedKeyEvent::Unhandled,
                     },
                 },
-            _ => None,
+            _ => MappedKeyEvent::Unhandled,
         }
     }
     /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main

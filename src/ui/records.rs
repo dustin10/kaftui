@@ -2,7 +2,7 @@ use crate::{
     app::{BufferedKeyPress, config::Theme},
     event::Event,
     kafka::{ConsumerMode, Record},
-    ui::{Component, widget::ConsumerStatusLine},
+    ui::{Component, MappedKeyEvent, widget::ConsumerStatusLine},
 };
 
 use bounded_vec_deque::BoundedVecDeque;
@@ -628,73 +628,72 @@ impl Component for Records {
         &mut self,
         event: KeyEvent,
         buffered: Option<&BufferedKeyPress>,
-    ) -> Option<Event> {
+    ) -> MappedKeyEvent {
         match event.code {
             KeyCode::Char(c) => match c {
-                'e' => self
-                    .state
-                    .selected
-                    .as_ref()
-                    .map(|r| Event::ExportRecord(r.clone())),
-                'p' => Some(Event::PauseProcessing),
-                'r' => Some(Event::ResumeProcessing),
+                'e' => match self.state.selected.as_ref() {
+                    Some(r) => MappedKeyEvent::Dispatch(Event::ExportRecord(r.clone())),
+                    None => MappedKeyEvent::Unhandled,
+                },
+                'p' => MappedKeyEvent::Dispatch(Event::PauseProcessing),
+                'r' => MappedKeyEvent::Dispatch(Event::ResumeProcessing),
                 _ => match self.state.active_widget {
                     RecordsWidget::List => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.select_first();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'j' => {
                             self.state.select_next();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'k' => {
                             self.state.select_prev();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'G' => {
                             self.state.select_last();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
-                        _ => None,
+                        _ => MappedKeyEvent::Unhandled,
                     },
                     RecordsWidget::Value => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_value_top();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'j' => {
                             self.state.scroll_value_down(self.scroll_factor);
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'k' => {
                             self.state.scroll_value_up(self.scroll_factor);
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
-                        _ => None,
+                        _ => MappedKeyEvent::Unhandled,
                     },
                     RecordsWidget::Headers => match c {
                         'g' if buffered.filter(|kp| kp.is('g')).is_some() => {
                             self.state.scroll_headers_top();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'j' => {
                             self.state.scroll_headers_down();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'k' => {
                             self.state.scroll_headers_up();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
                         'G' => {
                             self.state.scroll_headers_bottom();
-                            Some(Event::Void)
+                            MappedKeyEvent::Consumed
                         }
-                        _ => None,
+                        _ => MappedKeyEvent::Unhandled,
                     },
                 },
             },
-            _ => None,
+            _ => MappedKeyEvent::Unhandled,
         }
     }
     /// Allows the [`Component`] to handle any [`Event`] that was not handled by the main
