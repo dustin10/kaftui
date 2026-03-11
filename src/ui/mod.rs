@@ -20,24 +20,12 @@ use crate::{
     event::Event,
 };
 
-/// Enumeration of the possible outcomes of mapping a key event in a [`Component`].
-pub enum MappedKeyEvent {
-    /// Key event was not handled by the component.
-    Unhandled,
-    /// Key event was handled wholly inside the [`Component`] and no app event needs to be
-    /// dispatched.
-    Consumed,
-    /// Key event was handled by the [`Component`] and the provided application [`Event`] should be
-    /// dispatched for processing.
-    Dispatch(Event),
-}
-
 use crossterm::event::KeyEvent;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Padding, Paragraph, Tabs},
+    Frame,
 };
 use schema_registry_client::rest::schema_registry_client::Client;
 use std::str::FromStr;
@@ -74,6 +62,18 @@ const KEY_BINDING_BOTTOM: &str = "(G) bottom";
 
 /// Text displayed to the user in the footer for the export key binding.
 const KEY_BINDING_EXPORT: &str = "(e) export";
+
+/// Enumeration of the possible outcomes of mapping a key event in a [`Component`].
+pub enum MappedKeyEvent {
+    /// Key event was not handled by the component.
+    Unhandled,
+    /// Key event was handled wholly inside the [`Component`] and no app event needs to be
+    /// dispatched.
+    Consumed,
+    /// Key event was handled by the [`Component`] and the provided application [`Event`] should be
+    /// dispatched for processing.
+    Dispatch(Event),
+}
 
 /// A [`Component`] represents a top-level screen in the application that the user can view and
 /// interact with. Each [`Component`] that is created and added to the [`App`] can be selected by
