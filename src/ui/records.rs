@@ -274,6 +274,8 @@ impl RecordsState {
 /// component.
 #[derive(Debug)]
 struct RecordsTheme {
+    /// Color used for the background of the component.
+    bg_color: Color,
     /// Color used for the borders of the main info panels.
     panel_border_color: Color,
     /// Color used for the borders of the selected info panel.
@@ -299,6 +301,9 @@ struct RecordsTheme {
 impl From<&Theme> for RecordsTheme {
     /// Converts a reference to a [`Theme`] to a new [`RecordsTheme`].
     fn from(value: &Theme) -> Self {
+        let bg_color =
+            Color::from_str(value.bg_color.as_str()).expect("valid RGB hex");
+
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
 
@@ -329,6 +334,7 @@ impl From<&Theme> for RecordsTheme {
             Color::from_str(value.record_value_text_color.as_str()).expect("valid RGB hex");
 
         Self {
+            bg_color,
             panel_border_color,
             selected_panel_border_color,
             label_color,
@@ -382,6 +388,7 @@ impl Records {
         let mut record_list_block = Block::bordered()
             .title(" Records ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == RecordsWidget::List {
@@ -464,6 +471,7 @@ impl Records {
         let info_block = Block::bordered()
             .title(" Info ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let key_value = record
@@ -497,6 +505,7 @@ impl Records {
         let mut headers_block = Block::bordered()
             .title(" Headers ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == RecordsWidget::Headers {
@@ -533,6 +542,7 @@ impl Records {
         let mut value_block = Block::bordered()
             .title(" Value ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == RecordsWidget::Value {
@@ -579,12 +589,14 @@ impl Records {
         let empty_text = Paragraph::default().block(
             Block::default()
                 .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-                .border_style(self.theme.panel_border_color),
+                .border_style(self.theme.panel_border_color)
+                .bg(self.theme.bg_color)
         );
 
         let message_block = Block::default()
             .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-            .border_style(self.theme.panel_border_color);
+            .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color);
 
         let message_text = Paragraph::new(msg)
             .style(self.theme.panel_border_color)

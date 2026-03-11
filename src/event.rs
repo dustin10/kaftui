@@ -1,9 +1,9 @@
 use crate::{
     app::Notification,
     kafka::{
-        Record,
         admin::{Topic, TopicConfig},
         schema::{Schema, Subject, Version},
+        Record,
     },
     trace::Log,
 };
@@ -14,8 +14,11 @@ use tokio::sync::mpsc::UnboundedSender;
 /// Enumeration of events which can be produced by the application.
 #[derive(Debug)]
 pub enum Event {
-    /// Fires when the user requests to quit the application.
-    Quit,
+    /// Fires when the user attempts to exit the application and a confirmation dialog needs to be
+    /// displayed.
+    ConfirmExit,
+    /// Fires when the user exits the application.
+    Exit,
     /// Fires when the Records component is activated and the Kafka consumer needs to be started.
     StartConsumer,
     /// Fires when the Kafka consumer was started successfully.

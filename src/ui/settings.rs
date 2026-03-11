@@ -7,7 +7,6 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent};
 use derive_builder::Builder;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
@@ -15,6 +14,7 @@ use ratatui::{
         Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Padding,
         Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     },
+    Frame,
 };
 use std::str::FromStr;
 use std::{ops::Deref, rc::Rc};
@@ -89,6 +89,8 @@ impl<'a> TryFrom<SettingsConfig<'a>> for Settings {
 /// [`Settings`] component.
 #[derive(Debug)]
 struct SettingsTheme {
+    /// Color used for the background of the component.
+    bg_color: Color,
     /// Color used for the borders of the main info panels. Defaults to white.
     panel_border_color: Color,
     /// Color used for the borders of the selected info panel. Defaults to cyan.
@@ -132,6 +134,8 @@ struct SettingsTheme {
 impl From<&Theme> for SettingsTheme {
     /// Converts a reference to a [`Theme`] to a new [`LogsTheme`].
     fn from(value: &Theme) -> Self {
+        let bg_color = Color::from_str(value.bg_color.as_str()).expect("valid RGB hex");
+
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
 
@@ -189,6 +193,7 @@ impl From<&Theme> for SettingsTheme {
             Color::from_str(value.stats_throughput_color.as_str()).expect("valid RGB hex");
 
         Self {
+            bg_color,
             panel_border_color,
             selected_panel_border_color,
             status_text_color_processing,
@@ -324,6 +329,7 @@ impl Settings {
         let mut menu_block = Block::bordered()
             .title(" Configuration ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == SettingsWidget::Menu {
@@ -381,6 +387,7 @@ impl Settings {
         let block = Block::bordered()
             .title(" Consumer ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let seek_to = match &config.seek_to {
@@ -456,6 +463,7 @@ impl Settings {
         let props_block = Block::bordered()
             .title(" Consumer Properties ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let props_rows: Vec<Row> = consumer_properties
@@ -485,12 +493,14 @@ impl Settings {
             Block::default()
                 .title(title.unwrap_or_default().to_string())
                 .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-                .border_style(self.theme.panel_border_color),
+                .border_style(self.theme.panel_border_color)
+                .bg(self.theme.bg_color),
         );
 
         let message_block = Block::default()
             .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-            .border_style(self.theme.panel_border_color);
+            .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color);
 
         let message_text = Paragraph::new(msg)
             .style(self.theme.panel_border_color)
@@ -505,6 +515,7 @@ impl Settings {
         let block = Block::bordered()
             .title(" Schema ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let list_items = vec![
@@ -600,6 +611,7 @@ impl Settings {
         let block = Block::bordered()
             .title(" Misc ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let list_items = vec![
@@ -633,6 +645,7 @@ impl Settings {
         let block = Block::bordered()
             .title(" Theme ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let list_items = vec![
@@ -735,6 +748,7 @@ impl Settings {
         let mut profiles_block = Block::bordered()
             .title(" Profiles ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == SettingsWidget::Profiles {
@@ -812,6 +826,7 @@ impl Settings {
         let block = Block::bordered()
             .title(" Consumer ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let list_items = vec![
@@ -880,6 +895,7 @@ impl Settings {
         let props_block = Block::bordered()
             .title(" Consumer Properties ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let props_rows: Vec<Row> = consumer_properties
@@ -903,6 +919,7 @@ impl Settings {
         let block = Block::bordered()
             .title(" Schema ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let list_items = vec![

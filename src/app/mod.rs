@@ -143,10 +143,22 @@ impl Notification {
     }
 }
 
+/// Enumeration of the execution modes that the [`App`] can be in at runtime.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ExecutionMode {
+    /// Normal execution for the application.
+    Running,
+    /// User has requested to exit the application.
+    Exiting,
+    /// User has confirmed application exit.
+    Exited
+}
+
 /// Manages the global application state.
 pub struct State {
-    /// Flag indicating the application is running.
-    pub running: bool,
+    /// Stores the current [`ExecutionMode`] of the application which controls the main loop and
+    /// whether the application is running, exiting, or has exited.
+    pub mode: ExecutionMode,
     /// Stores the current [`ConsumerMode`] of the application which controls whether or not
     /// records are currently being consumed from the topic.
     pub consumer_mode: Rc<Cell<ConsumerMode>>,
@@ -163,7 +175,7 @@ impl State {
         active_component: Rc<RefCell<dyn Component>>,
     ) -> Self {
         Self {
-            running: true,
+            mode: ExecutionMode::Running,
             consumer_mode,
             active_component,
             notification: None,
@@ -403,7 +415,7 @@ where
             self.event_bus.send(event);
         }
 
-        while self.state.running {
+        while self.is_running() {
             terminal
                 .draw(|frame| self.draw(frame))
                 .context("draw UI to screen")?;
@@ -420,7 +432,7 @@ where
                         Some(_) => {}
                         None => {
                             tracing::warn!("terminal events channel unexpectedly closed");
-                            self.state.running = false;
+                            self.state.mode = ExecutionMode::Exited;
                         }
                     }
                 }
@@ -432,7 +444,7 @@ where
                         }
                     } else {
                         tracing::warn!("application events channel unexpectedly closed");
-                        self.state.running = false;
+                        self.state.mode = ExecutionMode::Exited;
                     }
                 },
                 consumer_events_count = async {
@@ -456,6 +468,10 @@ where
         tracing::info!("exited main application loop");
 
         Ok(())
+    }
+    /// Determines if the application is currently running based on the execution mode.
+    fn is_running(&self) -> bool {
+        self.state.mode != ExecutionMode::Exited
     }
     /// Starts the asynchronous task which polls the terminal for events.
     fn start_poll_terminal_async(&self, tx: Sender<TerminalEvent>) {
@@ -541,11 +557,20 @@ where
             self.state.notification = None;
         }
     }
-    /// Handles key events emitted by the [`EventBus`]. First attempts to map the event to an
-    /// application level action and then defers to the active [`Component`].
+    /// Handles key events that are emitted by the terminal.
     fn on_key_event(&mut self, key_event: KeyEvent) {
+        match self.state.mode {
+            ExecutionMode::Running => self.on_key_event_running(key_event),
+            ExecutionMode::Exiting => self.on_key_event_exiting(key_event),
+            ExecutionMode::Exited => {}
+        }
+    }
+    /// Handles key events the application mode is set to [`ExecutionMode::Running`]. First
+    /// ttempts to map the event to an application level action and then defers to the active
+    /// [`Component`].
+    fn on_key_event_running(&mut self, key_event: KeyEvent) {
         let mapped_event = match key_event.code {
-            KeyCode::Esc => MappedKeyEvent::Dispatch(Event::Quit),
+            KeyCode::Esc => MappedKeyEvent::Dispatch(Event::ConfirmExit),
             KeyCode::Tab => MappedKeyEvent::Dispatch(Event::SelectNextWidget),
             KeyCode::Char(c) => {
                 let mapped = self
@@ -586,11 +611,21 @@ where
             }
         }
     }
+    /// Handles key events the application mode is set to [`ExecutionMode::Running`].
+    fn on_key_event_exiting(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => self.on_app_event(Event::Exit),
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc =>
+                self.state.mode = ExecutionMode::Running,
+            _ => {}
+        }
+    }
     /// Handles application [`Event`]s either received over the [`EventBus`] or mapped directly by
     /// the application when events are received on other channels.
     fn on_app_event(&mut self, event: Event) {
         match event {
-            Event::Quit => self.on_quit(),
+            Event::ConfirmExit => self.on_confirm_exit(),
+            Event::Exit => self.on_exit(),
             Event::StartConsumer => {
                 if let Err(e) = self.start_poll_consumer_async() {
                     self.event_bus.send(Event::ConsumerStartFailure(e));
@@ -819,10 +854,14 @@ where
     fn on_display_notification(&mut self, notification: Notification) {
         self.state.notification = Some(notification);
     }
-    /// Handles the [`Event::Quit`] event emitted by the [`EventBus`].
-    fn on_quit(&mut self) {
-        tracing::info!("received quit application request");
-        self.state.running = false;
+    /// Handles the [`Event::ConfirmExit`] event emitted by the [`EventBus`].
+    fn on_confirm_exit(&mut self) {
+        self.state.mode = ExecutionMode::Exiting;
+    }
+    /// Handles the [`Event::Exit`] event emitted by the [`EventBus`].
+    fn on_exit(&mut self) {
+        tracing::info!("received exit application");
+        self.state.mode = ExecutionMode::Exited;
     }
     /// Handles the [`Event::SelectComponent`] event emitted by the [`EventBus`].
     fn on_select_component(&mut self, idx: usize) {

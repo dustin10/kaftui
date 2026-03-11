@@ -102,6 +102,8 @@ impl LogsState {
 /// component.
 #[derive(Debug)]
 struct LogsTheme {
+    /// Color used for the background of the component.
+    bg_color: Color,
     /// Color used for the borders of the main info panels.
     panel_border_color: Color,
     /// Color used for the label text in tables, etc.
@@ -113,6 +115,9 @@ struct LogsTheme {
 impl From<&Theme> for LogsTheme {
     /// Converts a reference to a [`Theme`] to a new [`LogsTheme`].
     fn from(value: &Theme) -> Self {
+        let bg_color =
+            Color::from_str(value.bg_color.as_str()).expect("valid RGB hex");
+
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
 
@@ -122,6 +127,7 @@ impl From<&Theme> for LogsTheme {
             Color::from_str(value.key_bindings_text_color.as_str()).expect("valid RGB hex");
 
         Self {
+            bg_color,
             panel_border_color,
             label_color,
             key_bindings_text_color,
@@ -184,6 +190,7 @@ impl Component for Logs {
         let table_block = Block::bordered()
             .title(" Logs ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
         let table_rows: Vec<Row> = self

@@ -198,6 +198,8 @@ impl TopicsState {
 /// component.
 #[derive(Debug)]
 struct TopicsTheme {
+    /// Color used for the background of the component.
+    bg_color: Color,
     /// Color used for the borders of the main info panels.
     panel_border_color: Color,
     /// Color used for the borders of the selected info panel.
@@ -213,6 +215,9 @@ struct TopicsTheme {
 impl From<&Theme> for TopicsTheme {
     /// Converts a reference to a [`Theme`] to a new [`TopicsTheme`].
     fn from(value: &Theme) -> Self {
+        let bg_color =
+            Color::from_str(value.bg_color.as_str()).expect("valid RGB hex");
+
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
 
@@ -228,6 +233,7 @@ impl From<&Theme> for TopicsTheme {
             Color::from_str(value.key_bindings_text_color.as_str()).expect("valid RGB hex");
 
         Self {
+            bg_color,
             panel_border_color,
             selected_panel_border_color,
             label_color,
@@ -335,6 +341,7 @@ impl Topics {
         let mut topics_block = Block::bordered()
             .title(" Topics ")
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == TopicsWidget::Topics {
@@ -416,6 +423,7 @@ impl Topics {
         let config_block = Block::bordered()
             .title(title)
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let config_rows: Vec<Row> = topic_config
@@ -458,6 +466,7 @@ impl Topics {
         let partitions_block = Block::bordered()
             .title(title)
             .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let partitions_rows: Vec<Row> = topic
@@ -497,12 +506,14 @@ impl Topics {
         let empty_text = Paragraph::default().block(
             Block::default()
                 .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
-                .border_style(self.theme.panel_border_color),
+                .border_style(self.theme.panel_border_color)
+                .bg(self.theme.bg_color)
         );
 
         let message_block = Block::default()
             .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-            .border_style(self.theme.panel_border_color);
+            .border_style(self.theme.panel_border_color)
+            .bg(self.theme.bg_color);
 
         let message_text = Paragraph::new(msg)
             .style(self.theme.panel_border_color)

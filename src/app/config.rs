@@ -3,8 +3,9 @@ use crate::kafka::{Format, SeekTo};
 use anyhow::Context;
 use chrono::Utc;
 use config::{Config as ConfigRs, ConfigError, Environment, Map, Source, Value, ValueKind};
+use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io::ErrorKind, path::Path};
+use std::{collections::HashMap, io::ErrorKind, path::Path, str::FromStr};
 
 /// Prefix for the default group id for the Kafka consumer generated from the hostname of the
 /// machine the application is running on.
@@ -437,6 +438,8 @@ impl Source for Profile {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Theme {
+    /// Color used for the background of the application. Defaults to black.
+    pub bg_color: String,
     /// Color used for the borders of the main info panels. Defaults to white.
     pub panel_border_color: String,
     /// Color used for the borders of the selected info panel. Defaults to cyan.
@@ -487,6 +490,7 @@ impl Default for Theme {
     ///
     /// The following colors are used for the defaults.
     ///
+    /// * Background Color - Black
     /// * Panel Border - White
     /// * Selected Panel Border - Cyan
     /// * Processing Status Text - Green
@@ -508,6 +512,7 @@ impl Default for Theme {
     /// * Stats Throughput - White
     fn default() -> Self {
         Self {
+            bg_color: String::from("#000000"),
             panel_border_color: String::from("#FFFFFF"),
             selected_panel_border_color: String::from("#00FFFF"),
             status_text_color_processing: String::from("#00FF00"),
@@ -536,10 +541,8 @@ impl Theme {
     /// Validates that all color strings in the theme are valid RGB hex values parseable by
     /// ratatui. Returns an error describing the first invalid color found.
     pub fn validate(&self) -> anyhow::Result<()> {
-        use ratatui::style::Color;
-        use std::str::FromStr;
-
         let colors: &[(&str, &str)] = &[
+            ("bgColor", &self.bg_color),
             ("panelBorderColor", &self.panel_border_color),
             (
                 "selectedPanelBorderColor",
@@ -595,6 +598,8 @@ impl From<Theme> for ValueKind {
     /// [`Source`].
     fn from(value: Theme) -> Self {
         let mut data = HashMap::new();
+
+        data.insert(String::from("bgColor"), Value::from(value.bg_color));
 
         data.insert(
             String::from("panelBorderColor"),

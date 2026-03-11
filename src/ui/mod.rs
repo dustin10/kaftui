@@ -16,15 +16,15 @@ pub use crate::ui::{
 };
 
 use crate::{
-    app::{App, BufferedKeyPress, NotificationStatus},
+    app::{App, BufferedKeyPress, ExecutionMode, NotificationStatus},
     event::Event,
 };
 
 use crossterm::event::KeyEvent;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    widgets::{Block, Padding, Paragraph, Tabs},
+    style::{Color, Style, Stylize},
+    widgets::{Block, Clear, Padding, Paragraph, Tabs},
     Frame,
 };
 use schema_registry_client::rest::schema_registry_client::Client;
@@ -125,9 +125,15 @@ where
         self.render_header(frame, header_area);
         self.render_component(frame, component_area);
         self.render_footer(frame, footer_area);
+
+        if self.state.mode == ExecutionMode::Exiting {
+            self.render_confirm_exit(frame);
+        }
     }
     /// Renders the header panel that contains the key bindings.
     fn render_header(&self, frame: &mut Frame, area: Rect) {
+        let bg_color = Color::from_str(&self.config.theme.bg_color).expect("valid RGB color");
+
         let border_color =
             Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
 
@@ -140,6 +146,7 @@ where
 
         let outer = Block::bordered()
             .border_style(border_color)
+            .bg(bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let inner_area = outer.inner(area);
@@ -200,15 +207,20 @@ where
     }
     /// Renders the active [`Component`] to the screen.
     fn render_component(&self, frame: &mut Frame, area: Rect) {
+        // TODO: pass Block here with bg color set already so that we don't have to set it
+        // in every component
         self.state.active_component.borrow_mut().render(frame, area);
     }
     /// Renders the footer widgets using the status and key bindings from the active [`Component`].
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
+        let bg_color = Color::from_str(&self.config.theme.bg_color).expect("valid RGB color");
+
         let border_color =
             Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
 
         let outer = Block::bordered()
             .border_style(border_color)
+            .bg(bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let inner_area = outer.inner(area);
@@ -223,5 +235,25 @@ where
         frame.render_widget(outer, area);
         component.render_status_line(frame, left_panel);
         component.render_key_bindings(frame, right_panel);
+    }
+    /// Renders the confirm exit popup when the user requests to exit the application.
+    fn render_confirm_exit(&self, frame: &mut Frame) {
+        let rect = frame
+            .area()
+            .centered(Constraint::Length(60), Constraint::Length(4));
+
+        let bg_color = Color::from_str(&self.config.theme.bg_color).expect("valid RGB color");
+
+        let border_color =
+            Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
+
+        let popup_block = Block::bordered().border_style(border_color).bg(bg_color);
+
+        let confirm_text = Paragraph::new("Exit? - (Y)es / (N)o")
+            .block(popup_block)
+            .centered();
+
+        frame.render_widget(Clear, rect);
+        frame.render_widget(confirm_text, rect);
     }
 }
