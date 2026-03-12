@@ -234,7 +234,7 @@ impl PersistedConfig {
     /// Loads the [`PersistedConfig`] from the `.kaftui.json` file in the current user's home
     /// directory.
     pub fn load_from_home_dir() -> anyhow::Result<Self> {
-        let path = std::env::home_dir()
+        let path = dirs::home_dir()
             .context("resolve home directory of current user")?
             .join(PERSISTED_CONFIG_FILE_NAME);
 
