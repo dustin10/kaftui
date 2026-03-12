@@ -440,8 +440,6 @@ impl SchemasState {
 /// component.
 #[derive(Debug)]
 struct SchemasTheme {
-    /// Color used for the background of the component.
-    bg_color: Color,
     /// Color used for the borders of the main info panels.
     panel_border_color: Color,
     /// Color used for the borders of the selected info panel.
@@ -455,9 +453,6 @@ struct SchemasTheme {
 impl From<&Theme> for SchemasTheme {
     /// Converts a reference to a [`Theme`] to a new [`SchemasTheme`].
     fn from(value: &Theme) -> Self {
-        let bg_color =
-            Color::from_str(value.bg_color.as_str()).expect("valid RGB hex");
-
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
 
@@ -470,7 +465,6 @@ impl From<&Theme> for SchemasTheme {
             Color::from_str(value.key_bindings_text_color.as_str()).expect("valid RGB hex");
 
         Self {
-            bg_color,
             panel_border_color,
             selected_panel_border_color,
             label_color,
@@ -536,7 +530,6 @@ impl Schemas {
             .title(" Filter ")
             .border_type(BorderType::Thick)
             .border_style(self.theme.selected_panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let filter = self
@@ -562,7 +555,6 @@ impl Schemas {
         let mut subjects_block = Block::bordered()
             .title(" Subjects ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == SchemasWidget::Subjects {
@@ -618,7 +610,6 @@ impl Schemas {
         let mut schema_block = Block::bordered()
             .title(" Schema ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == SchemasWidget::Schema {
@@ -643,7 +634,6 @@ impl Schemas {
         let mut versions_block = Block::bordered()
             .title(" Versions ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == SchemasWidget::Versions {
@@ -696,7 +686,6 @@ impl Schemas {
         let info_block = Block::bordered()
             .title(" Info ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if let Some(schema) = self.state.selected_schema.as_ref() {
@@ -732,7 +721,6 @@ impl Schemas {
         let mut refs_block = Block::bordered()
             .title(" References ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         if self.state.active_widget == SchemasWidget::References {
@@ -812,13 +800,11 @@ impl Schemas {
                 .title(title.unwrap_or_default().to_string())
                 .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
                 .border_style(self.theme.panel_border_color)
-                .bg(self.theme.bg_color)
         );
 
         let message_block = Block::default()
             .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
-            .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color);
+            .border_style(self.theme.panel_border_color);
 
         let message_text = Paragraph::new(msg)
             .style(self.theme.panel_border_color)

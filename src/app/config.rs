@@ -438,8 +438,6 @@ impl Source for Profile {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Theme {
-    /// Color used for the background of the application. Defaults to black.
-    pub bg_color: String,
     /// Color used for the borders of the main info panels. Defaults to white.
     pub panel_border_color: String,
     /// Color used for the borders of the selected info panel. Defaults to cyan.
@@ -490,7 +488,6 @@ impl Default for Theme {
     ///
     /// The following colors are used for the defaults.
     ///
-    /// * Background Color - Black
     /// * Panel Border - White
     /// * Selected Panel Border - Cyan
     /// * Processing Status Text - Green
@@ -512,7 +509,6 @@ impl Default for Theme {
     /// * Stats Throughput - White
     fn default() -> Self {
         Self {
-            bg_color: String::from("#000000"),
             panel_border_color: String::from("#FFFFFF"),
             selected_panel_border_color: String::from("#00FFFF"),
             status_text_color_processing: String::from("#00FF00"),
@@ -542,7 +538,6 @@ impl Theme {
     /// ratatui. Returns an error describing the first invalid color found.
     pub fn validate(&self) -> anyhow::Result<()> {
         let colors: &[(&str, &str)] = &[
-            ("bgColor", &self.bg_color),
             ("panelBorderColor", &self.panel_border_color),
             (
                 "selectedPanelBorderColor",
@@ -598,8 +593,6 @@ impl From<Theme> for ValueKind {
     /// [`Source`].
     fn from(value: Theme) -> Self {
         let mut data = HashMap::new();
-
-        data.insert(String::from("bgColor"), Value::from(value.bg_color));
 
         data.insert(
             String::from("panelBorderColor"),

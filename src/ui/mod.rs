@@ -23,8 +23,8 @@ use crate::{
 use crossterm::event::KeyEvent;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
-    widgets::{Block, Clear, Padding, Paragraph, Tabs},
+    style::{Color, Style},
+    widgets::{Block, BorderType, Clear, Padding, Paragraph, Tabs},
     Frame,
 };
 use schema_registry_client::rest::schema_registry_client::Client;
@@ -132,8 +132,6 @@ where
     }
     /// Renders the header panel that contains the key bindings.
     fn render_header(&self, frame: &mut Frame, area: Rect) {
-        let bg_color = Color::from_str(&self.config.theme.bg_color).expect("valid RGB color");
-
         let border_color =
             Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
 
@@ -146,7 +144,6 @@ where
 
         let outer = Block::bordered()
             .border_style(border_color)
-            .bg(bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let inner_area = outer.inner(area);
@@ -207,20 +204,15 @@ where
     }
     /// Renders the active [`Component`] to the screen.
     fn render_component(&self, frame: &mut Frame, area: Rect) {
-        // TODO: pass Block here with bg color set already so that we don't have to set it
-        // in every component
         self.state.active_component.borrow_mut().render(frame, area);
     }
     /// Renders the footer widgets using the status and key bindings from the active [`Component`].
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let bg_color = Color::from_str(&self.config.theme.bg_color).expect("valid RGB color");
-
         let border_color =
             Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
 
         let outer = Block::bordered()
             .border_style(border_color)
-            .bg(bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let inner_area = outer.inner(area);
@@ -240,14 +232,14 @@ where
     fn render_confirm_exit(&self, frame: &mut Frame) {
         let rect = frame
             .area()
-            .centered(Constraint::Length(60), Constraint::Length(4));
+            .centered(Constraint::Length(60), Constraint::Length(3));
 
-        let bg_color = Color::from_str(&self.config.theme.bg_color).expect("valid RGB color");
+        let border_color = Color::from_str(&self.config.theme.selected_panel_border_color)
+            .expect("valid RGB color");
 
-        let border_color =
-            Color::from_str(&self.config.theme.panel_border_color).expect("valid RGB color");
-
-        let popup_block = Block::bordered().border_style(border_color).bg(bg_color);
+        let popup_block = Block::bordered()
+            .border_style(border_color)
+            .border_type(BorderType::Thick);
 
         let confirm_text = Paragraph::new("Exit? - (Y)es / (N)o")
             .block(popup_block)

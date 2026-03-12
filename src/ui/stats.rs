@@ -201,6 +201,10 @@ impl StatsState {
             return;
         }
 
+        if self.partition_table_state.selected().is_none() {
+            return;
+        }
+
         self.partition_table_state.select_previous();
 
         let idx = self
@@ -231,8 +235,6 @@ impl StatsState {
 /// component.
 #[derive(Debug)]
 struct StatsTheme {
-    /// Color used for the background of the component.
-    bg_color: Color,
     /// Color used for the borders of the main info panels.
     panel_border_color: Color,
     /// Color used for the borders of the selected info panel.
@@ -263,9 +265,6 @@ impl From<&Theme> for StatsTheme {
     /// If any of the hex RGB strings contained in the [`Theme`] are not in the valid format then a
     /// panic will occur.
     fn from(value: &Theme) -> Self {
-        let bg_color =
-            Color::from_str(value.bg_color.as_str()).expect("valid RGB hex");
-
         let panel_border_color =
             Color::from_str(value.panel_border_color.as_str()).expect("valid RGB hex");
 
@@ -294,7 +293,6 @@ impl From<&Theme> for StatsTheme {
             Color::from_str(value.key_bindings_text_color.as_str()).expect("valid RGB hex");
 
         Self {
-            bg_color,
             panel_border_color,
             selected_panel_border_color,
             label_color,
@@ -394,7 +392,6 @@ impl<'a> Stats<'a> {
         let received_block = Block::bordered()
             .title(" Received ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let received_paragraph = Paragraph::new(self.state.received.to_string())
@@ -406,7 +403,6 @@ impl<'a> Stats<'a> {
         let filtered_block = Block::bordered()
             .title(" Filtered ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let filtered_paragraph = Paragraph::new(self.state.filtered.to_string())
@@ -418,7 +414,6 @@ impl<'a> Stats<'a> {
         let total_block = Block::bordered()
             .title(" Total ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let total_paragraph = Paragraph::new(self.state.total().to_string())
@@ -465,7 +460,6 @@ impl<'a> Stats<'a> {
         let consumer_stats_block = Block::bordered()
             .title(" Consumer ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let age_secs = format!("{}s", (stats.age / 1000000));
@@ -560,7 +554,6 @@ impl<'a> Stats<'a> {
         let mut partition_stats_block = Block::bordered()
             .title(" Partitions ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let Some(topic) = stats.topics.values().next() else {
@@ -623,7 +616,6 @@ impl<'a> Stats<'a> {
         let throughput_block = Block::bordered()
             .title(" Records Per Second ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let now = Local::now();
@@ -706,7 +698,6 @@ impl<'a> Stats<'a> {
 
         let throughput_chart = Chart::new(vec![data_set])
             .block(throughput_block)
-            .bg(self.theme.bg_color)
             .x_axis(x_axis)
             .y_axis(y_axis);
 
@@ -718,7 +709,6 @@ impl<'a> Stats<'a> {
         let charts_block = Block::bordered()
             .title(" Total Per Partition ")
             .border_style(self.theme.panel_border_color)
-            .bg(self.theme.bg_color)
             .padding(Padding::new(1, 1, 0, 0));
 
         let bar_width =
@@ -772,7 +762,6 @@ impl<'a> Stats<'a> {
             Block::default()
                 .borders(Borders::LEFT | Borders::TOP | Borders::RIGHT)
                 .border_style(self.theme.panel_border_color) 
-                .bg(self.theme.bg_color)
         );
 
         let waiting_text = Paragraph::new("Waiting...")
@@ -781,7 +770,6 @@ impl<'a> Stats<'a> {
                 Block::default()
                     .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
                     .border_style(self.theme.panel_border_color)
-                    .bg(self.theme.bg_color)
             )
             .centered();
 

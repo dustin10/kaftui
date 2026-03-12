@@ -611,7 +611,7 @@ where
             }
         }
     }
-    /// Handles key events the application mode is set to [`ExecutionMode::Running`].
+    /// Handles key events the application mode is set to [`ExecutionMode::Exiting`].
     fn on_key_event_exiting(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => self.on_app_event(Event::Exit),
