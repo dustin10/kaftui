@@ -15,13 +15,14 @@ use rdkafka::{
     ClientConfig, ClientContext, Message, Offset, Statistics, TopicPartitionList,
     config::RDKafkaLogLevel,
     consumer::{
-        BaseConsumer, CommitMode, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
+        BaseConsumer, Consumer as RDConsumer, ConsumerContext as RDConsumerContext,
         Rebalance, StreamConsumer, stream_consumer::StreamPartitionQueue,
     },
     error::KafkaResult,
     message::{BorrowedMessage, Headers},
 };
 use serde::{Deserialize, Serialize};
+use serde_json_path::JsonPath;
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc, time::Duration};
 use tokio::sync::mpsc::Sender;
 
@@ -296,16 +297,13 @@ pub struct Record {
 
 impl Record {
     /// Determines if this [`Record`] matches the specified JSONPath filter.
-    fn matches(&self, filter: impl AsRef<str>) -> bool {
+    fn matches(&self, filter: &JsonPath) -> bool {
         let filterable_record = FilterableRecord::from(self);
 
         let json_value =
             serde_json::to_value(filterable_record).expect("FilterableRecord serializes to JSON");
 
-        let json_path =
-            serde_json_path::JsonPath::parse(filter.as_ref()).expect("valid JSONPath expression");
-
-        !json_path.query(&json_value).is_empty()
+        !filter.query(&json_value).is_empty()
     }
 }
 
@@ -493,8 +491,11 @@ impl Consumer {
         // apply user config
         client_config.extend(config.props);
 
-        // apply enforced config
-        client_config.set("enable.auto.commit", "false");
+        // apply enforced config. offsets are stored in memory as each record is processed and
+        // committed periodically in the background by librdkafka, which avoids a broker round
+        // trip per record.
+        client_config.set("enable.auto.commit", "true");
+        client_config.set("enable.auto.offset.store", "false");
 
         if tracing::enabled!(tracing::Level::DEBUG) {
             client_config.set("debug", "consumer,cgrp,topic");
@@ -521,6 +522,14 @@ impl Consumer {
     /// Starts the consumption of records from the specified Kafka topic.
     pub fn start(&self, config: ConsumeTopicConfig) -> anyhow::Result<()> {
         let topic = config.topic.as_ref();
+
+        let filter = config
+            .filter
+            .as_deref()
+            .map(JsonPath::parse)
+            .transpose()
+            .context("parse JSONPath filter")?
+            .map(Arc::new);
 
         tracing::info!(
             "assigning partitions to Kafka consumer: {:?}",
@@ -568,7 +577,7 @@ impl Consumer {
                 partition_queue: Arc::new(partition_queue),
                 key_deserializer: Arc::clone(&self.key_deserializer),
                 value_deserializer: Arc::clone(&self.value_deserializer),
-                filter: config.filter.clone(),
+                filter: filter.clone(),
                 consumer_tx: self.consumer_tx.clone(),
             };
 
@@ -710,7 +719,7 @@ where
     /// Kafka record.
     value_deserializer: Arc<dyn ValueDeserializer>,
     /// Any filter to apply to the record.
-    filter: Option<String>,
+    filter: Option<Arc<JsonPath>>,
     /// Sender for the Kafka consumer channel.
     consumer_tx: Sender<ConsumerEvent>,
 }
@@ -737,8 +746,8 @@ where
                     tracing::error!("failed to send consumer event over channel: {}", e);
                 }
 
-                if let Err(err) = self.consumer.commit_message(&msg, CommitMode::Sync) {
-                    tracing::error!("error committing Kafka message: {}", err);
+                if let Err(err) = self.consumer.store_offset_from_message(&msg) {
+                    tracing::error!("error storing Kafka message offset: {}", err);
                 }
 
                 Ok(())
